@@ -157,15 +157,18 @@ The largest and most complex module with 15+ optimization patches affecting game
   - Eligibility criteria (alive, unassigned, not politician)
   - Fallback to original when disabled
 
-#### 3.3 Gambling Dialog UI (Lines 248-519)
-- Button creation and state management
+#### 3.3 Crew Management Buttons (Lines 247-625)
+- Button creation in CrewManagementPopup
+- Selected crew member tracking
 - Family hiring logic
 - Marriage/child scheduling
 - **What to test:**
   ```csharp
   [Test] void FindEligibleFamily_OnlyReturnsValidRelationTypes()
-  [Test] void OnMarryChildClick_WhenHasSpouse_SchedulesChild()
-  [Test] void OnMarryChildClick_WhenNoSpouse_MarriesMatch()
+  [Test] void OnMarryChildClicked_WhenHasSpouse_SchedulesChild()
+  [Test] void OnMarryChildClicked_WhenNoSpouse_MarriesMatch()
+  [Test] void RefreshButtonStates_WhenNoCrewSelected_DisablesButtons()
+  [Test] void UpdateSelectedCrewMember_GetsCorrectEntity()
   ```
 
 ---

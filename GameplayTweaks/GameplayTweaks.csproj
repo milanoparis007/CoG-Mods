@@ -74,6 +74,18 @@
       <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\CoG_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\CoG_Data\Managed\Unity.TextMeshPro.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityGameTools">
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\CoG_Data\Managed\UnityGameTools.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\CoG_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="Microsoft.CSharp" />

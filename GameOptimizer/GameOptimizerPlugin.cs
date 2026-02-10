@@ -644,16 +644,18 @@ namespace GameOptimizer
         // =====================================================================
         // 5. Heat/Respect Recalc Throttle
         // =====================================================================
-        [HarmonyPatch(typeof(BusinessUpdate), "RecalculateHeatAndRespectForNodes")]
+        // NOTE: We throttle the expensive Update methods, NOT RecalculateHeatAndRespectForNodes!
+        // RecalculateHeatAndRespectForNodes MUST run every turn to apply the accumulated values
+        // before they get cleared by ClearAOEEffectsOnNodes on the next turn.
+        [HarmonyPatch(typeof(BusinessUpdate), "UpdateRespectFromRelationships")]
         private static class HeatRespectThrottlePatch
         {
             private static int _turnCounter = 0;
 
             [HarmonyPrefix]
-            static bool Prefix(bool initial)
+            static bool Prefix()
             {
                 if (!EnableHeatRespectThrottle.Value) return true;
-                if (initial) return true;
 
                 try
                 {
@@ -663,6 +665,8 @@ namespace GameOptimizer
                         _turnCounter = 0;
                         return true;
                     }
+                    // Skip the expensive relationship recalc, but RecalculateHeatAndRespectForNodes
+                    // will still run to apply AOE respect from speakeasies etc.
                     return false;
                 }
                 catch (Exception e)

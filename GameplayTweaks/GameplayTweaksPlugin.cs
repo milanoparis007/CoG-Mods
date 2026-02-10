@@ -533,6 +533,7 @@ namespace GameplayTweaks
             KeyboardBlockerPatch.ApplyPatch(harmony);
             CopWarSystem.Initialize();
             CopWarSystem.ApplyPatch(harmony);
+            CombatNameDisplayPatch.ApplyPatch(harmony);
 
             // Warn if old dirty cash DLLs still present
             CheckForConflictingMods();
@@ -6992,6 +6993,83 @@ namespace GameplayTweaks
                 }
             }
             catch (Exception e) { Debug.LogError($"[GameplayTweaks] CombatPostfix error: {e}"); }
+        }
+    }
+
+    // =========================================================================
+    // Combat Name Display Patch - Shows target name when initiating combat
+    // =========================================================================
+    internal static class CombatNameDisplayPatch
+    {
+        public static void ApplyPatch(Harmony harmony)
+        {
+            try
+            {
+                // Patch ConvoDataCombat.MakeReplacements to return target name
+                var convoDataCombatType = typeof(GameClock).Assembly.GetType("Game.UI.Session.Convo.ConvoDataCombat");
+                if (convoDataCombatType != null)
+                {
+                    var makeReplacementsMethod = convoDataCombatType.GetMethod("MakeReplacements",
+                        BindingFlags.Public | BindingFlags.Instance);
+                    if (makeReplacementsMethod != null)
+                    {
+                        harmony.Patch(makeReplacementsMethod,
+                            postfix: new HarmonyMethod(typeof(CombatNameDisplayPatch), nameof(MakeReplacementsPostfix)));
+                        Debug.Log("[GameplayTweaks] Combat name display patch applied");
+                    }
+                }
+            }
+            catch (Exception e) { Debug.LogError($"[GameplayTweaks] CombatNameDisplayPatch failed: {e}"); }
+        }
+
+        static void MakeReplacementsPostfix(object __instance, ref string[] __result)
+        {
+            try
+            {
+                // Get the target from ConvoDataCombat
+                var targetField = __instance.GetType().GetField("target");
+                if (targetField == null) return;
+
+                var target = targetField.GetValue(__instance);
+                if (target == null) return;
+
+                // target is a CrewAssignment - get the peep
+                var getPeepMethod = target.GetType().GetMethod("GetPeep");
+                if (getPeepMethod == null) return;
+
+                Entity targetPeep = getPeepMethod.Invoke(target, null) as Entity;
+                if (targetPeep == null) return;
+
+                // Get the target's name
+                string targetName = targetPeep.data?.person?.FullName ?? "Unknown";
+
+                // Also get the gang name if available
+                string gangName = "";
+                var pid = targetPeep.data?.agent?.pid;
+                if (pid.HasValue && !pid.Value.IsNotAnyPlayer)
+                {
+                    var player = pid.Value.FindPlayer();
+                    if (player != null)
+                    {
+                        gangName = player.social?.PlayerGroupName ?? "";
+                        // Check if this is a cop
+                        var isJustCopProp = player.GetType().GetProperty("IsJustCop");
+                        if (isJustCopProp != null && (bool)isJustCopProp.GetValue(player))
+                        {
+                            gangName = "Police";
+                        }
+                    }
+                }
+
+                // Return replacements: {0} = target name, {1} = gang name
+                if (!string.IsNullOrEmpty(gangName))
+                    __result = new string[] { targetName, gangName, $"{targetName} ({gangName})" };
+                else
+                    __result = new string[] { targetName, "", targetName };
+
+                Debug.Log($"[GameplayTweaks] Combat target: {targetName} from {gangName}");
+            }
+            catch { }
         }
     }
 

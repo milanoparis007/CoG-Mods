@@ -276,6 +276,11 @@ namespace GameplayTweaks
         public Dictionary<int, int> PactJoinCooldowns = new Dictionary<int, int>(); // Per-pact cooldown: slotIndex -> last attempt day
         public bool NeverAcceptPacts; // Toggle to never accept AI pact invitations
         public List<string> GrapevineEvents = new List<string>(); // Gang interaction log
+
+        // Cop war system
+        public bool CopWarActive; // Player is at war with cops
+        public int CopWarWitnessCount; // Number of witnessed cop kills
+        public int LastCopKillDay = -1; // Day of last witnessed cop kill
     }
 
     // =========================================================================
@@ -326,6 +331,10 @@ namespace GameplayTweaks
         };
 
         public static readonly string[] PACT_COLOR_NAMES = { "Red", "Blue", "Gold", "Orange", "Purple", "Teal", "Your Pact" };
+
+        // Cop system constants
+        public const float COP_KILL_WITNESS_CHANCE = 0.50f; // 50% witness chance for cop kills
+        public const float NORMAL_WITNESS_CHANCE = 0.30f;   // 30% witness chance for other kills
 
         public static readonly string DIRTY_CASH_LABEL = "dirty-cash";
 
@@ -521,6 +530,9 @@ namespace GameplayTweaks
             AttackAdvisorPatch.ApplyPatch(harmony);
             DirtyCashPatches.ApplyPatches(harmony);
             FrontTrackingPatch.ApplyPatch(harmony);
+            KeyboardBlockerPatch.ApplyPatch(harmony);
+            CopWarSystem.Initialize();
+            CopWarSystem.ApplyPatch(harmony);
 
             // Warn if old dirty cash DLLs still present
             CheckForConflictingMods();
@@ -1257,8 +1269,8 @@ namespace GameplayTweaks
                         _gangPactsBtnGo.SetActive(isBoss);
                         if (_myPactBtnGo != null)
                         {
-                            bool hasPlayerPact = HasPlayerPact;
-                            _myPactBtnGo.SetActive(isBoss && hasPlayerPact);
+                            // Always show "My Pact" button for boss - can create or manage pact
+                            _myPactBtnGo.SetActive(isBoss);
                         }
                         if (_grapevineBtnGo != null)
                             _grapevineBtnGo.SetActive(isBoss);
@@ -1359,9 +1371,8 @@ namespace GameplayTweaks
                 myPactText.fontSize = 14; myPactText.color = new Color(0.6f, 1f, 0.6f);
                 myPactText.alignment = TextAnchor.MiddleCenter;
                 myPactText.fontStyle = FontStyle.Bold;
-                // Only visible if player has a pact (slot 4)
-                bool hasPlayerPact = HasPlayerPact;
-                myPactBtnGo.SetActive(hasPlayerPact);
+                // Hidden initially until boss check in RefreshInfoPanelPostfix
+                myPactBtnGo.SetActive(false);
 
                 // "The Grapevine" button (boss-only)
                 var gvBtnGo = new GameObject("BtnGrapevine", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
@@ -1592,6 +1603,7 @@ namespace GameplayTweaks
                 _inputFirstName = firstGo.GetComponent<InputField>();
                 _inputFirstName.textComponent = firstTxt;
                 _inputFirstName.characterLimit = 20;
+                firstGo.AddComponent<InputFieldBlocker>(); // Block game keybinds while typing
 
                 // Last name input
                 var lastGo = new GameObject("LastInput", typeof(RectTransform), typeof(Image), typeof(InputField), typeof(LayoutElement));
@@ -1611,6 +1623,7 @@ namespace GameplayTweaks
                 _inputLastName = lastGo.GetComponent<InputField>();
                 _inputLastName.textComponent = lastTxt;
                 _inputLastName.characterLimit = 20;
+                lastGo.AddComponent<InputFieldBlocker>(); // Block game keybinds while typing
 
                 // Save button
                 var saveBtn = CreateButton(_renameRow.transform, "SaveName", "Save", OnSaveRename);
@@ -1648,6 +1661,7 @@ namespace GameplayTweaks
                 _inputNickname = nnGo.GetComponent<InputField>();
                 _inputNickname.textComponent = nnTxt;
                 _inputNickname.characterLimit = 20;
+                nnGo.AddComponent<InputFieldBlocker>(); // Block game keybinds while typing
 
                 var nnSaveBtn = CreateButton(_nicknameRow.transform, "SaveNickname", "Save", OnSaveNickname);
                 nnSaveBtn.GetComponent<Image>().color = new Color(0.2f, 0.4f, 0.2f, 0.95f);
@@ -4918,6 +4932,7 @@ namespace GameplayTweaks
                 inputText.supportRichText = false;
                 _gangRenameInput.textComponent = inputText;
                 _gangRenameInput.text = currentName;
+                inputGo.AddComponent<InputFieldBlocker>(); // Block game keybinds while typing
 
                 // Save button
                 var saveBtnGo = CreateButton(_gangRenameRow.transform, "SaveRename", "Save", OnSaveGangRename);
@@ -5305,10 +5320,12 @@ namespace GameplayTweaks
                         // Kills lower happiness the most
                         state.HappinessValue = Mathf.Clamp01(state.HappinessValue - 0.25f * delta);
 
-                        // 30% chance a witness sees the kill
+                        // Witness chance: 50% for cop kills, 30% for others
+                        // Note: We don't know the victim here, so we use the base chance
+                        // The CopWarSystem handles cop-specific logic separately via combat patch
                         for (int i = 0; i < delta; i++)
                         {
-                            if (SharedRng.NextDouble() < 0.30)
+                            if (SharedRng.NextDouble() < ModConstants.NORMAL_WITNESS_CHANCE)
                             {
                                 state.HasWitness = true;
                                 state.WitnessThreatenedSuccessfully = false;
@@ -6747,6 +6764,431 @@ namespace GameplayTweaks
             }
             catch { }
         }
+    }
+
+    // =========================================================================
+    // Cop War System - enables killing cops with witness-based war mechanics
+    // =========================================================================
+    internal static class CopWarSystem
+    {
+        private static Type _copUtilType;
+        private static MethodInfo _isCopMethod;
+        private static bool _initialized;
+
+        public static void Initialize()
+        {
+            try
+            {
+                _copUtilType = typeof(GameClock).Assembly.GetType("Game.Session.Sim.CopUtil");
+                if (_copUtilType != null)
+                {
+                    _isCopMethod = _copUtilType.GetMethod("IsCop",
+                        BindingFlags.Public | BindingFlags.Static,
+                        null, new[] { typeof(Entity) }, null);
+                    _initialized = true;
+                    Debug.Log("[GameplayTweaks] CopWarSystem initialized");
+                }
+            }
+            catch (Exception e) { Debug.LogError($"[GameplayTweaks] CopWarSystem init failed: {e}"); }
+        }
+
+        public static bool IsCop(Entity peep)
+        {
+            if (!_initialized || _isCopMethod == null || peep == null) return false;
+            try
+            {
+                return (bool)_isCopMethod.Invoke(null, new object[] { peep });
+            }
+            catch { return false; }
+        }
+
+        // Check if a victim is a cop and handle witness/war accordingly
+        // Returns the witness chance to use (0.50 for cops, 0.30 for others)
+        public static float GetWitnessChanceForVictim(Entity victim)
+        {
+            if (IsCop(victim))
+                return ModConstants.COP_KILL_WITNESS_CHANCE; // 50% for cops
+            return ModConstants.NORMAL_WITNESS_CHANCE; // 30% for others
+        }
+
+        // Called when player kills a cop with a witness
+        public static void OnCopKilledWithWitness(Entity killer)
+        {
+            var saveData = GameplayTweaksPlugin.SaveData;
+            saveData.CopWarActive = true;
+            saveData.CopWarWitnessCount++;
+            saveData.LastCopKillDay = G.GetNow().days;
+
+            string killerName = killer?.data?.person?.FullName ?? "Unknown";
+            Debug.Log($"[GameplayTweaks] COP WAR: {killerName} killed a cop with a witness! War is now active.");
+            GameplayTweaksPlugin.LogGrapevine($"COP WAR: Police are hunting {killerName} after witnessed cop killing!");
+        }
+
+        // Check if player can call truce with cops (requires precinct bribe)
+        public static bool CanCallCopTruce()
+        {
+            if (!GameplayTweaksPlugin.SaveData.CopWarActive) return false;
+
+            try
+            {
+                // Check if any precinct is bribed (has donation from player)
+                var human = G.GetHumanPlayer();
+                if (human == null) return false;
+
+                foreach (var player in G.GetAllPlayers())
+                {
+                    if (player == null) continue;
+                    var isJustCopProp = player.GetType().GetProperty("IsJustCop");
+                    if (isJustCopProp == null) continue;
+                    bool isJustCop = (bool)isJustCopProp.GetValue(player);
+                    if (!isJustCop) continue;
+
+                    // Check if this precinct has donation from human player
+                    var aiField = player.GetType().GetField("ai") ?? player.GetType().GetProperty("ai")?.GetGetMethod() as MemberInfo;
+                    object ai = null;
+                    if (aiField is FieldInfo fi) ai = fi.GetValue(player);
+                    else if (aiField is PropertyInfo pi) ai = pi.GetValue(player);
+                    if (ai == null) continue;
+
+                    object precinct = null;
+                    var precinctProp = ai.GetType().GetProperty("precinct");
+                    if (precinctProp != null)
+                        precinct = precinctProp.GetValue(ai);
+                    else
+                    {
+                        var precinctField = ai.GetType().GetField("precinct");
+                        if (precinctField != null)
+                            precinct = precinctField.GetValue(ai);
+                    }
+                    if (precinct == null) continue;
+
+                    var hasDonationMethod = precinct.GetType().GetMethod("HasDonationFrom");
+                    if (hasDonationMethod == null) continue;
+
+                    var donationState = hasDonationMethod.Invoke(precinct, new object[] { human.PID });
+                    if (donationState != null)
+                    {
+                        int stateValue = (int)donationState;
+                        // DonationState.PaidOff = 2
+                        if (stateValue == 2)
+                        {
+                            return true; // Precinct is bribed
+                        }
+                    }
+                }
+            }
+            catch (Exception e) { Debug.LogError($"[GameplayTweaks] CanCallCopTruce failed: {e}"); }
+            return false;
+        }
+
+        // Call truce with cops (only works if precinct is bribed)
+        public static bool CallCopTruce()
+        {
+            if (!CanCallCopTruce()) return false;
+
+            var saveData = GameplayTweaksPlugin.SaveData;
+            saveData.CopWarActive = false;
+            saveData.CopWarWitnessCount = 0;
+
+            Debug.Log("[GameplayTweaks] COP TRUCE: Peace has been negotiated with the police.");
+            GameplayTweaksPlugin.LogGrapevine("COP TRUCE: The heat is off - cops have been paid to look the other way.");
+            return true;
+        }
+
+        // Check if cop war should be active (true if cops were killed with witness and no truce)
+        public static bool IsCopWarActive => GameplayTweaksPlugin.SaveData.CopWarActive;
+
+        // Patch the combat system to detect cop kills
+        public static void ApplyPatch(Harmony harmony)
+        {
+            try
+            {
+                var combatMgrType = typeof(GameClock).Assembly.GetType("Game.Session.Sim.CombatManager");
+                if (combatMgrType != null)
+                {
+                    var performMethod = combatMgrType.GetMethod("PerformCombat",
+                        BindingFlags.Public | BindingFlags.Static);
+                    if (performMethod != null)
+                    {
+                        harmony.Patch(performMethod,
+                            postfix: new HarmonyMethod(typeof(CopWarSystem), nameof(CombatPostfix)));
+                        Debug.Log("[GameplayTweaks] Cop combat patch applied");
+                    }
+                }
+            }
+            catch (Exception e) { Debug.LogError($"[GameplayTweaks] CopWarSystem patch failed: {e}"); }
+        }
+
+        static void CombatPostfix(object __result)
+        {
+            try
+            {
+                if (__result == null) return;
+
+                // Get attacker and target from combat results
+                var attackerField = __result.GetType().GetField("attacker");
+                var targetField = __result.GetType().GetField("target");
+                if (attackerField == null || targetField == null) return;
+
+                var attacker = attackerField.GetValue(__result);
+                var target = targetField.GetValue(__result);
+                if (attacker == null || target == null) return;
+
+                // Check if target died
+                bool targetDead = false;
+                var isDeadProp = target.GetType().GetProperty("IsDead");
+                if (isDeadProp != null)
+                {
+                    targetDead = (bool)isDeadProp.GetValue(target);
+                }
+                else
+                {
+                    var isDeadField = target.GetType().GetField("IsDead");
+                    if (isDeadField != null)
+                        targetDead = (bool)isDeadField.GetValue(target);
+                }
+
+                if (!targetDead) return; // No death, no cop check needed
+
+                // Get the peeps
+                var attackerPeepField = attacker.GetType().GetField("peep");
+                var targetPeepField = target.GetType().GetField("peep");
+                if (attackerPeepField == null || targetPeepField == null) return;
+
+                Entity attackerPeep = attackerPeepField.GetValue(attacker) as Entity;
+                Entity targetPeep = targetPeepField.GetValue(target) as Entity;
+                if (attackerPeep == null || targetPeep == null) return;
+
+                // Check if attacker is player's crew
+                PlayerInfo human = G.GetHumanPlayer();
+                if (human == null || attackerPeep.data?.agent?.pid != human.PID) return;
+
+                // Check if target was a cop
+                if (!IsCop(targetPeep)) return;
+
+                // Cop was killed by player! Apply 50% witness chance
+                bool hasWitness = GameplayTweaksPlugin.SharedRng.NextDouble() < ModConstants.COP_KILL_WITNESS_CHANCE;
+
+                if (hasWitness)
+                {
+                    // Update crew state with witness
+                    var state = GameplayTweaksPlugin.GetOrCreateCrewState(attackerPeep.Id);
+                    if (state != null)
+                    {
+                        state.HasWitness = true;
+                        state.WitnessThreatenedSuccessfully = false;
+                        state.WantedProgress = Mathf.Clamp01(state.WantedProgress + 0.35f); // Higher for cop kill
+                        if (state.WantedProgress >= 0.75f) state.WantedLevel = WantedLevel.High;
+                        else if (state.WantedProgress >= 0.5f) state.WantedLevel = WantedLevel.Medium;
+                        else if (state.WantedProgress >= 0.25f) state.WantedLevel = WantedLevel.Low;
+                    }
+
+                    // Trigger cop war
+                    OnCopKilledWithWitness(attackerPeep);
+                }
+                else
+                {
+                    Debug.Log($"[GameplayTweaks] {attackerPeep.data.person.FullName} killed a cop but no witness saw it!");
+                }
+            }
+            catch (Exception e) { Debug.LogError($"[GameplayTweaks] CombatPostfix error: {e}"); }
+        }
+    }
+
+    // =========================================================================
+    // Keyboard Blocker Patch - blocks game keybinds when InputField is focused
+    // =========================================================================
+    internal static class KeyboardBlockerPatch
+    {
+        public static void ApplyPatch(Harmony harmony)
+        {
+            try
+            {
+                // Patch KeyboardService.OnUpdateKeyboard to check if text entry is active
+                var keyboardServiceType = typeof(GameClock).Assembly.GetType("Game.Services.Input.KeyboardService");
+                if (keyboardServiceType != null)
+                {
+                    var updateMethod = keyboardServiceType.GetMethod("OnUpdateKeyboard",
+                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (updateMethod != null)
+                    {
+                        harmony.Patch(updateMethod,
+                            prefix: new HarmonyMethod(typeof(KeyboardBlockerPatch), nameof(BlockKeyboardPrefix)));
+                        Debug.Log("[GameplayTweaks] Keyboard blocker patch applied");
+                    }
+                    else
+                    {
+                        // Try alternative method name
+                        updateMethod = keyboardServiceType.GetMethod("ProcessKeys",
+                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (updateMethod != null)
+                        {
+                            harmony.Patch(updateMethod,
+                                prefix: new HarmonyMethod(typeof(KeyboardBlockerPatch), nameof(BlockKeyboardPrefix)));
+                            Debug.Log("[GameplayTweaks] Keyboard blocker patch applied (ProcessKeys)");
+                        }
+                    }
+                }
+            }
+            catch (Exception e) { Debug.LogError($"[GameplayTweaks] KeyboardBlockerPatch failed: {e}"); }
+        }
+
+        static bool BlockKeyboardPrefix()
+        {
+            // Skip keyboard processing if an InputField is focused
+            if (InputFieldBlocker.ShouldBlockKeyboard)
+                return false; // Skip original method
+            return true; // Continue with original method
+        }
+    }
+
+    // =========================================================================
+    // Input Field Keyboard Blocker - prevents game keybinds while typing
+    // =========================================================================
+    public class InputFieldBlocker : MonoBehaviour
+    {
+        private static object _blockingHandler;
+        private static bool _isBlocking;
+        private InputField _inputField;
+
+        void Start()
+        {
+            _inputField = GetComponent<InputField>();
+            if (_inputField != null)
+            {
+                _inputField.onValueChanged.AddListener(OnValueChanged);
+            }
+        }
+
+        void OnDestroy()
+        {
+            if (_inputField != null)
+            {
+                _inputField.onValueChanged.RemoveListener(OnValueChanged);
+            }
+            if (_isBlocking)
+            {
+                UnblockKeyboard();
+            }
+        }
+
+        void Update()
+        {
+            if (_inputField == null) return;
+
+            // Check if this input field is focused
+            if (_inputField.isFocused && !_isBlocking)
+            {
+                BlockKeyboard();
+            }
+            else if (!_inputField.isFocused && _isBlocking)
+            {
+                // Check if any other input field is focused
+                bool anyFocused = false;
+                foreach (var blocker in FindObjectsOfType<InputFieldBlocker>())
+                {
+                    if (blocker._inputField != null && blocker._inputField.isFocused)
+                    {
+                        anyFocused = true;
+                        break;
+                    }
+                }
+                if (!anyFocused)
+                {
+                    UnblockKeyboard();
+                }
+            }
+        }
+
+        void OnValueChanged(string value)
+        {
+            // Ensure blocking while typing
+            if (!_isBlocking && _inputField.isFocused)
+            {
+                BlockKeyboard();
+            }
+        }
+
+        private static void BlockKeyboard()
+        {
+            if (_isBlocking) return;
+            try
+            {
+                // Create a blocking handler that consumes all keyboard input
+                var keyboardService = typeof(GameClock).Assembly.GetType("Game.Services.Input.KeyboardService");
+                var gameType = typeof(GameClock).Assembly.GetType("Game.Game");
+                var servField = gameType?.GetField("serv", BindingFlags.Public | BindingFlags.Static);
+                var serv = servField?.GetValue(null);
+                object keyboard = null;
+                var keyboardProp = serv?.GetType().GetProperty("keyboard");
+                if (keyboardProp != null)
+                {
+                    keyboard = keyboardProp.GetValue(serv);
+                }
+                else
+                {
+                    var keyboardField = serv?.GetType().GetField("keyboard");
+                    if (keyboardField != null)
+                        keyboard = keyboardField.GetValue(serv);
+                }
+
+                if (keyboard != null)
+                {
+                    // Create a simple blocking handler using reflection
+                    var basicHandlerType = typeof(GameClock).Assembly.GetType("Game.Services.Input.BasicKeyboardHandler");
+                    if (basicHandlerType != null)
+                    {
+                        var handlerCtor = basicHandlerType.GetConstructor(new[] {
+                            typeof(GameClock).Assembly.GetType("Game.Services.Input.KeyboardHandler+Priority"),
+                            typeof(List<>).MakeGenericType(typeof(GameClock).Assembly.GetType("Game.Services.Input.KeyInput")),
+                            typeof(GameClock).Assembly.GetType("Game.Services.Input.KeyboardHandler+Fallthrough")
+                        });
+
+                        var priorityType = typeof(GameClock).Assembly.GetType("Game.Services.Input.KeyboardHandler+Priority");
+                        var fallthroughType = typeof(GameClock).Assembly.GetType("Game.Services.Input.KeyboardHandler+Fallthrough");
+                        var keyInputType = typeof(GameClock).Assembly.GetType("Game.Services.Input.KeyInput");
+                        var listType = typeof(List<>).MakeGenericType(keyInputType);
+
+                        var priority = Enum.ToObject(priorityType, 1); // HighestModalDialog
+                        var fallthrough = Enum.ToObject(fallthroughType, 2); // Never
+                        var emptyList = Activator.CreateInstance(listType);
+
+                        _blockingHandler = handlerCtor?.Invoke(new object[] { priority, emptyList, fallthrough });
+
+                        if (_blockingHandler != null)
+                        {
+                            // Wrap in IKeyboardHandler
+                            var wrapperType = typeof(GameClock).Assembly.GetType("Game.Services.Input.SimpleKeyboardHandlerWrapper");
+                            if (wrapperType == null)
+                            {
+                                // Just set the flag and rely on Update check
+                                _isBlocking = true;
+                                Debug.Log("[GameplayTweaks] Keyboard input blocked (flag only)");
+                                return;
+                            }
+                        }
+                    }
+                }
+                _isBlocking = true;
+                Debug.Log("[GameplayTweaks] Keyboard input blocked for text entry");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[GameplayTweaks] Failed to block keyboard: {e.Message}");
+                _isBlocking = true; // Set flag anyway
+            }
+        }
+
+        private static void UnblockKeyboard()
+        {
+            if (!_isBlocking) return;
+            _isBlocking = false;
+            _blockingHandler = null;
+            Debug.Log("[GameplayTweaks] Keyboard input unblocked");
+        }
+
+        // Static helper to check if keyboard should be blocked
+        public static bool ShouldBlockKeyboard => _isBlocking;
     }
 
     // =========================================================================

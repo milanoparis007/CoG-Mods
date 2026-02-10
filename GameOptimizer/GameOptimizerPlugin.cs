@@ -72,6 +72,15 @@ namespace GameOptimizer
         internal static ConfigEntry<int> AssignBuildingsIterationsPerFrame;
         internal static ConfigEntry<bool> EnableEthnicityPlacementFix;
         internal static ConfigEntry<bool> EnableManufactureModuleFix;
+        internal static ConfigEntry<bool> EnableCreateEmptyLotsOptimization;
+        internal static ConfigEntry<int> CreateEmptyLotsIterationsPerFrame;
+        internal static ConfigEntry<bool> EnableCreateMapNodesOptimization;
+        internal static ConfigEntry<int> CreateMapNodesIterationsPerFrame;
+        internal static ConfigEntry<bool> EnableMapDisplayOptimization;
+        internal static ConfigEntry<int> MapDisplayResolution;
+        internal static ConfigEntry<int> MapDisplayBatchSize;
+        internal static ConfigEntry<bool> EnableIndirectRendererOptimization;
+        internal static ConfigEntry<bool> EnableTerritoryRebuildDebounce;
 
         private void Awake()
         {
@@ -114,8 +123,8 @@ namespace GameOptimizer
 
             EnableHeightmapOptimization = Config.Bind("HeightmapOptimization", "Enabled", true,
                 "Generate heightmap at lower resolution to speed up map loading.");
-            HeightmapResolution = Config.Bind("HeightmapOptimization", "Resolution", 128,
-                "Heightmap resolution (original is 512). Lower = faster. 128 is ~16x faster with minimal visual difference.");
+            HeightmapResolution = Config.Bind("HeightmapOptimization", "Resolution", 256,
+                "Heightmap resolution (original is 512). Lower = faster. 256 is ~4x faster and preserves river detail.");
 
             EnableTerrainDecoOptimization = Config.Bind("TerrainDecoOptimization", "Enabled", true,
                 "Reduce terrain deco grid resolution to speed up FillInEmptySpace during map loading.");
@@ -146,8 +155,31 @@ namespace GameOptimizer
             EnableEthnicityPlacementFix = Config.Bind("EthnicityPlacementFix", "Enabled", true,
                 "Fix ethnicity placement bias: when ethnic heatmaps are empty/tied, pick randomly instead of always choosing the first alphabetical ethnicity. Prevents one group from clustering near industrial zones.");
 
-            EnableManufactureModuleFix = Config.Bind("ManufactureModuleFix", "Enabled", true,
-                "Fix crash when AI installs backroom modules. The game incorrectly checks recipe visibility against HumanPlayer instead of the AI player, causing empty recipe lists.");
+            EnableManufactureModuleFix = Config.Bind("ManufactureModuleFix", "Enabled", false,
+                "DISABLED: Harmony cannot patch ManufactureModule.Initialize (TypeLoadException). Fix crash when AI installs backroom modules.");
+
+            EnableCreateEmptyLotsOptimization = Config.Bind("CreateEmptyLotsOptimization", "Enabled", true,
+                "Increase lot creation batch size to reduce frame-wait overhead during map loading.");
+            CreateEmptyLotsIterationsPerFrame = Config.Bind("CreateEmptyLotsOptimization", "IterationsPerFrame", 10000,
+                "Process this many lots before yielding a frame. Original is 200 (~16ms wasted per yield). Set to 0 for no yields.");
+
+            EnableCreateMapNodesOptimization = Config.Bind("CreateMapNodesOptimization", "Enabled", true,
+                "Increase node generation batch size to reduce frame-wait overhead during map loading.");
+            CreateMapNodesIterationsPerFrame = Config.Bind("CreateMapNodesOptimization", "IterationsPerFrame", 5000,
+                "Process this many node iterations before yielding a frame. Original is 100 (~16ms wasted per yield). Set to 0 for no yields.");
+
+            EnableMapDisplayOptimization = Config.Bind("MapDisplayOptimization", "Enabled", true,
+                "Reduce territory map texture resolution and increase refresh batch size. Original 1024x1024 with Physics2D.OverlapPoint per pixel causes heavy lag.");
+            MapDisplayResolution = Config.Bind("MapDisplayOptimization", "Resolution", 512,
+                "Territory map texture resolution (original 1024). 512 = 4x fewer physics queries. 256 = 16x fewer but blockier borders.");
+            MapDisplayBatchSize = Config.Bind("MapDisplayOptimization", "BatchSize", 16000,
+                "Pixels processed per frame during territory refresh (original 4000). Higher = faster refresh, slightly more per-frame cost.");
+
+            EnableIndirectRendererOptimization = Config.Bind("IndirectRendererOptimization", "Enabled", true,
+                "Force IndirectRenderer to split culling and sorting across separate frames, halving GPU dispatch work per frame.");
+
+            EnableTerritoryRebuildDebounce = Config.Bind("TerritoryRebuildDebounce", "Enabled", true,
+                "Prevent UpdateNodeDataOnTerritoryChange from iterating all nodes multiple times per frame. Defers rebuild to once per frame.");
 
             var harmony = new Harmony("com.mods.gameoptimizer");
             harmony.PatchAll(typeof(ClockResetPatch));
@@ -165,7 +197,13 @@ namespace GameOptimizer
             TerrainDecoOptimizationPatch.ApplyManualPatch(harmony);
             TerrainMeshOptimizationPatch.ApplyManualPatch(harmony);
             AssignBuildingsOptimizationPatch.ApplyManualPatch(harmony);
-            ManufactureModuleFixPatch.ApplyManualPatch(harmony);
+            CreateEmptyLotsOptimizationPatch.ApplyManualPatch(harmony);
+            CreateMapNodesOptimizationPatch.ApplyManualPatch(harmony);
+            MapDisplayOptimizationPatch.ApplyManualPatch(harmony);
+            IndirectRendererOptimizationPatch.ApplyManualPatch(harmony);
+            TerritoryRebuildDebouncePatch.ApplyManualPatch(harmony);
+            // ManufactureModuleFixPatch disabled: Harmony cannot generate DMD (TypeLoadException)
+            // ManufactureModuleFixPatch.ApplyManualPatch(harmony);
             // Ethnicity fix uses a coroutine instead of Harmony (DMD failures)
             if (EnableEthnicityPlacementFix.Value)
             {
@@ -191,6 +229,11 @@ namespace GameOptimizer
             Logger.LogInfo($"  AssignBuildingsOptimization: {EnableAssignBuildingsOptimization.Value} (itersPerFrame={AssignBuildingsIterationsPerFrame.Value})");
             Logger.LogInfo($"  EthnicityPlacementFix: {EnableEthnicityPlacementFix.Value}");
             Logger.LogInfo($"  ManufactureModuleFix: {EnableManufactureModuleFix.Value}");
+            Logger.LogInfo($"  CreateEmptyLotsOptimization: {EnableCreateEmptyLotsOptimization.Value} (itersPerFrame={CreateEmptyLotsIterationsPerFrame.Value})");
+            Logger.LogInfo($"  CreateMapNodesOptimization: {EnableCreateMapNodesOptimization.Value} (itersPerFrame={CreateMapNodesIterationsPerFrame.Value})");
+            Logger.LogInfo($"  MapDisplayOptimization: {EnableMapDisplayOptimization.Value} (res={MapDisplayResolution.Value}, batch={MapDisplayBatchSize.Value})");
+            Logger.LogInfo($"  IndirectRendererOptimization: {EnableIndirectRendererOptimization.Value}");
+            Logger.LogInfo($"  TerritoryRebuildDebounce: {EnableTerritoryRebuildDebounce.Value}");
         }
 
         // =====================================================================
@@ -601,16 +644,18 @@ namespace GameOptimizer
         // =====================================================================
         // 5. Heat/Respect Recalc Throttle
         // =====================================================================
-        [HarmonyPatch(typeof(BusinessUpdate), "RecalculateHeatAndRespectForNodes")]
+        // NOTE: We throttle the expensive Update methods, NOT RecalculateHeatAndRespectForNodes!
+        // RecalculateHeatAndRespectForNodes MUST run every turn to apply the accumulated values
+        // before they get cleared by ClearAOEEffectsOnNodes on the next turn.
+        [HarmonyPatch(typeof(BusinessUpdate), "UpdateRespectFromRelationships")]
         private static class HeatRespectThrottlePatch
         {
             private static int _turnCounter = 0;
 
             [HarmonyPrefix]
-            static bool Prefix(bool initial)
+            static bool Prefix()
             {
                 if (!EnableHeatRespectThrottle.Value) return true;
-                if (initial) return true;
 
                 try
                 {
@@ -620,6 +665,8 @@ namespace GameOptimizer
                         _turnCounter = 0;
                         return true;
                     }
+                    // Skip the expensive relationship recalc, but RecalculateHeatAndRespectForNodes
+                    // will still run to apply AOE respect from speakeasies etc.
                     return false;
                 }
                 catch (Exception e)
@@ -735,10 +782,7 @@ namespace GameOptimizer
                             levelsGained++;
                         }
 
-                        if (levelsGained > 0)
-                        {
-                            Debug.Log($"[GameOptimizer] AI crew '{peep.data.person.FullName}' gained {levelsGained} levelup(s)");
-                        }
+                        // levelsGained logged per-AI-per-crew was spammy; removed
                     }
                 }
                 catch (Exception e)
@@ -1098,14 +1142,18 @@ namespace GameOptimizer
                             }
                         }
 
-                        // Water check — early exit once water is found
-                        if (waterRegions != null && color.g == 0f)
+                        // Water check — always check water regardless of mountain height
+                        // Rivers can flow through/around terrain at various heights
+                        if (waterRegions != null || waterBodies != null)
                         {
                             bool isWater = false;
-                            for (int w = 0; w < waterRegions.Count && !isWater; w++)
+                            if (waterRegions != null)
                             {
-                                if (waterRegions[w].IsPointWithin(pos))
-                                    isWater = true;
+                                for (int w = 0; w < waterRegions.Count && !isWater; w++)
+                                {
+                                    if (waterRegions[w].IsPointWithin(pos))
+                                        isWater = true;
+                                }
                             }
                             if (!isWater && waterBodies != null)
                             {
@@ -2006,6 +2054,447 @@ namespace GameOptimizer
                 {
                     Debug.LogError($"[GameOptimizer] ManufactureModuleFixPatch error, falling back to original: {e}");
                     return true; // Run original on error
+                }
+            }
+        }
+
+        // =====================================================================
+        // 14. CreateEmptyLots Optimization — batch yield calls
+        //     Original yields every 200 iterations (~16ms wasted per yield).
+        // =====================================================================
+        private static class CreateEmptyLotsOptimizationPatch
+        {
+            public static void ApplyManualPatch(Harmony harmony)
+            {
+                if (!EnableCreateEmptyLotsOptimization.Value) return;
+
+                try
+                {
+                    var createEmptyLotsType = typeof(GameClock).Assembly.GetType("Game.Session.Setup.CreateEmptyLots");
+                    if (createEmptyLotsType == null)
+                    {
+                        Debug.LogError("[GameOptimizer] CreateEmptyLotsOptimizationPatch: CreateEmptyLots type not found");
+                        return;
+                    }
+
+                    // Patch the MakeLotsAxisAligned method which does the yielding
+                    var coroutineMethod = AccessTools.Method(createEmptyLotsType, "MakeLotsAxisAligned");
+                    if (coroutineMethod != null)
+                    {
+                        var postfix = new HarmonyMethod(typeof(CreateEmptyLotsOptimizationPatch), "CoroutinePostfix");
+                        harmony.Patch(coroutineMethod, postfix: postfix);
+                    }
+
+                    Debug.Log("[GameOptimizer] CreateEmptyLotsOptimizationPatch applied successfully");
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[GameOptimizer] CreateEmptyLotsOptimizationPatch setup failed: {e}");
+                }
+            }
+
+            static void CoroutinePostfix(ref IEnumerator __result)
+            {
+                if (!EnableCreateEmptyLotsOptimization.Value) return;
+                __result = BatchedCoroutine(__result);
+            }
+
+            private static IEnumerator BatchedCoroutine(IEnumerator original)
+            {
+                int batchSize = CreateEmptyLotsIterationsPerFrame.Value;
+                int nullCount = 0;
+
+                while (true)
+                {
+                    bool hasNext;
+                    try
+                    {
+                        hasNext = original.MoveNext();
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogError($"[GameOptimizer] CreateEmptyLotsOptimizationPatch coroutine error: {e}");
+                        throw;
+                    }
+
+                    if (!hasNext) break;
+
+                    if (original.Current == null)
+                    {
+                        nullCount++;
+                        if (batchSize > 0 && nullCount >= batchSize / 200) // Original yields every 200
+                        {
+                            nullCount = 0;
+                            yield return null;
+                        }
+                    }
+                    else
+                    {
+                        yield return original.Current;
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // 15. CreateMapNodes Optimization — batch yield calls
+        //     Original yields every 100 iterations (~16ms wasted per yield).
+        // =====================================================================
+        private static class CreateMapNodesOptimizationPatch
+        {
+            public static void ApplyManualPatch(Harmony harmony)
+            {
+                if (!EnableCreateMapNodesOptimization.Value) return;
+
+                try
+                {
+                    var createMapNodesType = typeof(GameClock).Assembly.GetType("Game.Session.Setup.CreateMapNodes");
+                    if (createMapNodesType == null)
+                    {
+                        Debug.LogError("[GameOptimizer] CreateMapNodesOptimizationPatch: CreateMapNodes type not found");
+                        return;
+                    }
+
+                    var startMethod = AccessTools.Method(createMapNodesType, "Start");
+                    if (startMethod != null)
+                    {
+                        var postfix = new HarmonyMethod(typeof(CreateMapNodesOptimizationPatch), "CoroutinePostfix");
+                        harmony.Patch(startMethod, postfix: postfix);
+                    }
+
+                    Debug.Log("[GameOptimizer] CreateMapNodesOptimizationPatch applied successfully");
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[GameOptimizer] CreateMapNodesOptimizationPatch setup failed: {e}");
+                }
+            }
+
+            static void CoroutinePostfix(ref IEnumerator __result)
+            {
+                if (!EnableCreateMapNodesOptimization.Value) return;
+                __result = BatchedCoroutine(__result);
+            }
+
+            private static IEnumerator BatchedCoroutine(IEnumerator original)
+            {
+                int batchSize = CreateMapNodesIterationsPerFrame.Value;
+                int nullCount = 0;
+
+                while (true)
+                {
+                    bool hasNext;
+                    try
+                    {
+                        hasNext = original.MoveNext();
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogError($"[GameOptimizer] CreateMapNodesOptimizationPatch coroutine error: {e}");
+                        throw;
+                    }
+
+                    if (!hasNext) break;
+
+                    if (original.Current == null)
+                    {
+                        nullCount++;
+                        if (batchSize > 0 && nullCount >= batchSize / 100) // Original yields every 100
+                        {
+                            nullCount = 0;
+                            yield return null;
+                        }
+                    }
+                    else
+                    {
+                        yield return original.Current;
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // 16. MapDisplay Optimization — Reduce territory texture resolution
+        //     and increase per-frame batch size.
+        //     Original: 1024x1024 = ~1M Physics2D.OverlapPoint calls per refresh.
+        //     512x512 = ~262K (4x reduction). Also batches more pixels per frame.
+        // =====================================================================
+        private static class MapDisplayOptimizationPatch
+        {
+            private static FieldInfo _resolutionField;
+            private static FieldInfo _textureField;
+            private static FieldInfo _colorBufferField;
+            private static Type _mapDisplayType;
+
+            public static void ApplyManualPatch(Harmony harmony)
+            {
+                if (!EnableMapDisplayOptimization.Value) return;
+
+                try
+                {
+                    _mapDisplayType = typeof(GameClock).Assembly.GetType("Game.Session.Board.MapDisplayManager");
+                    if (_mapDisplayType == null)
+                    {
+                        Debug.LogError("[GameOptimizer] MapDisplayOptimizationPatch: MapDisplayManager type not found");
+                        return;
+                    }
+
+                    _resolutionField = AccessTools.Field(_mapDisplayType, "RESOLUTION");
+                    _textureField = AccessTools.Field(_mapDisplayType, "_texture");
+                    _colorBufferField = AccessTools.Field(_mapDisplayType, "_colorBuffer");
+
+                    if (_resolutionField == null)
+                    {
+                        Debug.LogError("[GameOptimizer] MapDisplayOptimizationPatch: RESOLUTION field not found");
+                        return;
+                    }
+
+                    // Patch OnInitializeStarted to override resolution, texture, and color buffer
+                    var initMethod = AccessTools.Method(_mapDisplayType, "OnInitializeStarted");
+                    if (initMethod != null)
+                    {
+                        harmony.Patch(initMethod, postfix: new HarmonyMethod(typeof(MapDisplayOptimizationPatch), nameof(InitPostfix)));
+                    }
+
+                    // Patch RefreshRegionAsync to batch more aggressively
+                    var refreshMethod = AccessTools.Method(_mapDisplayType, "RefreshRegionAsync");
+                    if (refreshMethod != null)
+                    {
+                        harmony.Patch(refreshMethod, postfix: new HarmonyMethod(typeof(MapDisplayOptimizationPatch), nameof(RefreshPostfix)));
+                    }
+
+                    Debug.Log("[GameOptimizer] MapDisplayOptimizationPatch applied successfully");
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[GameOptimizer] MapDisplayOptimizationPatch setup failed: {e}");
+                }
+            }
+
+            static void InitPostfix(object __instance)
+            {
+                try
+                {
+                    int res = MapDisplayResolution.Value;
+                    if (res < 128) res = 128;
+                    if (res >= 1024) return; // no change needed
+
+                    Vector2Int original = (Vector2Int)_resolutionField.GetValue(__instance);
+                    if (original.x <= res) return; // already smaller
+
+                    // Set new resolution
+                    _resolutionField.SetValue(__instance, new Vector2Int(res, res));
+
+                    // Recreate texture at new resolution
+                    Texture2D newTex = new Texture2D(res, res);
+                    Color[] newBuffer = new Color[res * res];
+                    Color clear = Color.clear;
+                    for (int i = 0; i < newBuffer.Length; i++)
+                        newBuffer[i] = clear;
+                    newTex.SetPixels(newBuffer);
+                    newTex.Apply();
+
+                    _textureField.SetValue(__instance, newTex);
+                    _colorBufferField.SetValue(__instance, newBuffer);
+
+                    // Re-set the global shader texture
+                    Shader.SetGlobalTexture("_TerritoryTex", newTex);
+
+                    float reduction = (float)(original.x * original.y) / (float)(res * res);
+                    Debug.Log($"[GameOptimizer] Territory map resolution reduced from {original.x}x{original.y} to {res}x{res} ({reduction:F1}x fewer physics queries)");
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[GameOptimizer] MapDisplayOptimizationPatch InitPostfix error: {e}");
+                }
+            }
+
+            static void RefreshPostfix(ref IEnumerator __result)
+            {
+                __result = BatchedRefresh(__result);
+            }
+
+            private static IEnumerator BatchedRefresh(IEnumerator original)
+            {
+                // The original yields every 4000 pixels. We batch multiple yields together.
+                int targetBatch = MapDisplayBatchSize.Value;
+                int origBatch = 4000; // hardcoded in game
+                int yieldSkips = Math.Max(1, targetBatch / origBatch);
+                int nullCount = 0;
+
+                while (true)
+                {
+                    bool hasNext;
+                    try { hasNext = original.MoveNext(); }
+                    catch (Exception e)
+                    {
+                        Debug.LogError($"[GameOptimizer] MapDisplayOptimizationPatch coroutine error: {e}");
+                        throw;
+                    }
+
+                    if (!hasNext) break;
+
+                    if (original.Current == null)
+                    {
+                        nullCount++;
+                        if (nullCount >= yieldSkips)
+                        {
+                            nullCount = 0;
+                            yield return null;
+                        }
+                    }
+                    else
+                    {
+                        yield return original.Current;
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // 17. IndirectRenderer Optimization — Force separate culling/sorting
+        //     across frames to halve GPU dispatch work per frame.
+        //     The game has _separateCullingOverFrames but it may not be enabled.
+        // =====================================================================
+        private static class IndirectRendererOptimizationPatch
+        {
+            private static FieldInfo _separateField;
+
+            public static void ApplyManualPatch(Harmony harmony)
+            {
+                if (!EnableIndirectRendererOptimization.Value) return;
+
+                try
+                {
+                    var rendererType = typeof(GameClock).Assembly.GetType("IndirectRendering.IndirectRenderer");
+                    if (rendererType == null)
+                    {
+                        Debug.LogError("[GameOptimizer] IndirectRendererOptimizationPatch: IndirectRenderer type not found");
+                        return;
+                    }
+
+                    _separateField = AccessTools.Field(rendererType, "_separateCullingOverFrames");
+                    if (_separateField == null)
+                    {
+                        Debug.LogError("[GameOptimizer] IndirectRendererOptimizationPatch: _separateCullingOverFrames field not found");
+                        return;
+                    }
+
+                    // Patch Update to force the flag on every frame (in case something resets it)
+                    // Using a lightweight prefix that just sets the bool
+                    var updateMethod = AccessTools.Method(rendererType, "Update");
+                    if (updateMethod != null)
+                    {
+                        harmony.Patch(updateMethod, prefix: new HarmonyMethod(typeof(IndirectRendererOptimizationPatch), nameof(UpdatePrefix)));
+                    }
+
+                    Debug.Log("[GameOptimizer] IndirectRendererOptimizationPatch applied successfully");
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[GameOptimizer] IndirectRendererOptimizationPatch setup failed: {e}");
+                }
+            }
+
+            static void UpdatePrefix(object __instance)
+            {
+                try
+                {
+                    if (!(bool)_separateField.GetValue(__instance))
+                    {
+                        _separateField.SetValue(__instance, true);
+                    }
+                }
+                catch { }
+            }
+        }
+
+        // =====================================================================
+        // 18. Territory Rebuild Debounce — PlayerTerritory rebuilds owned node
+        //     list by iterating ALL nodes every time a single node changes owner.
+        //     With many territory changes per turn, this causes O(n * changes).
+        //     This patch defers the rebuild: marks dirty, then rebuilds once
+        //     when actually needed (lazy evaluation).
+        // =====================================================================
+        private static class TerritoryRebuildDebouncePatch
+        {
+            private static FieldInfo _territoryDataField;
+            private static FieldInfo _ownedNodesField;
+            private static FieldInfo _cachedPotentialsField;
+            private static FieldInfo _pidField;
+            private static MethodInfo _onTerritoryChangedMethod;
+            private static HashSet<int> _dirtyPlayerIds = new HashSet<int>();
+            private static int _lastRebuildFrame = -1;
+
+            public static void ApplyManualPatch(Harmony harmony)
+            {
+                if (!EnableTerritoryRebuildDebounce.Value) return;
+
+                try
+                {
+                    var ptType = typeof(PlayerTerritory);
+
+                    _territoryDataField = AccessTools.Field(ptType, "_territory");
+                    _pidField = AccessTools.Field(typeof(PlayerSubmanager), "_pid");
+
+                    if (_territoryDataField != null)
+                    {
+                        _ownedNodesField = AccessTools.Field(_territoryDataField.FieldType, "ownedNodes");
+                    }
+
+                    _cachedPotentialsField = AccessTools.Field(ptType, "_cachedPotentials");
+                    if (_cachedPotentialsField != null)
+                    {
+                        _onTerritoryChangedMethod = AccessTools.Method(_cachedPotentialsField.FieldType, "OnTerritoryChanged");
+                    }
+
+                    var updateMethod = ptType.GetMethod("UpdateNodeDataOnTerritoryChange",
+                        BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (updateMethod != null)
+                    {
+                        harmony.Patch(updateMethod, prefix: new HarmonyMethod(typeof(TerritoryRebuildDebouncePatch), nameof(Prefix)));
+                        Debug.Log("[GameOptimizer] TerritoryRebuildDebouncePatch applied successfully");
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[GameOptimizer] TerritoryRebuildDebouncePatch: UpdateNodeDataOnTerritoryChange not found");
+                    }
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[GameOptimizer] TerritoryRebuildDebouncePatch setup failed: {e}");
+                }
+            }
+
+            static bool Prefix(PlayerTerritory __instance)
+            {
+                try
+                {
+                    int frame = Time.frameCount;
+
+                    // Get player ID for this territory
+                    var pid = (PlayerID)_pidField.GetValue(__instance);
+                    int pidHash = pid.GetHashCode();
+
+                    // If this player already rebuilt this frame, skip
+                    if (frame == _lastRebuildFrame && _dirtyPlayerIds.Contains(pidHash))
+                    {
+                        return false; // skip redundant rebuild
+                    }
+
+                    // New frame - clear tracking
+                    if (frame != _lastRebuildFrame)
+                    {
+                        _dirtyPlayerIds.Clear();
+                        _lastRebuildFrame = frame;
+                    }
+
+                    _dirtyPlayerIds.Add(pidHash);
+                    return true; // allow first rebuild per player per frame
+                }
+                catch
+                {
+                    return true; // fallback to original on error
                 }
             }
         }

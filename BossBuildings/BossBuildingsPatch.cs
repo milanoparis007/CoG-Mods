@@ -39,7 +39,8 @@ namespace BossBuildings
         {
             var traverse = Traverse.Create(__instance);
             bool isBoss = traverse.Field("buildingFailIsBoss").GetValue<bool>();
-            if (isBoss)
+            bool isInBuilding = traverse.Field("isInBuilding").GetValue<bool>();
+            if (isBoss && !isInBuilding)
             {
                 bool noBuildings = traverse.Field("buildingFailNoneLeft").GetValue<bool>();
                 bool canShow = traverse.Field("canShowButtonsBuilding").GetValue<bool>();

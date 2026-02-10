@@ -4,11 +4,10 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{86B4C99E-DC95-4140-8FC4-A6DFBFCE8957}</ProjectGuid>
+    <ProjectGuid>{F1E2D3C4-B5A6-7890-CDEF-123456789ABC}</ProjectGuid>
     <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>ModLauncher</RootNamespace>
-    <AssemblyName>ModLauncher</AssemblyName>
+    <RootNamespace>EthnicityPlacementFix</RootNamespace>
+    <AssemblyName>EthnicityPlacementFix</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
@@ -35,10 +34,6 @@
       <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\BepInEx\core\BepInEx.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="0Harmony">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\BepInEx\core\0Harmony.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
     <Reference Include="Assembly-CSharp">
       <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\CoG_Data\Managed\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
@@ -53,10 +48,10 @@
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="ModLauncherPlugin.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="EthnicityPlacementFixPlugin.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

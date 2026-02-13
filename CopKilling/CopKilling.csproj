@@ -4,10 +4,10 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{D1E2F3A4-B5C6-7890-ABCD-EF1234567890}</ProjectGuid>
+    <ProjectGuid>{F1A2B3C4-D5E6-7890-ABCD-123456789ABC}</ProjectGuid>
     <OutputType>Library</OutputType>
-    <RootNamespace>GameplayTweaks</RootNamespace>
-    <AssemblyName>GameplayTweaks</AssemblyName>
+    <RootNamespace>CopKilling</RootNamespace>
+    <AssemblyName>CopKilling</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
@@ -38,14 +38,6 @@
       <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\BepInEx\core\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="MonoMod.RuntimeDetour">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\BepInEx\core\MonoMod.RuntimeDetour.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="MonoMod.Utils">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\BepInEx\core\MonoMod.Utils.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
     <Reference Include="Assembly-CSharp">
       <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\CoG_Data\Managed\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
@@ -58,40 +50,15 @@
       <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\CoG_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="UnityEngine.UI">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\CoG_Data\Managed\UnityEngine.UI.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.IMGUIModule">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\CoG_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.UIModule">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\CoG_Data\Managed\UnityEngine.UIModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.TextRenderingModule">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\CoG_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="Unity.TextMeshPro">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\CoG_Data\Managed\Unity.TextMeshPro.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityGameTools">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\CoG_Data\Managed\UnityGameTools.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.InputLegacyModule">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\City of Gangsters\CoG_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+    <Reference Include="GameplayTweaks">
+      <HintPath>..\GameplayTweaks\bin\$(Configuration)\GameplayTweaks.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
-    <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="GameplayTweaksPlugin.cs" />
+    <Compile Include="CopKillingPlugin.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

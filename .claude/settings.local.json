@@ -2,7 +2,20 @@
   "permissions": {
     "allow": [
       "Bash(ilspycmd:*)",
-      "Bash(git init:*)"
+      "Bash(git init:*)",
+      "Bash(findstr:*)",
+      "Bash(dotnet build:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(powershell -NoProfile -Command:*)",
+      "Bash(where:*)",
+      "Bash(dotnet tool list:*)",
+      "Bash(python:*)",
+      "Bash(ls:*)",
+      "Bash(git pull:*)",
+      "Bash(xargs grep -l -i \"music\\\\|rapper\\\\|mixtape\\\\|album\\\\|single\\\\|tour\\\\|distributor\")",
+      "Bash(xargs grep -l -i \"street.?team\\\\|city.?selector\\\\|tour.?op\")",
+      "Bash(xargs grep -l \"relation\")",
+      "Bash(grep -l \"class.*Relationship\\\\|enum.*Type\" /c/Users/User/source/repos/ClassLibrary1/decompiled/Game.Core/*.cs /c/Users/User/source/repos/ClassLibrary1/decompiled/Game.Services/*.cs)"
     ]
   }
 }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "CoG Performance Optimizer"
+  short_description: "Investigate City of Gangsters lag and bottlenecks"
+  default_prompt: "Use $city-of-gangsters-performance-optimizer to investigate City of Gangsters performance issues in this repo."

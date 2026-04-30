@@ -1,0 +1,1312 @@
+{
+	people {
+
+		allBuffs {
+
+		definitions [
+			;; 
+			;; relationship buffs
+
+			;; persistent. priority gets sorted in ascending order (0 on top, 1 below, etc)
+			
+
+			;; this buff is for the player themselves ("it's you" etc)
+			{ 	id relbuff-starting-self		locdesc "relbuff.starting-self" 
+				delta { value 50 }
+			}
+			;; this buff is for the player's immediate family ("they're not perfect, but they're family" etc)
+			{ 	id relbuff-starting-fam			locdesc "relbuff.starting-fam" 
+				delta { value 30 
+					mods [{ #type traits-mod if [ trait-friendly ] delta 10 }]
+					mods [{ #type traits-mod if [ trait-irritable trait-unkind ] delta -10 }]
+					mods [{ #type traits-mod if [ trait-cruel ] delta -15 }]
+				}
+			}
+			;; this buff is for the player's extended family ("they're distant family, but they're family" etc)
+			{ 	id relbuff-starting-fam-ext		locdesc "relbuff.starting-fam-ext" 
+				delta { value 20 
+					mods [{ #type traits-mod if [ trait-friendly ] delta 2 }]
+					mods [{ #type traits-mod if [ trait-irritable trait-unkind ] delta -2 }]
+					mods [{ #type traits-mod if [ trait-cruel ] delta -5 }]
+				}
+			}
+			;; this buff is related to the player's starting area ("they know you back in the day" etc)
+			{ 	id relbuff-starting-oldfriends	locdesc "relbuff.starting-buff" 
+				delta { value 20 
+					mods [{ #type traits-mod if [ trait-friendly ] delta 8 }]
+					mods [{ #type traits-mod if [ trait-irritable trait-unkind ] delta -8 }]
+				}
+			}
+			;; this buff is specifically for francine (adds on top of relbuff-starting-fam-ext)
+			{ 	id relbuff-starting-francine	locdesc "relbuff.starting-francine" 
+				delta { value 10 }
+			}
+			;; this buff is applied to how the player thinks about their crew
+			{ 	id relbuff-player-to-crew	locdesc "relbuff.player-to-crew" 
+				delta { value 20 }
+			}
+			;; this buff is applied to how the crew think about the player
+			{ 	id relbuff-crew-to-player	locdesc "relbuff.crew-to-player" 
+				delta { value 20 }
+			}
+			;; buff for how crew family thinks of the player
+			{ 	id relbuff-crew-fam-to-player	locdesc "relbuff.crew-fam-to-player" 
+				delta { value 10 }
+			}
+
+			;; buff applied on scopeout, based on just npc's personality
+			{ 	id relbuff-scopeout-npc			locdesc "relbuff.scopeout-npc" 
+				delta { value 0 
+					mods [
+						{ #type traits-mod if [ trait-friendly ] delta 3 }
+						{ #type traits-mod if [ trait-irritable trait-cautious ] delta -5 }
+						{ #type traits-mod if [ trait-curious ] delta 8 }
+						{ #type traits-mod-on-crew-peep if [ trait-friendly ] delta 2 }
+					]
+				}
+			}
+			;; buff applied on scopeout, grants a slight buff due to same ethnicity
+			{ 	id relbuff-scopeout-ethnicity	locdesc "relbuff.scopeout-ethnicity" 
+				delta { value 6 
+					mods [
+						{ #type skills-mod if [ starter-crew ] delta 4 }
+						{ #type traits-mod if [ trait-friendly ] delta 4 }
+						{ #type traits-mod if [ trait-cautious ] delta -4 }
+						{ #type quest-mod id polish-patriot-three is completed delta 6 }
+					]
+				}
+			}
+			{ 	id relbuff-goldticket-buff		locdesc "relbuff.goldticket-buff" 
+				delta { value 10 }
+			}
+
+			;; based on tribute
+
+			;; they don't like being extorted
+			{ 	id relbuff-tribute-any			locdesc "relbuff.tribute-any" 
+				cancels [ relbuff-tribute-canceled relbuff-tribute-after-cancel ]
+				delta { value -20 
+					mods [
+						{ #type traits-mod if [ trait-irritable ] delta -5 }
+						{ #type traits-mod if [ trait-vindictive ] delta -10 }
+						{ #type traits-mod-on-either if [ trait-friendly ] delta 10 }
+						{ #type skills-mod if [ starter-protection ] delta 6 }
+					]
+				}
+				dayz { value 180  
+					mods [
+						{ #type traits-mod if [ trait-irritable trait-unkind ] multiplier 1.2 }
+						{ #type traits-mod if [ trait-vindictive ] multiplier 1.2 }
+						{ #type traits-mod-on-either if [ trait-friendly ] multiplier 0.5 }
+						{ #type skills-mod if [ starter-protection ] delta -40 }
+					]
+				}
+			}
+
+			;; they don't like being extorted while helping you
+			{ 	id relbuff-tribute-after-helping	locdesc "relbuff.tribute-after-helping" 
+				cancels [ relbuff-tribute-canceled relbuff-tribute-after-cancel ]
+				delta { value -40 
+					mods [
+						{ #type traits-mod if [ trait-vindictive ] multiplier 1.5 }
+					]
+				}
+				dayz { value 365 
+					mods [
+						{ #type traits-mod if [ trait-vindictive ] multiplier 1.2 }
+					]
+				}
+			}
+
+			;; relief after the player intentionally cancels tribute
+			{	id relbuff-tribute-canceled		locdesc "relbuff.tribute-canceled"
+				dayz { value 84 }
+				delta { value 10
+					mods [
+						{ #type traits-mod if [ trait-forgiving ] multiplier 1.5 }
+					]
+				}
+			}
+
+			;; residual dislike after protection (whether lost accidentally, or canceled by player)
+			{	id relbuff-tribute-after-cancel		locdesc "relbuff.tribute-after-cancel"
+				delta { value -10 }
+				dayz { value 42 					
+					mods [
+						{ #type traits-mod if [ trait-vindictive ] multiplier 2 }
+					]
+				}
+			}
+
+			;; based on specific quests
+			;; getting to know people who buy the booze the player makes/has
+			{	id relbuff-quest-homebooze			locdesc "relbuff.quest-same-biz"
+				delta { value 10 }
+				dayz { value 14 }
+			}
+			{	id relbuff-quest-counterfeit			locdesc "relbuff.quest-counterfeit"
+				delta { value 8 }
+				dayz { value 28 }
+			}
+			{	id relbuff-quest-gatsbyrec			locdesc "relbuff.quest-gatsbyrec"
+				delta { value 15 }
+				dayz { value 21 }
+			}
+			{	id relbuff-quest-schoolstart			locdesc "relbuff.quest-schoolstart"
+				delta { value 6 }
+				dayz { value 7 }
+			}
+			{	id relbuff-quest-schoolstarts			locdesc "relbuff.quest-schoolstarts"
+				delta { value 18 }
+				dayz { value 720 }
+			}
+			{	id relbuff-quest-schoolstart3			locdesc "relbuff.quest-schoolstart3"
+				delta { value 4 }
+				dayz { value 7 }
+			}
+			{	id relbuff-quest-churchstart			locdesc "relbuff.quest-churchstart"
+				delta { value 8 }
+				dayz { value 7 }
+			}
+			{	id relbuff-quest-churchstarts			locdesc "relbuff.quest-churchstarts"
+				delta { value 18 }
+				dayz { value 720 }
+			}
+			{	id relbuff-quest-churchstart2			locdesc "relbuff.quest-churchstart2"
+				delta { value 3 }
+			}
+			{	id relbuff-quest-churchstart3			locdesc "relbuff.quest-churchstart3"
+				delta { value 8 }
+				dayz { value 28 }
+				cancels [ relbuff-quest-churchstart2 ]
+			}
+			{	id relbuff-quest-leaderstart			locdesc "relbuff.quest-leaderstart"
+				delta { value 21 }
+				dayz { value 84 }
+			}
+			{	id relbuff-quest-dance-offers			locdesc "relbuff.quest-dance-offers"
+				delta { value 15 }
+				dayz { value 21 }
+			}
+			{	id relbuff-quest-dealer-offers			locdesc "relbuff.quest-dealer-offers"
+				delta { value 35 }
+				dayz { value 14 }
+			}
+			{	id relbuff-quest-musician-offers			locdesc "relbuff.quest-musician-offers"
+				delta { value 15 }
+				dayz { value 21 }
+			}
+			{	id relbuff-quest-small-gatsby			locdesc "relbuff.quest-small-gatsby"
+				delta { value 20 }
+				dayz { value 84 }
+			}
+			{	id relbuff-quest-large-gatsby			locdesc "relbuff.quest-large-gatsby"
+				delta { value 35 }
+				dayz { value 168 }
+			}
+			{	id relbuff-quest-bottled-booze		locdesc "relbuff.quest-bottled-booze"
+				delta { value 15 }
+				;; no expiration - gets cleaned up by later quest.
+			}
+			{	id relbuff-quest-bottled-booze-skill		locdesc "relbuff.quest-bottled-booze"
+				delta { value 15 }
+				;; no expiration - gets cleaned up by later quest.
+			}
+			{	id relbuff-quest-bottled-booze-partners		locdesc "relbuff.quest-bottled-partners"
+				delta { value 15 }
+				;; no expiration - gets cleaned up by later quest.
+			}
+			{
+				id homebooze-drop-fail-buff			locdesc "relbuff.drop-failed"
+				delta { value -5 mods [ { #type traits-mod if [ trait-irritable trait-unkind ] delta -5 } ] }
+				dayz { value 84 mods [
+					{ #type traits-mod if [ trait-upright ] delta 14 }
+					{ #type traits-mod if [ trait-slow ] delta -28 }
+					{ #type traits-mod if [ trait-immoral ] delta -28 }
+					{ #type traits-mod if [ trait-vindictive ] multiplier 1.25 }
+					{ #type traits-mod-on-either if [ trait-forgiving ] multiplier 0.8 }
+				] }
+			}
+			{
+				id relbuff-loan-granted				locdesc "relbuff.loan-granted"
+				delta { value 5 }
+				dayz { value 720 mods [
+					{ #type traits-mod if [ trait-mellow ] multiplier 1.25 }
+				] }
+			}
+			{
+				id learn-level-two-fail-buff		locdesc "relbuff.learn-fail"
+				delta { value -5 mods [ { #type traits-mod if [ trait-irritable ] delta -5 } ] }
+				dayz { value 84 mods [
+					{ #type traits-mod if [ trait-upright ] delta 14 }
+					{ #type traits-mod if [ trait-slow ] delta -28 }
+					{ #type traits-mod if [ trait-immoral ] delta -28 }
+					{ #type traits-mod if [ trait-vindictive ] multiplier 1.25 }
+					{ #type traits-mod-on-either if [ trait-forgiving ] multiplier 0.8 }
+				] }
+			}
+			{ 	id relbuff-quest-expired			locdesc "relbuff.quest-expired" 
+				delta { value -10 mods [ { #type traits-mod if [ trait-irritable trait-unkind ] delta -5 } ] }
+				dayz { value 42 mods [
+					{ #type traits-mod if [ trait-upright ] delta 14 }
+					{ #type traits-mod if [ trait-slow ] delta -28 }
+					{ #type traits-mod if [ trait-immoral ] delta -28 }
+					{ #type traits-mod if [ trait-vindictive ] multiplier 1.25 }
+					{ #type traits-mod-on-either if [ trait-forgiving ] multiplier 0.8 }
+				] }
+			}
+			{ 	id relbuff-resevent-quest-expired	locdesc "relbuff.resevent-quest-expired" 
+				delta { value -15 mods [ { #type traits-mod if [ trait-irritable trait-unkind ] delta -5 } ] }
+				dayz { value 42 mods [
+					{ #type traits-mod if [ trait-upright ] delta 14 }
+					{ #type traits-mod if [ trait-slow ] delta -28 }
+					{ #type traits-mod if [ trait-immoral ] delta -28 }
+					{ #type traits-mod if [ trait-vindictive ] multiplier 1.25 }
+					{ #type traits-mod-on-either if [ trait-forgiving ] multiplier 0.8 }
+				] }
+			}
+			;; quests asking for protection from harassment
+			{	id relbuff-quest-protection-pos 	locdesc "relbuff.quest.protection-broken.pos"
+				delta { value 20 mods [ { #type traits-mod if [ trait-irritable trait-unkind ] delta -5 } ] }
+				dayz { value 126 mods [
+					{ #type traits-mod if [ trait-mellow ] multiplier 1.25 }
+				] }
+			}
+			{	id relbuff-quest-protection-neg 	locdesc "relbuff.quest.protection-broken.neg"
+				delta { value -40 }
+				dayz { value 252 mods [
+					{ #type traits-mod if [ trait-upright ] delta 14 }
+					{ #type traits-mod if [ trait-slow ] delta -28 }
+					{ #type traits-mod if [ trait-immoral ] delta -28 }
+					{ #type traits-mod if [ trait-vindictive ] multiplier 1.25 }
+					{ #type traits-mod-on-either if [ trait-forgiving ] multiplier 0.8 }
+				] }
+			}
+			{	id relbuff-goon-trouble-pos 		locdesc "relbuff.quest.goon-trouble.pos"
+				delta { value 20 }
+				dayz { value 126 mods [
+					{ #type traits-mod if [ trait-mellow ] multiplier 1.25 }
+				] }
+			}
+			{	id relbuff-goon-trouble-neg 		locdesc "relbuff.quest.goon-trouble.neg"
+				delta { value -40 mods [ 
+					{ #type crew-peep-level-test-mod id levelup-smooth-talker is equalto value 1 delta 5 }
+					{ #type crew-peep-level-test-mod id levelup-smooth-talker is equalto value 2 delta 10 }
+					{ #type traits-mod if [ trait-irritable trait-unkind ] delta -5 } 
+				] }
+				dayz { value 252 mods [
+					{ #type traits-mod if [ trait-upright ] delta 14 }
+					{ #type traits-mod if [ trait-slow ] delta -28 }
+					{ #type traits-mod if [ trait-immoral ] delta -28 }
+					{ #type traits-mod if [ trait-vindictive ] multiplier 1.25 }
+					{ #type traits-mod-on-either if [ trait-forgiving ] multiplier 0.8 }
+				] }
+			}
+			{	id relbuff-harassed-family-inf-pos 	locdesc "relbuff.quest.harassed-family-inf.pos"
+				delta { value 10 }
+				dayz { value 126 }
+			}
+			{	id relbuff-harassed-family-inf-neg 	locdesc "relbuff.quest.harassed-family-inf.neg"
+				delta { value -20 mods [ { #type traits-mod if [ trait-irritable trait-unkind ] delta -5 } ] }
+				dayz { value 252 }
+			}
+			{
+				id relbuff-volksfest	locdesc "relbuff.quest.volksfest"
+				delta { value 15 }
+				dayz { value 364 }
+			}
+
+
+			;; based on tix
+
+			;; introduced to somebody
+			{ 	id relbuff-ticket-intro			locdesc "relbuff.ticket-intro" 
+				delta { value 15 
+					mods [
+					{ #type crew-peep-level-test-mod id levelup-smooth-talker is equalto value 1 delta 4 }
+					{ #type traits-mod if [ trait-sociable trait-nervous trait-cautious ] delta 4 } 
+				]
+				}
+				cancels [ relbuff-goons-wrong-foot ]
+				dayz { value 252 }
+			}
+
+			;; npc put in a good word
+			{ 	id relbuff-ticket-npcboost		locdesc "relbuff.ticket-npcboost" 
+				delta { value 20 }
+				cancels [ relbuff-goons-wrong-foot ]
+				dayz { value 252 }
+			}
+
+			;; friendly npc helped us with a crew hire, and now they like us a lot
+			{ 	id relbuff-ticket-crewhire-friend	locdesc "relbuff.ticket-crewboost-friend" 
+				delta { value 20 }
+				dayz { value 252 }
+			}
+
+			;; player bought a building for this npc's family member or friend
+			{	id relbuff-ticket-building-intro	locdesc "relbuff.ticket-building-intro"
+				delta { value 10 }
+				;; no expiry
+			}
+			;; player bought a building and this is the newly installed manager npc
+			{	id relbuff-ticket-building-manager	locdesc "relbuff.ticket-building-manager"
+				delta { value 20 }
+				;; no expiry
+			}
+			;; taught the player a skill
+			{ 	id relbuff-ticket-taught-skill		locdesc "relbuff.ticket-taught-skill"
+				delta { 
+					value 15 
+					mods [ 
+						{ #type traits-mod if [ trait-intelligent ] delta 3 } 
+						{ #type traits-mod if [ trait-hardworking ] multiplier 2 } 
+					]
+				} 
+				dayz { value 126 mods [
+					{ #type traits-mod if [ trait-mellow ] multiplier 1.25 }
+				] }
+			}
+			;; ticket request for political support
+			{
+				id relbuff-ticket-politician-boost	locdesc	"relbuff.ticket-politician-boost"
+				delta { value 5 }
+				dayz { value 252 }
+			}
+			{
+				id relbuff-ny-pol-starter	locdesc	"relbuff.ny-pol-starters"
+				delta { value 25 }
+			}
+			{
+				id relbuff-recent-campaign-action	locdesc "relbuff.recent-campaign-action"
+				delta	{ value 5 }
+				dayz	{ value 21 }
+			}
+			;; this npc is a tied house
+			{ 	id relbuff-tied-house				locdesc "relbuff.tied-house" 
+				delta { value 10 }
+				dayz { value 126 mods [
+					{ #type traits-mod if [ trait-mellow ] multiplier 1.25 }
+				] }
+			}
+			;; this npc manages a player outpost
+			{ 	id relbuff-outpost-manager			locdesc "relbuff.outpost-manager" 
+				delta { value 30 }
+				;; no expiry, this will go away once they're fired
+			}
+			;; has got the player a weapon
+			{	id relbuff-outpost-weapons			locdesc "relbuff.outpost-weapons"
+				delta { value 5 }
+				;; no expiry - one weapon per outpost
+			}
+			;; this npc used to manage an outpost for the player
+			{ 	id relbuff-outpost-manager-fired	locdesc "relbuff.outpost-manager-fired" 
+				delta { value -10 mods [
+					{ #type traits-mod if [ trait-upright ] delta 10 }
+					{ #type traits-mod if [ trait-slow ] delta -20 }
+					{ #type traits-mod if [ trait-immoral ] delta -20 }
+					{ #type traits-mod if [ trait-vindictive ] multiplier 1.25 }
+					{ #type traits-mod-on-either if [ trait-forgiving ] multiplier 0.8 }
+				] }
+				dayz { value 126 }
+			}
+			;; this npc used to manage an outpost for the player but it closed due to non-payment
+			{ 	id relbuff-outpost-manager-neg		locdesc "relbuff.outpost-manager-neg" 
+				delta { value -15 mods [ { #type traits-mod if [ trait-irritable trait-unkind ] delta -5 } ] }
+				dayz { value 126 mods [
+					{ #type traits-mod if [ trait-upright ] delta 14 }
+					{ #type traits-mod if [ trait-slow ] delta -28 }
+					{ #type traits-mod if [ trait-immoral ] delta -28 }
+					{ #type traits-mod if [ trait-vindictive ] multiplier 1.25 }
+					{ #type traits-mod-on-either if [ trait-forgiving ] multiplier 0.8 }
+				] }
+			}
+			;; similarly but for the family of the manager who wasn't paid
+			{ 	id relbuff-outpost-manager-negfam	locdesc "relbuff.outpost-manager-negfam" 
+				delta { value -5 }
+				dayz { value 126 }
+			}
+
+			;; ethnic buffs
+			{ 	id relbuff-ethnic-help				locdesc "relbuff.ethnic-help"
+				delta { value 15 }
+				dayz { value 126 }
+			}
+			{	id relbuff-ethnic-help-inf			locdesc "relbuff.ethnic-help-inf"
+				delta { value 8 }
+				dayz { value 126 }
+			}
+			{
+				id relbuff-loan-fail				locdesc "relbuff.loan-fail"
+				delta { value -10 mods [ { #type traits-mod if [ trait-irritable trait-unkind ] delta -5 } ] }
+				dayz { value 126 }
+			}
+			{
+				id relbuff-loan-fail-inf			locdesc "rebuff.loan-fail-inf"
+				delta { value -5 }
+				dayz { value 84 }
+			}
+			;; res event host buff
+			{	id relbuff-resevent-host			locdesc "relbuff.resevent-host" 
+				delta { value 70 } 
+				dayz { value 626 }
+			}
+
+			;; related to civic buildings
+
+			{	id relbuff-passenger-bribe			locdesc "relbuff.passenger-bribe"
+				delta { value 10 }
+			}
+			{	id relbuff-cargo-bribe				locdesc "relbuff.cargo-bribe"
+				delta { value 10 }
+			}
+			{	id relbuff-cargo-active				locdesc "relbuff.cargo-active"
+				delta { value 5 }
+				dayz { value 3600 }
+			}
+			{	id relbuff-train-brick-wine			locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 1000 }
+			}
+			{	id relbuff-train-cider			locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 1000 }
+			}
+			{	id relbuff-train-home-brew			locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 1000 }
+			}
+			{	id relbuff-train-moonshine			locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 1000 }
+			}
+			{	id relbuff-train-apple-jack			locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 1000 }
+			}
+			{	id relbuff-train-sparkling-cider			locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 1000 }
+			}
+			{	id relbuff-train-fake-wine			locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 1000 }
+			}
+			{	id relbuff-train-fake-beer			locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 1000 }
+			}
+			{	id relbuff-train-bathtub-gin			locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 1000 }
+			}
+			{	id relbuff-train-fruit-brandy			locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 1000 }
+			}
+			{	id relbuff-train-corn-whiskey			locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 1000 }
+			}
+			{	id relbuff-train-fallback			locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 1000 }
+			}
+
+			{	id relbuff-train-barrels			locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 1000 }
+			}
+			{	id relbuff-passenger-weapons		locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 1000 }
+			}
+			{	id relbuff-train-restart			locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 3600 }
+			}
+			{
+				id relbuff-train-smuggling			locdesc "relbuff.train-two"
+				delta { value 5 }
+				dayz { value 3600 }
+			}
+
+			;; city-specific
+
+			{
+				id relbuff-bottle-rack			locdesc "relbuff.bottle-rack"
+				delta { value 3 }
+				dayz { value 4000 }
+			}
+			{
+				id relbuff-bottle-rack-cooldown	locdesc "relbuff.bottle-rack-cooldown"
+				delta { value 2 }
+				dayz { value 56 }
+			}
+			{
+				id relbuff-bourbon-knowledge	locdesc "relbuff.bourbon-knowledge"
+				delta { value 4 }
+				;; doesn't expire, specific to Cincinnati
+			}
+			{
+				id relbuff-bourbon-greed	locdesc "relbuff.bourbon-greed"
+				delta { value -4 }
+				;; doesn't expire, specific to Cincinnati
+			}
+			{
+				id relbuff-canadian-friend		locdesc "relbuff.canadian-friend"
+				delta { value 5 }
+				;; doesn't expire, specifid to Detroit/Canada
+			}
+			{
+				id relbuff-canada-access		locdesc "relbuff.canada-access"
+				delta { value 5 }
+			}
+			{
+				id relbuff-canada-cash			locdesc "relbuff.canada-cash"
+				delta { value 3 }
+				dayz { value 56 }
+			}
+			{
+				id relbuff-canadian-bullied		locdesc "relbuff.canadian-bullied"
+				delta { value -5 }
+				dayz { value 140 }
+			}
+			{
+				id relbuff-canadian-associate		locdesc "relbuff.canadian-associate"
+				delta { value 5 }
+			}
+			{
+				id relbuff-canada-cooldown-frozen			locdesc "relbuff.canada-cooldown"
+				delta { value 2 }
+			}
+			{
+				id relbuff-canada-cooldown-thawed			locdesc "relbuff.canada-cooldown"
+				delta { value 2 }
+			}
+
+			{
+				id relbuff-ac-ethnic-one					locdesc "relbuff.ac-ethnic-one"
+				delta { value 10 }
+			}
+			{
+				id relbuff-ac-ethnic-two					locdesc "relbuff.ac-ethnic-two"
+				delta { value 15 }
+			}
+			{
+				id relbuff-forced-loan						locdesc "relbuff.forced-loan"
+				delta { value -15 }
+				dayz { value 140 }
+			}
+
+
+
+
+
+
+
+			;; related to business dealings and the results of haggling, expiring
+
+			{ 	id relbuff-player-pays-more		locdesc "relbuff.player-pays-more" 
+				delta { value 5 
+					mods [
+						{ #type traits-mod if [ trait-hardworking ] delta 5 }
+					]
+				}
+				dayz { value 42 }
+			}
+			{ 	id relbuff-player-pays-less		locdesc "relbuff.player-pays-less" 
+				delta { value -3 
+					mods [
+						{ #type traits-mod if [ trait-upright ] delta -2 }
+						{ #type traits-mod if [ trait-irritable trait-unkind ] delta -5 }
+					]
+				}
+				dayz { value 42 mods [
+					{ #type traits-mod if [ trait-upright ] delta 14 }
+					{ #type traits-mod if [ trait-slow ] delta -28 }
+					{ #type traits-mod if [ trait-immoral ] delta -28 }
+					{ #type traits-mod if [ trait-vindictive ] multiplier 1.25 }
+					{ #type traits-mod-on-either if [ trait-forgiving ] multiplier 0.8 }
+				] }
+			}
+			{ 	id relbuff-player-sells-cheap	locdesc "relbuff.player-sells-cheap" 
+				delta { value 5 
+					mods [
+						{ #type traits-mod if [ trait-hardworking ] delta 5 }
+					]
+				}
+				dayz { value 42 }
+			}
+			{ 	id relbuff-player-gouges		locdesc "relbuff.player-gouges" 
+				delta { value -7 
+					mods [
+						{ #type traits-mod if [ trait-hardworking trait-upright ] delta -8 }
+						{ #type traits-mod if [ trait-irritable trait-unkind ] delta -5 }
+					]
+				}
+				dayz { value 42 }
+			}
+
+			;; political buffs
+
+			{ 	id relbuff-transportation-contract			locdesc "relbuff.transportation-contract"
+				delta { value 5 }
+				dayz { value 35 }
+			}
+			{	id relbuff-abandoned-property				locdesc "relbuff.abandoned-property"
+				delta { value 5 }
+				dayz { value 730 }
+			}
+
+			;; vehicle buffs
+
+			{ 	id relbuff-car-repair			locdesc "relbuff.car-repair"
+				delta { value 10 }
+				dayz { value 84 }
+			}
+			{	id relbuff-car-bought			locdesc "relbuff.car-bought"
+				delta { value 12 }
+				dayz { value 126 }
+			}
+			{	id relbuff-car-sold				locdesc "relbuff.car-sold"
+				delta { value 16 }
+				dayz { value 126 }
+			}
+
+			;; special buffs that returns results based on the history of trades
+			{ 
+				id relbuff-special-onetime-trade-history
+				type DeferToOneTimeTradeStats
+				locdesc "relbuff.special-onetime-trade-history"
+			}
+			{ 
+				id relbuff-special-recurring-trade-history
+				type DeferToRecurringTradeStats
+				locdesc "relbuff.special-recurring-trade-history"
+			}
+			{	
+				id relbuff-from-crew-personality
+				delta { value 0 mods [
+					{ #type traits-mod-on-crew-peep if [ trait-intelligent ] delta 2 }
+					{ #type traits-mod-on-crew-peep if [ trait-sociable trait-friendly ] delta 3 }
+					{ #type traits-mod-on-crew-peep if [ trait-confident ] delta 4 }
+					{ #type traits-mod-on-crew-peep if [ trait-talkative ] delta 4 }
+					{ #type crew-peep-level-test-mod id levelup-leader1 is atleast value 1 delta 10 }
+					{ #type crew-peep-level-test-mod id levelup-city-driver is atleast value 1 delta 5 }
+					{ #type crew-peep-level-test-mod id levelup-city-driver is atleast value 2 delta 5 }
+					{ #type crew-peep-level-test-mod id levelup-city-driver is atleast value 3 delta 5 }
+				]}
+				dayz { value 126 }
+				locdesc	"relbuff.from-crew-personality"
+			}
+
+			; social actions (violence, vandalism, etc)
+			; note: days should be based on social def, but may be different
+			{	id relbuff-social-violence				locdesc "relbuff.social.violence"
+				cancels [ relbuff-social-got-relboost-from-npc ]
+				delta { value -10 }
+				dayz { value 252 }
+			}
+			{	id relbuff-social-violence-inf			locdesc "relbuff.social.violence-inf"
+				delta { value -10 }
+				dayz { value 252 }
+			}
+			{	id relbuff-social-killing				locdesc "relbuff.social.killing"
+				cancels [ relbuff-social-got-relboost-from-npc ]
+				delta { value -15 }
+				dayz { value 730 }
+			}
+			{	id relbuff-social-killing-inf			locdesc "relbuff.social.killing-inf"
+				delta { value -15 }
+				dayz { value 730 }
+			}
+
+			{	id relbuff-social-crewdeath-sup-inf			locdesc "relbuff.social.crewdeath-sup-inf"
+				delta { value -5 }
+				dayz { value 365 }
+			}
+			{	id relbuff-social-crewdeath-ign-inf			locdesc "relbuff.social.crewdeath-ign-inf"
+				delta { value -50 }
+				dayz { value 365 }
+			}
+
+			{	id relbuff-social-quest-complete		locdesc "relbuff.social.quest.complete"
+				delta { value 15 }
+				dayz { value 252 }
+			}
+			{	id relbuff-social-quest-complete-inf	locdesc "relbuff.social.quest.complete-inf"
+				delta { value 5 }
+				dayz { value 252 }
+			}
+			{	id relbuff-social-quest-refused			locdesc "relbuff.social.quest.refused"
+				delta { value -10 }
+				dayz { value 42 }
+			}
+
+			{	id relbuff-social-propdamage			locdesc "relbuff.social.propdamage"
+				delta { value -15 mods [
+					{ #type crew-peep-level-test-mod id levelup-smooth-talker is equalto value 1 delta 3 }
+					{ #type crew-peep-level-test-mod id levelup-smooth-talker is equalto value 2 delta 5 }
+				] }
+				dayz { value 84 }
+			}
+			{	id relbuff-social-propdamage-inf		locdesc "relbuff.social.propdamage-inf"
+				delta { value -10 }
+				dayz { value 84 }
+			}
+			{	id relbuff-social-demand-attack			locdesc "relbuff.social.demand-attack"
+				delta { value -10 }
+				dayz { value 84 }
+			}
+			{ 	id relbuff-forceclose-originator		locdesc "relbuff.social.forceclose-originator"
+				delta { value -20 }
+				dayz { value 126 }
+			}
+			{ 	id relbuff-social-forceclose-cause		locdesc "relbuff.social.forceclose-cause"
+				delta { value -10 }
+				dayz { value 126 }
+			}
+			{ 	id relbuff-social-forceclose-cause-inf	locdesc "relbuff.social.forceclose-cause-inf"
+				delta { value -5 }
+				dayz { value 126 }
+			}
+			{	id relbuff-social-gang-broke-truce		locdesc "relbuff.social.gang-broke-truce"
+				cancels [ relbuff-gang-truce ]
+				delta { value -40 }
+				dayz { value 126 }
+			}
+			{	id relbuff-social-gang-building-damage	locdesc "relbuff.social.gang-building-damage"
+				cancels [ relbuff-gang-truce ]
+				delta { value -20 }
+				dayz { value 126 }
+			}
+			{	id relbuff-social-gang-building-destroy	locdesc "relbuff.social.gang-building-destroy"
+				cancels [ relbuff-gang-truce ]
+				delta { value -80 }
+				dayz { value 365 }
+			}
+
+
+			{	id relbuff-social-gang-trespass			locdesc "relbuff.social.gang-trespass"
+				delta { value -5 mods [ { #type traits-mod if [ trait-kind ] delta 5 } ] }
+				dayz { value 42 }
+			}
+
+			{ 	id relbuff-social-allow-biz				locdesc "relbuff.social.allow-biz"
+				delta { value -2 }
+				dayz { value 21 }
+			}
+			{ 	id relbuff-social-got-relboost-from-npc	locdesc "relbuff.social.got-relboost-from-npc"
+				cancels [ relbuff-goons-wrong-foot ]
+				delta { value 15 }
+				dayz { value 365 }
+			}
+			{ 	id relbuff-social-stop-aggro			locdesc "relbuff.social.stop-aggro"
+				delta { value 3 }
+				dayz { value 21 }
+			}
+			{ 	id relbuff-social-stolen-outpost		locdesc "relbuff.social.stolen-outpost"
+				delta { value -20 }
+				dayz { value 365 }
+			}
+
+			{	id relbuff-social-burglary				locdesc ""
+				delta { value -15 }
+			}
+
+			{	id relbuff-social-extortion				locdesc ""
+				delta { value -15 }
+			}
+
+			{	id relbuff-social-vandalism				locdesc ""
+				delta { value -15 }
+			}
+
+			{	id relbuff-social-debtor-extend-credit
+				locdesc "relbuff.social.debtor-extend-credit"
+				delta { value 20 }
+				dayz { value 84 }
+			}
+			{	id relbuff-social-debtor-paycash-some
+				locdesc "relbuff.social.debtor-paycash-some"
+				delta { value 10 }
+				dayz { value 126 }
+			}
+			{	id relbuff-social-debtor-paycash-some-inf
+				locdesc "relbuff.social.debtor-paycash-some-inf"
+				delta { value 10 }
+				dayz { value 126 }
+			}
+			{	id relbuff-social-debtor-paycash-full
+				locdesc "relbuff.social.debtor-paycash-full"
+				delta { value -30 mods [ 
+					{ #type traits-mod if [ trait-irritable trait-vindictive ] delta -10 } 
+				] }
+				dayz { value 126 }
+			}
+			{	id relbuff-social-debtor-paycash-full-inf
+				locdesc "relbuff.social.debtor-paycash-full-inf"
+				delta { value -20 }
+				dayz { value 126 }
+			}
+			{	id relbuff-social-debtor-payother
+				locdesc "relbuff.social.debtor-payother"
+				delta { value -30 mods [ 
+					{ #type traits-mod if [ trait-irritable trait-vindictive ] delta -10 } 
+				] }
+				dayz { value 126 }
+			}
+			{	id relbuff-social-debtor-payother-inf
+				locdesc "relbuff.social.debtor-payother-inf"
+				delta { value -5 }
+				dayz { value 126 }
+			}
+			{
+				id relbuff-cop-recommendation
+				locdesc	"relbuff.social.cop-recommendation"
+				delta { value 25 }
+			}
+
+
+			;; goon interactions
+
+			{	id relbuff-goons-demand-cash	locdesc "relbuff.goons.demand.cash"
+				delta { value 5 }
+				dayz { value 126 }
+			}
+			{	id relbuff-goons-demand-favors	locdesc "relbuff.goons.demand.favors"
+				delta { value 10 }
+				dayz { value 126 }
+			}
+			{	id relbuff-goons-wrong-foot	locdesc "relbuff.goons.wrong-foot"
+				delta { value -15 }
+				dayz { value 42 }
+			}
+			{	id relbuff-goons-loot-table-buy-in	locdesc "relbuff.goons.loot-table.buy-in"
+				delta { value 0 }
+				dayz { value 42 }
+			}
+			{	id relbuff-goons-loot-table-on-finish	locdesc "relbuff.goons.loot-table.on-finish"
+				delta { value 30 }
+				dayz { value 84 }
+			}
+
+			;; gang interactions
+			{ 	id relbuff-gang-injury 			locdesc "relbuff.gang.injury" 
+				cancels [ relbuff-social-got-relboost-from-npc ]
+				delta { value -40 }
+				dayz { value 365 }
+			}
+			{ 	id relbuff-gang-death 			locdesc "relbuff.gang.death" 
+				cancels [ relbuff-social-got-relboost-from-npc ]
+				delta { value -100 }
+			}
+			{	id relbuff-gang-truce			locdesc "relbuff.gang.truce"
+				delta { value 10 }
+				dayz { value 756 }
+			}
+			;; Pact system buffs
+			{ 	id relbuff-pact-joined			locdesc "relbuff.pact.joined"
+				delta { value 22 }
+				dayz { value 365 }
+			}
+			{ 	id relbuff-pact-boss-killed		locdesc "relbuff.pact.boss-killed"
+				delta { value -80 }
+				dayz { value 540 }
+			}
+			{ 	id relbuff-pact-leader-killed	locdesc "relbuff.pact.leader-killed"
+				delta { value -110 }
+				dayz { value 900 }
+			}
+			;; Gang Wars mod - tribute/vassal buffs
+			;; 상납 요구 거절 시 적용 - 6개월(180일) 쿨타임, 관계 -40
+			{	id relbuff-gangwars-tribute-refused	locdesc "relbuff.gangwars.tribute-refused"
+				delta { value -40 }
+				dayz { value 180 }
+			}
+			{	id relbuff-gangwars-tribute-paid	locdesc "relbuff.gangwars.tribute-paid"
+				delta { value 5 }
+				dayz { value 30 }
+			}
+			;; No expiration - removed when alliance breaks
+			{	id relbuff-gangwars-alliance		locdesc "relbuff.gangwars.alliance"
+				delta { value 90 }
+			}
+			{	id relbuff-gangwars-alliance-broken	locdesc "relbuff.gangwars.alliance-broken"
+				delta { value -100 }
+				dayz { value 1095 }
+			}
+			{	id relbuff-gangwars-vassal-stolen	locdesc "relbuff.gangwars.vassal-stolen"
+				delta { value -80 }
+				dayz { value 1095 }
+			}
+			;; Gang Wars mod - vassal relationship (for native UI display like truce)
+			;; No expiration - removed when relationship ends
+			{	id relbuff-gangwars-vassal			locdesc "relbuff.gangwars.vassal"
+				delta { value 15 }
+			}
+			;; Gang Wars mod - overlord relationship (for native UI display)
+			;; No expiration - removed when relationship ends
+			{	id relbuff-gangwars-overlord		locdesc "relbuff.gangwars.overlord"
+				delta { value 10 }
+			}
+			;; Gang Wars mod - trade relationship buffs
+			{	id relbuff-gangwars-trade			locdesc "relbuff.gangwars.trade"
+				delta { value 10 }
+				dayz { value 30 }
+			}
+			;; Gang Wars mod - generic negative relationship buff
+			{	id relbuff-gangwars-negative		locdesc "relbuff.gangwars.negative"
+				delta { value -20 }
+				dayz { value 90 }
+			}
+
+			;; Gang Wars mod - Vassal released gracefully (상납 해제 감사)
+			;; Applied when overlord releases vassal willingly
+			{	id relbuff-gangwars-vassal-released	locdesc "relbuff.gangwars.vassal-released"
+				delta { value 20 }
+				dayz { value 180 }
+			}
+
+			;; Gang Wars mod - Trade Heat System buffs
+			;; Applied when trade is busted by police (raid)
+			{	id relbuff-gangwars-trade-heat		locdesc "relbuff.gangwars.trade-heat"
+				delta { value -15 }
+				dayz { value 60 }
+			}
+			;; Applied when trade line is cut due to raid - blocks trading for 30 days
+			{	id relbuff-gangwars-trade-banned	locdesc "relbuff.gangwars.trade-banned"
+				delta { value -5 }
+				dayz { value 30 }
+			}
+
+			;; Gang Wars mod - Diplomacy rejection debuffs (140 days)
+			;; Applied when truce request is rejected
+			{	id relbuff-gangwars-truce-rejected	locdesc "relbuff.gangwars.truce-rejected"
+				delta { value -10 }
+				dayz { value 140 }
+			}
+			;; Applied when peace treaty is rejected
+			{	id relbuff-gangwars-peace-rejected	locdesc "relbuff.gangwars.peace-rejected"
+				delta { value -15 }
+				dayz { value 140 }
+			}
+
+			;; Gang Wars mod - Joint War (공동 전쟁) buffs
+			;; Applied when joint war request is accepted - fought together
+			{	id relbuff-gangwars-jointwar-accepted	locdesc "relbuff.gangwars.jointwar-accepted"
+				delta { value 15 }
+				dayz { value 365 }
+			}
+			;; Applied when joint war request is rejected (적 쳐달라 요청 거절) - 180일 쿨다운
+			{	id relbuff-gangwars-jointwar-rejected	locdesc "relbuff.gangwars.jointwar-rejected"
+				delta { value -5 }
+				dayz { value 180 }
+			}
+			;; Applied when AI truce request is rejected by player
+			{	id relbuff-gangwars-ai-truce-rejected	locdesc "relbuff.gangwars.ai-truce-rejected"
+				delta { value -10 }
+				dayz { value 140 }
+			}
+			;; Applied when conflict mediation succeeds - both parties reconciled (분쟁 중재 성공)
+			{	id relbuff-gangwars-mediation-success	locdesc "relbuff.gangwars.mediation-success"
+				delta { value 45 }
+				dayz { value 730 }
+			}
+
+			;; Gang Wars mod - Joint War Contract (공동전쟁 계약) buffs
+			;; 공동전쟁 계약 성공 - 약속을 지킨 자에게는 신뢰로 보답한다
+			{	id relbuff-gangwars-jointwar-success	locdesc "relbuff.gangwars.jointwar-success"
+				delta { value 20 }
+				dayz { value 365 }
+			}
+			;; 공동전쟁 실패 (노력함) - 시도는 했으나 실패
+			{	id relbuff-gangwars-jointwar-failed-tried	locdesc "relbuff.gangwars.jointwar-failed-tried"
+				delta { value -15 }
+				dayz { value 365 }
+			}
+			;; 공동전쟁 실패 (먹튀) - 돈만 받고 공격 안 함
+			{	id relbuff-gangwars-jointwar-failed-scam	locdesc "relbuff.gangwars.jointwar-failed-scam"
+				delta { value -25 }
+				dayz { value 365 }
+			}
+
+			{	id relbuff-gangs-robbery1-table-on-finish	locdesc "relbuff.gangs.robbery1-table.on-finish"
+				delta { value -20 }
+				dayz { value 42 }
+			}
+			{	id relbuff-gangs-robbery2-table-on-finish	locdesc "relbuff.gangs.robbery2-table.on-finish"
+				delta { value -10 }
+				dayz { value 42 }
+			}
+			{	id relbuff-gangs-loot1-table-on-finish	locdesc "relbuff.gangs.loot1-table.on-finish"
+				delta { value 5 }
+				dayz { value 14 }
+			}
+			{	id relbuff-politics-loot1-table-on-finish	locdesc "relbuff.politics.loot1-table.on-finish"
+				delta { value 15 }
+				dayz { value 360 }
+			}
+			{	id relbuff-gangs-loot2-table-on-finish	locdesc "relbuff.gangs.loot2-table.on-finish"
+				delta { value 15 }
+				dayz { value 28 }
+			}
+			{	id relbuff-gangs-leisure-table-on-finish	locdesc "relbuff.gangs.leisure-table.on-finish"
+				delta { value 10 }
+				dayz { value 14 }
+			}
+			{	id relbuff-gangs-loot3-table-on-finish	locdesc "relbuff.gangs.loot3-table.on-finish"
+				delta { value 10 }
+				dayz { value 28 }
+			}
+			{	id relbuff-gangs-loot4-table-on-finish	locdesc "relbuff.gangs.loot4-table.on-finish"
+				delta { value 15 }
+				dayz { value 56 }
+			}
+			{	id relbuff-gangs-loot5-table-on-finish	locdesc "relbuff.gangs.loot5-table.on-finish"
+				delta { value 10 }
+				dayz { value 180 }
+			}
+			{	id relbuff-gangs-loot6-table-on-finish	locdesc "relbuff.gangs.loot6-table.on-finish"
+				delta { value 5 }
+				dayz { value 21 }
+			}
+			{	id relbuff-gangs-loot7-table-on-finish	locdesc "relbuff.gangs.loot7-table.on-finish"
+				delta { value 5 }
+				dayz { value 21 }
+			}
+			{	id relbuff-gangs-loot8-table-on-finish	locdesc "relbuff.gangs.loot8-table.on-finish"
+				delta { value 8 }
+				dayz { value 21 }
+			}
+			{	id relbuff-gangs-loot9-table-on-finish	locdesc "relbuff.gangs.loot9-table.on-finish"
+				delta { value 5 }
+				dayz { value 21 }
+			}
+			{	id relbuff-gangs-loot10-table-on-finish	locdesc "relbuff.gangs.loot10-table.on-finish"
+				delta { value 10 }
+				dayz { value 21 }
+			}
+			{	id relbuff-gangs-loan-unpaid	locdesc "relbuff.gangs.loan-unpaid.on-finish"
+				delta { value -5 }
+				delta { value -40 }
+			}
+			{	id relbuff-gangs-robbery1-buff	locdesc "relbuff.gangs.robbery1-buff.on-finish"
+				delta { value -15 }
+				dayz { value 210 }
+			}
+			{	id relbuff-gangs-loot1-buff	locdesc "relbuff.gangs.loot1-buff.on-finish"
+				delta { value 25 }
+				dayz { value 720 }
+			}
+			{	id relbuff-gangs-leisure-buff	locdesc "relbuff.gangs.leisure-buff.on-finish"
+				delta { value 15 }
+				dayz { value 180 }
+			}
+			{	id relbuff-gangs-loot2-buff	locdesc "relbuff.gangs.loot2-buff.on-finish"
+				delta { value 15 }
+				dayz { value 365 }
+			}
+			{	id relbuff-gangs-loot3-buff	locdesc "relbuff.gangs.loot3-buff.on-finish"
+				cancels [ relbuff-gangs-loot4-buff ]
+				delta { value 15 }
+				dayz { value 365 }
+			}
+			{	id relbuff-gangs-loot4-buff	locdesc "relbuff.gangs.loot4-buff.on-finish"
+				cancels [ relbuff-gangs-loot3-buff ]
+				delta { value -15 }
+				dayz { value 180 }
+			}
+			{	id relbuff-gangs-loot4-buff	locdesc "relbuff.gangs.loot4-buff.on-finish"
+				cancels [ relbuff-gangs-loot3-buff ]
+				delta { value -15 }
+				dayz { value 180 }
+			}
+			{	id relbuff-gangs-hitsquad-buff	locdesc "relbuff.gangs-hitsquad.offers.on-finish"
+				delta { value 120 }
+				dayz { value 1440 }
+			}
+			{	id relbuff-gangs-offers	locdesc "relbuff.gangs.offers.on-finish"
+				delta { value 15 }
+				dayz { value 42 }
+			}
+			{	id relbuff-gangs-offersp	locdesc "relbuff.gangs.offersp.on-finish"
+				delta { value 15 }
+				dayz { value 21 }
+			}
+			{	id relbuff-gangs-offersm	locdesc "relbuff.gangs.offersm.on-finish"
+				delta { value 15 }
+				dayz { value 84 }
+			}
+			{	id relbuff-gangs-offerspm	locdesc "relbuff.gangs.offerspm.on-finish"
+				delta { value 15 }
+				dayz { value 42 }
+			}
+			{	id relbuff-gangs-offersd	locdesc "relbuff.gangs.offersd.on-finish"
+				delta { value 10 }
+				dayz { value 84 }
+			}
+			{	id relbuff-gangs-offerspd	locdesc "relbuff.gangs.offerspd.on-finish"
+				delta { value 15 }
+				dayz { value 21 }
+			}
+
+			;; cops
+			{	id relbuff-cop-compliment		locdesc "relbuff.cop-compliment"
+				delta { value 5 }
+				dayz { value 14 }
+			}
+			{	id relbuff-cop-compliment2		locdesc "relbuff.cop-compliment2"
+				delta { value 120 }
+				dayz { value 1440 }
+			}
+			{	id relbuff-cop-donation			locdesc "relbuff.cop-donation"
+				cancels [ relbuff-cop-afterdonation ]
+				delta { value 30 }
+				dayz { value 730 }	;; note: needs to match donationDays
+			}
+			{	id relbuff-cop-afterdonation	locdesc "relbuff.cop-afterdonation"
+				cancels [ relbuff-cop-donation ]
+				delta { value 15 }
+				dayz { value 845 }
+			}
+			{	id relbuff-cop-weapon-drop		locdesc "relbuff.cop-weapon-drop"
+				delta { value 5 }
+				dayz { value 252 }
+			} 
+			{ 	id relbuff-cop-blackmail		locdesc "relbuff.cop-blackmail" 
+				delta { value 15 }
+			}
+			;; Cop retaliation buffs (stronger than -60 hostility baseline)
+			{ 	id relbuff-cop-killed-precinct	locdesc "relbuff.cop.killed.precinct"
+				delta { value -85 }
+				dayz { value 540 }
+			}
+			{ 	id relbuff-cop-killed-citywide	locdesc "relbuff.cop.killed.citywide"
+				delta { value -95 }
+				dayz { value 720 }
+			}
+			{ 	id relbuff-politics-protection	locdesc "relbuff.politics.protection"
+				delta { value 45 }
+				dayz { value 180 }
+			}
+			;; debug buffs
+			{ 	id relbuff-debug-pos			locdesc "relbuff.debug" 
+				delta { value 50 }
+				priority 99999
+			}
+			{ 	id relbuff-debug-neg			locdesc "relbuff.debug" 
+				delta { value -50 }
+				priority 99999
+			}
+
+			;;
+			;; respect buffs, applied to respect at nodes
+
+			;; buff applied to the node underneath an outpost
+			{	id respectbuff-at-outpost 			locdesc "respectbuff.at-outpost" 
+				type DeferToOutpost }
+			;; buff applied to nodes around an outpost
+			{	id respectbuff-around-outpost 		locdesc "respectbuff.around-outpost" 
+				type DeferToOutpost }
+
+			;; when a gang closes someone else's supplier
+			{ 	id respectbuff-forceclose			locdesc "respectbuff.forceclose" 
+				delta { value -20 }
+				dayz { value 126 }
+			}
+
+			;; buff in response to a relationship ticket
+			{ 	id respectbuff-good-word		locdesc	"respectbuff.good-word" 
+				delta { value 50 }
+				dayz { value 365 }
+			}
+
+			{	id respectbuff-cop-favor-pos	locdesc "respectbuff.cop-favor.pos"
+				delta { value 10 }
+				dayz { value 126 }
+			}
+			
+			;;
+			;; heat buffs, applied to heat at nodes
+			{ 	id heatbuff-special-onetime-trade-history	locdesc "heatbuff.special-onetime-trade-history"
+				type DeferToOneTimeIllegalStats
+			}
+			{ 	id heatbuff-special-recurring-trade-history	locdesc "heatbuff.special-recurring-trade-history"
+				type DeferToRecurringIllegalStats
+			}
+			{	id heatbuff-violence 				locdesc "heatbuff.violence"
+				delta { value 60 }
+				dayz { value 28 }
+			}
+			{	id heatbuff-killing 				locdesc "heatbuff.killing"
+				delta { value 60 } ;; on top of violence
+				dayz { value 42 }
+			}
+
+			{	id heatbuff-arrest					locdesc "heatbuff.arrest"
+				delta { value 50 }
+				dayz { value 84 }
+			}
+			{	id heatbuff-quest-school3			locdesc "heatbuff.quest-school3"
+				delta { value 15 }
+				dayz { value 84 }
+			}
+			{	id heatbuff-violent-extortion		locdesc "heatbuff.violent-extortion"
+				delta { value 50 }
+				dayz { value 28 }
+			}
+			{ 	id heatbuff-forceclose				locdesc "heatbuff.forceclose" 
+				delta { value 20 }
+				dayz { value 126 }
+			}
+			{	id heatbuff-extortion				locdesc "heatbuff.extortion"
+				delta { value 20 }
+				dayz { value 21 }
+			}
+			{	id heatbuff-outpost-expansion		locdesc "heatbuff.outpost-expansion"
+				delta { value 50 }
+				dayz { value 42 }
+			}
+			{	id heatbuff-outpost-manager-fired	locdesc "heatbuff.outpost-manager-fired"
+				delta { value 30 }
+				dayz { value 14 }
+			}
+			{	id heatbuff-building-destroyed		locdesc "heatbuff.building-destroyed"
+				delta { value 90 }
+				dayz { value 28 }
+			}
+			{	id heatbuff-goons-loot-table-on-finish	locdesc "heatbuff.goons.loot-table.on-finish"
+				delta { value 20 }
+				dayz { value 14 }
+			}
+			{	id heatbuff-goons-loot1-table-on-finish	locdesc "heatbuff.goons.loot1-table.on-finish"
+				delta { value 35 }
+				dayz { value 21 }
+			}
+			{	id heatbuff-gangs-loot1-table-on-finish	locdesc "heatbuff.gangs.loot1-table.on-finish"
+				delta { value 35 }
+				dayz { value 21 }
+			}
+			{	
+				id heatbuff-from-crew-personality
+				delta { value 0 mods [
+					{ #type traits-mod-on-crew-peep if [ trait-intelligent ] delta -5 }
+					{ #type traits-mod-on-crew-peep if [ trait-cautious ] delta -5 }
+					{ #type traits-mod-on-crew-peep if [ trait-talkative ] delta 10 }
+					{ #type traits-mod-on-crew-peep if [ trait-quiet ] delta -10 }
+					{ #type crew-peep-level-test-mod id levelup-leader1 is atleast value 1 delta 10 }
+					{ #type crew-peep-level-test-mod id levelup-alley-master is atleast value 1 delta -5 }
+					{ #type crew-peep-level-test-mod id levelup-alley-master is atleast value 2 delta -5 }
+					{ #type crew-peep-level-test-mod id levelup-alley-master is atleast value 3 delta -5 }
+				]}
+				dayz { value 126 }
+				locdesc	"heatbuff.from-crew-personality"
+			}
+		]
+
+	}
+
+	}
+}

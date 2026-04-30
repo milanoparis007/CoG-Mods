@@ -1,0 +1,38 @@
+namespace Game.Session.Player;
+
+public enum MoneyReason
+{
+	Unknown = 0,
+	Other = 1,
+	CrewSalary = 10,
+	OwnedBizCosts = 11,
+	FrontCreated = 13,
+	FrontMaintenance = 14,
+	Bribe = 15,
+	VehicleMaintenance = 16,
+	VehicleSellToPlayer = 17,
+	BusinessIncome = 20,
+	Tribute = 21,
+	SafehouseRaid = 22,
+	CombatDefeat = 23,
+	CombatVictory = 24,
+	QuestReward = 25,
+	VehicleBuyFromPlayer = 26,
+	BuySell = 30,
+	ScheduledBuySell = 31,
+	OrderDelivery = 32,
+	LearnSkills = 35,
+	QuestDemand = 36,
+	GoonLootTableBuyIn = 40,
+	RaidApology = 50,
+	DeadCrewFamily = 51,
+	DemandPayment = 52,
+	SafehouseAdvisor = 60,
+	GamblingAOE = 71,
+	GamblingRegulars = 72,
+	GamblingDebt = 73,
+	GamblingPaidDebt = 74,
+	GamblingOperation = 75,
+	Scheme = 80,
+	CampaignDonations = 90
+}

@@ -1,0 +1,104 @@
+processSocialInferences <--
+	HumanPeep = $humanpeepid,
+	TargetPeep = $entityid,
+	Label = $socialaction.String,
+	logg("TargetPeep = ", TargetPeep),
+
+	// find the connections from the NPC to others
+	findRelationShipsFrom(TargetPeep, Connections),
+
+	findHistory(TargetPeep, HumanPeep, History),
+	set! $arg1 = History,
+	set! $arg2 = Connections,
+
+	listof(NewStruct:
+			(C in Connections,
+				meetable(C.to, HumanPeep),
+				socialInference(C.to, TargetPeep, HumanPeep, SocLink, Label, LabelInf),
+				LabelInf != null,
+				NewStruct = new SocialInferencePayload(C.to, HumanPeep, SocLink, LabelInf)),
+		Output),
+
+	set! $result = Output;
+
+
+//
+// inference definitions
+
+// violence goes along family links of any valence
+socialInference(OtherPeep, TargetPeep, HumanPeep, Link, "violence", "violence-inf") <--
+	hasFamilyHistory(OtherPeep, TargetPeep, HumanPeep, Link, "violence");
+
+socialInference(OtherPeep, TargetPeep, HumanPeep, Link, "killing", "killing-inf") <--
+	hasFamilyHistory(OtherPeep, TargetPeep, HumanPeep, Link, "killing");
+
+socialInference(OtherPeep, TargetPeep, HumanPeep, Link, "propdamage", "propdamage-inf") <--
+	hasFamilyHistory(OtherPeep, TargetPeep, HumanPeep, Link, "propdamage");
+
+socialInference(OtherPeep, TargetPeep, HumanPeep, Link, "biz-forceclose-cause", "biz-forceclose-cause-inf") <--
+	hasFamilyHistory(OtherPeep, TargetPeep, HumanPeep, Link, "biz-forceclose-cause");
+
+// quests follow all links
+socialInference(OtherPeep, TargetPeep, HumanPeep, AnySocLink, "quest-complete", "quest-complete-inf") <--
+	hasAnyFriendHistory(OtherPeep, TargetPeep, HumanPeep, AnySocLink, "quest-complete");
+
+// if your crew dies and you support them (or not), the family will react
+socialInference(OtherPeep, TargetPeep, HumanPeep, Link, "crewdeath-sup", "crewdeath-sup-inf") <--
+	hasFamilyHistory(OtherPeep, TargetPeep, HumanPeep, Link, "crewdeath-sup");
+
+socialInference(OtherPeep, TargetPeep, HumanPeep, Link, "crewdeath-ign", "crewdeath-ign-inf") <--
+	hasFamilyHistory(OtherPeep, TargetPeep, HumanPeep, Link, "crewdeath-ign");
+
+// harassment quests go via family connections
+socialInference(OtherPeep, TargetPeep, HumanPeep, Link, "quest-protection-pos", "harassed-family-inf-pos") <--
+	hasFamilyHistory(OtherPeep, TargetPeep, HumanPeep, Link, "quest-protection-pos");
+socialInference(OtherPeep, TargetPeep, HumanPeep, Link, "quest-protection-neg", "harassed-family-inf-neg") <--
+	hasFamilyHistory(OtherPeep, TargetPeep, HumanPeep, Link, "quest-protection-neg");
+socialInference(OtherPeep, TargetPeep, HumanPeep, Link, "goon-trouble-pos", "harassed-family-inf-pos") <--
+	hasFamilyHistory(OtherPeep, TargetPeep, HumanPeep, Link, "goon-trouble-pos");
+socialInference(OtherPeep, TargetPeep, HumanPeep, Link, "goon-trouble-neg", "harassed-family-inf-neg") <--
+	hasFamilyHistory(OtherPeep, TargetPeep, HumanPeep, Link, "goon-trouble-neg");
+
+// gambling 
+
+socialInference(OtherPeep, TargetPeep, HumanPeep, Link, "debtor-paycash-some", "debtor-paycash-some-inf") <--
+	hasFamilyHistory(OtherPeep, TargetPeep, HumanPeep, Link, "debtor-paycash-some");
+
+socialInference(OtherPeep, TargetPeep, HumanPeep, Link, "debtor-paycash-full", "debtor-paycash-full-inf") <--
+	hasFamilyHistory(OtherPeep, TargetPeep, HumanPeep, Link, "debtor-paycash-full");
+
+socialInference(OtherPeep, TargetPeep, HumanPeep, Link, "debtor-payother", "debtor-payother-inf") <--
+	hasFamilyHistory(OtherPeep, TargetPeep, HumanPeep, Link, "debtor-payother");
+
+
+
+socialInference(_,_,_,_,_,null) <-- true;
+
+
+// hasFamilyHistory(+OtherPeep, +TargetPeep, +HumanPeep, -Link, +Action)
+hasFamilyHistory(OtherPeep, TargetPeep, HumanPeep, Link, Action) <--
+    Link = $SocialLink.Family,
+	findLink(OtherPeep, TargetPeep, $SocialLink.Family),
+	findHistory(TargetPeep, HumanPeep, History),
+	findActionInHistory(History, Action);
+
+// hasAnyFriendHistory(+OtherPeep, +TargetPeep, +HumanPeep, -Link, +Action)
+hasAnyFriendHistory(OtherPeep, TargetPeep, HumanPeep, AnyLink, Action) <--
+    findLink(OtherPeep, TargetPeep, AnyLink),
+	findHistory(TargetPeep, HumanPeep, History),
+	findActionInHistory(History, Action);
+
+
+//
+// helper functions
+
+// findRelationShipsFrom(+EntityID, -Relationships)
+findRelationShipsFrom(EntityID, Relationships) <-- Relationships = $Game.ctx.simman.rels.GetListOrNull(EntityID).data;
+
+// findLink(+Source, +Target, ?SocLink)
+findLink(Source, Target, SocLink) <--
+	findHistory(Source, Target, History),
+	SocLink = History.link;
+
+// findActionInHistory(+History, +Action)
+findActionInHistory(History, Action) <-- History.ContainsAction(Action) = true;

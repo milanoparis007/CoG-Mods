@@ -15,7 +15,8 @@ using UnityEngine.UI;
 namespace OrgChartMod
 {
     [BepInPlugin("com.mods.orgchart", "Org Chart Enhancements", "1.0.0")]
-    [BepInDependency("com.mods.modlauncher")]
+    [BepInDependency("com.mods.modlauncher", BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency("com.pia.modlauncher", BepInDependency.DependencyFlags.SoftDependency)]
     public class OrgChartPlugin : BaseUnityPlugin
     {
         internal static ManualLogSource Log;

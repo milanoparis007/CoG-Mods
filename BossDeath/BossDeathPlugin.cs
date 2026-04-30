@@ -5,12 +5,19 @@ using System.Linq;
 using System.Reflection;
 using BepInEx;
 using BepInEx.Logging;
+using Game.Core;
+using Game.Session;
+using Game.Session.Data;
+using Game.Session.Entities;
+using Game.Session.Player;
+using Game.Session.Sim;
 using HarmonyLib;
 
 namespace BossDeath
 {
     [BepInPlugin("com.mods.bossdeath", "Boss Death Continuation", "1.0.0")]
-    [BepInDependency("com.mods.modlauncher")]
+    [BepInDependency("com.mods.modlauncher", BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency("com.pia.modlauncher", BepInDependency.DependencyFlags.SoftDependency)]
     public class BossDeathPlugin : BaseUnityPlugin
     {
         internal static ManualLogSource Log;
@@ -299,15 +306,15 @@ namespace BossDeath
         {
             try
             {
-                var human = GameReflection.GetHuman();
+                PlayerInfo human = GameReflection.GetHuman() as PlayerInfo;
                 if (human == null)
                 {
                     BossDeathPlugin.Log.LogWarning("BossPromotion: Could not find human player.");
                     return false;
                 }
 
-                var crew = GameReflection.CrewField.GetValue(human);
-                var social = GameReflection.SocialField.GetValue(human);
+                PlayerCrew crew = human.crew;
+                PlayerSocial social = human.social;
                 var crewdata = GameReflection.CrewdataField.GetValue(crew);
                 var rawcrew = GameReflection.RawcrewField.GetValue(crewdata) as IList;
 
@@ -317,20 +324,35 @@ namespace BossDeath
                     return false;
                 }
 
-                bool bossIsDead = (bool)GameReflection.IsDeadProp.GetValue(rawcrew[0]);
+                CrewAssignment oldBoss = rawcrew[0] is CrewAssignment bossAssignment ? bossAssignment : CrewAssignment.EMPTY;
+                if (!oldBoss.IsValid)
+                {
+                    BossDeathPlugin.Log.LogWarning("BossPromotion: Could not resolve dead boss assignment.");
+                    return false;
+                }
+
+                bool bossIsDead = oldBoss.IsDead;
                 if (!bossIsDead)
                     return false;
 
-                // Find the underboss — only an underboss can replace the boss
-                var underbossLabel = GameReflection.CreateLabel("underboss");
+                Entity oldBossPeep = oldBoss.GetPeep();
+                if (oldBossPeep == null || !oldBossPeep.Id.IsValid)
+                {
+                    BossDeathPlugin.Log.LogWarning("BossPromotion: Dead boss peep is missing.");
+                    return false;
+                }
+
+                string existingGroupName = social?.PlayerGroupName;
+                Label underbossLabel = new Label("underboss");
                 int underbossIndex = -1;
                 for (int i = 1; i < rawcrew.Count; i++)
                 {
-                    if (!(bool)GameReflection.IsNotDeadProp.GetValue(rawcrew[i]))
+                    if (!(rawcrew[i] is CrewAssignment candidate) || !candidate.IsNotDead)
                         continue;
-                    var xp = GameReflection.GetXpForCrewAssignment(rawcrew[i]);
+                    Entity candidatePeep = candidate.GetPeep();
+                    var xp = candidatePeep?.data?.agent?.xp;
                     if (xp == null) continue;
-                    var role = GameReflection.XpCrewRoleField.GetValue(xp);
+                    var role = xp.crewRole;
                     if (role != null && underbossLabel.Equals(role))
                     {
                         underbossIndex = i;
@@ -344,29 +366,37 @@ namespace BossDeath
                     return false;
                 }
 
-                var oldBoss = rawcrew[0];
-                var newBoss = rawcrew[underbossIndex];
+                CrewAssignment newBoss = rawcrew[underbossIndex] is CrewAssignment promotedAssignment
+                    ? promotedAssignment
+                    : CrewAssignment.EMPTY;
+                if (!newBoss.IsValid)
+                {
+                    BossDeathPlugin.Log.LogWarning("BossPromotion: Could not resolve promoted underboss assignment.");
+                    return false;
+                }
+
+                Entity newBossPeep = newBoss.GetPeep();
+                if (newBossPeep == null || !newBossPeep.Id.IsValid)
+                {
+                    BossDeathPlugin.Log.LogWarning("BossPromotion: Promoted boss peep is missing.");
+                    return false;
+                }
+
                 rawcrew[0] = newBoss;
                 rawcrew[underbossIndex] = oldBoss;
 
-                // Set the new boss's crewRole to "boss"
-                var newBossXp = GameReflection.GetXpForCrewAssignment(newBoss);
+                var newBossXp = newBossPeep.data?.agent?.xp;
                 if (newBossXp != null)
                 {
-                    var bossLabel = GameReflection.CreateLabel("boss");
-                    GameReflection.SetCrewRoleMethod.Invoke(newBossXp, new object[] { bossLabel });
+                    newBossXp.SetCrewRole(new Label("boss"));
                 }
 
-                var newBossPeep = GameReflection.GetPeepMethod.Invoke(newBoss, null);
-                GameReflection.SetBossInfoMethod.Invoke(social, new object[] { newBossPeep, false });
+                social?.SetBossInfo(newBossPeep, rerollGroupName: false);
+                social?.ForceGroupNameIfValid(existingGroupName);
+                TransferBossRelationships(oldBossPeep.Id, newBossPeep.Id);
+                RefreshBossDependentState(human);
 
-                var ctx = GameReflection.GetCtx();
-                var pid = GameReflection.PIDProp.GetValue(human);
-                var mapdisplay = GameReflection.MapdisplayField.GetValue(ctx);
-                if (GameReflection.RefreshTerritoryLabelMethod != null)
-                    GameReflection.RefreshTerritoryLabelMethod.Invoke(mapdisplay, new object[] { pid, true });
-
-                BossDeathPlugin.Log.LogInfo("BossPromotion: Successfully promoted new boss.");
+                BossDeathPlugin.Log.LogInfo($"BossPromotion: Successfully promoted new boss old={oldBossPeep.Id.id} new={newBossPeep.Id.id}.");
                 return true;
             }
             catch (Exception ex)
@@ -374,6 +404,125 @@ namespace BossDeath
                 BossDeathPlugin.Log.LogError($"BossPromotion: Error: {ex}");
                 return false;
             }
+        }
+
+        private static void RefreshBossDependentState(PlayerInfo human)
+        {
+            try
+            {
+                Game.Game.ctx?.mapdisplay?.RefreshTerritoryLabel(human.PID, updateName: true);
+                Game.Game.ctx?.events?.EnqueueOnce(SessionEventType.SomeEntityRelationshipChanged);
+                Game.Game.ctx?.events?.EnqueueOnce(SessionEventType.SomeEntityTicketsChanged);
+            }
+            catch (Exception ex)
+            {
+                BossDeathPlugin.Log.LogWarning($"BossPromotion: Failed to refresh boss-dependent state: {ex.Message}");
+            }
+        }
+
+        private static void TransferBossRelationships(EntityID oldBossId, EntityID newBossId)
+        {
+            try
+            {
+                if (!oldBossId.IsValid || !newBossId.IsValid || oldBossId == newBossId)
+                {
+                    return;
+                }
+
+                RelationshipTracker rels = Game.Game.ctx?.simman?.rels;
+                RelationshipList sourceList = rels?.GetListOrNull(oldBossId);
+                if (rels == null || sourceList?.data == null || sourceList.data.Count == 0)
+                {
+                    return;
+                }
+
+                foreach (Relationship sourceForward in sourceList.data.ToList())
+                {
+                    if (sourceForward == null || !sourceForward.to.IsValid || sourceForward.to == oldBossId || sourceForward.to == newBossId)
+                    {
+                        continue;
+                    }
+
+                    Entity target = sourceForward.to.FindEntity();
+                    if (target == null)
+                    {
+                        continue;
+                    }
+
+                    var migrated = rels.GetOrMakeSymmetrical(newBossId, target.Id, sourceForward.type, warnOnExisting: false);
+                    CopyRelationshipState(sourceForward, migrated.toTarget, oldBossId, newBossId);
+
+                    Relationship sourceReverse = rels.GetOrNull(target.Id, oldBossId);
+                    if (sourceReverse != null)
+                    {
+                        CopyRelationshipState(sourceReverse, migrated.fromTarget, oldBossId, newBossId);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                BossDeathPlugin.Log.LogWarning($"BossPromotion: Failed to transfer boss relationships: {ex.Message}");
+            }
+        }
+
+        private static void CopyRelationshipState(Relationship source, Relationship destination, EntityID oldBossId, EntityID newBossId)
+        {
+            if (source == null || destination == null)
+            {
+                return;
+            }
+
+            if (destination.type == RelationshipType.None || (!destination.IsAnyFamily && source.IsAnyFamily))
+            {
+                destination.type = source.type;
+            }
+
+            if (source.high > destination.high)
+            {
+                destination.high = source.high;
+            }
+
+            if (source.convos > destination.convos)
+            {
+                destination.convos = source.convos;
+            }
+
+            CopyBuffs(source, destination, oldBossId, newBossId);
+        }
+
+        private static void CopyBuffs(Relationship source, Relationship destination, EntityID oldBossId, EntityID newBossId)
+        {
+            if (source?.buffs == null || source.buffs.IsEmpty)
+            {
+                return;
+            }
+
+            if (destination.buffs == null)
+            {
+                destination.buffs = new BuffStack();
+            }
+
+            foreach (BuffState state in source.buffs.states)
+            {
+                if (state == null)
+                {
+                    continue;
+                }
+
+                destination.buffs.Remove(state.id);
+                destination.buffs.states.Add(new BuffState
+                {
+                    id = state.id,
+                    expires = state.expires,
+                    priority = state.priority,
+                    crewpeep = state.crewpeep == oldBossId ? newBossId : state.crewpeep
+                });
+            }
+
+            destination.buffs.lastUpdate = source.buffs.lastUpdate;
+            destination.buffs.states = destination.buffs.states
+                .OrderBy(buff => buff.priority)
+                .ToList();
         }
 
         public static bool HasLivingUnderboss()
@@ -569,19 +718,50 @@ namespace BossDeath
     static class BossRoleSetter
     {
         private static object _bossLabel;
+        private static bool _loggedMissingReflectionHandles;
+
+        private static bool HasRequiredReflectionHandles()
+        {
+            if (GameReflection.CrewField != null
+                && GameReflection.CrewdataField != null
+                && GameReflection.RawcrewField != null
+                && GameReflection.IsDeadProp != null
+                && GameReflection.GetPeepMethod != null
+                && GameReflection.EntityDataField != null
+                && GameReflection.DataAgentField != null
+                && GameReflection.AgentXpField != null
+                && GameReflection.SetCrewRoleMethod != null
+                && GameReflection.XpCrewRoleField != null
+                && GameReflection.LabelType != null)
+            {
+                return true;
+            }
+
+            if (!_loggedMissingReflectionHandles)
+            {
+                _loggedMissingReflectionHandles = true;
+                BossDeathPlugin.Log.LogWarning("BossRoleSetter: required reflection handles are missing; boss role sync skipped.");
+            }
+            return false;
+        }
 
         public static void EnsureBossRole()
         {
             try
             {
+                if (!HasRequiredReflectionHandles())
+                {
+                    return;
+                }
+
                 var human = GameReflection.GetHuman();
                 if (human == null) return;
 
                 var crew = GameReflection.CrewField.GetValue(human);
-                if (crew == null) { BossDeathPlugin.Log.LogWarning("BossRoleSetter: crew is null"); return; }
+                if (crew == null) return;
 
                 var crewdata = GameReflection.CrewdataField.GetValue(crew);
-                if (crewdata == null) { BossDeathPlugin.Log.LogWarning("BossRoleSetter: crewdata is null"); return; }
+                if (crewdata == null) return;
 
                 var rawcrew = GameReflection.RawcrewField.GetValue(crewdata) as IList;
                 if (rawcrew == null || rawcrew.Count == 0) return;
@@ -590,22 +770,21 @@ namespace BossDeath
                 if ((bool)GameReflection.IsDeadProp.GetValue(bossAssignment)) return;
 
                 var bossPeep = GameReflection.GetPeepMethod.Invoke(bossAssignment, null);
-                if (bossPeep == null) { BossDeathPlugin.Log.LogWarning("BossRoleSetter: bossPeep is null"); return; }
+                if (bossPeep == null) return;
 
                 var entityData = GameReflection.EntityDataField.GetValue(bossPeep);
-                if (entityData == null) { BossDeathPlugin.Log.LogWarning("BossRoleSetter: entityData is null"); return; }
+                if (entityData == null) return;
 
                 var agentData = GameReflection.DataAgentField.GetValue(entityData);
-                if (agentData == null) { BossDeathPlugin.Log.LogWarning("BossRoleSetter: agentData is null"); return; }
+                if (agentData == null) return;
 
                 var xp = GameReflection.AgentXpField.GetValue(agentData);
-                if (xp == null) { BossDeathPlugin.Log.LogWarning("BossRoleSetter: xp is null"); return; }
+                if (xp == null) return;
 
                 // Create the "boss" Label once and cache it
                 if (_bossLabel == null)
                 {
-                    var labelType = GameReflection.Asm.GetTypes().First(t => t.FullName == "Game.Core.Label");
-                    _bossLabel = Activator.CreateInstance(labelType, new object[] { "boss" });
+                    _bossLabel = Activator.CreateInstance(GameReflection.LabelType, new object[] { "boss" });
                 }
 
                 var currentRole = GameReflection.XpCrewRoleField.GetValue(xp);

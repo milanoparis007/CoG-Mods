@@ -1,0 +1,4 @@
+interface:
+  display_name: "City of Gangsters Map Maker"
+  short_description: "Build and explain CoG custom maps"
+  default_prompt: "Use $city-of-gangsters-map-maker to create, customize, or explain a City of Gangsters custom map using the repo references, workbook example, and decompiled map-generation anchors."

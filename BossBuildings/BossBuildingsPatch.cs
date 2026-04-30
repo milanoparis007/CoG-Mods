@@ -8,7 +8,8 @@ using HarmonyLib;
 namespace BossBuildings
 {
     [BepInPlugin("com.mods.bossbuildings", "Boss Buildings", "1.0.0")]
-    [BepInDependency("com.mods.modlauncher")]
+    [BepInDependency("com.mods.modlauncher", BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency("com.pia.modlauncher", BepInDependency.DependencyFlags.SoftDependency)]
     public class BossBuildingsPlugin : BaseUnityPlugin
     {
         internal static ManualLogSource Log;

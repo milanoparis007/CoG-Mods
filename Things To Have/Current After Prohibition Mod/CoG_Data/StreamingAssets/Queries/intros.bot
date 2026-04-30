@@ -1,0 +1,50 @@
+/*
+	Given an NPC, find if there are items of interest to both them and the player.
+	NPC --> (Label, IBizModule)
+*/
+
+checkIntroReason <--
+	set! $label = $Label.NULL, set! $arg1 = null, set! $business = null,
+
+	($arg3 = $IntroductionType.Business, introBusinessModule)
+	| ($arg3 = $IntroductionType.Transactions, introTransactions);
+
+introBusinessModule <--
+	bizModulesForHuman(HumanMods),
+	bizModulesForBuilding($BuildingUtil.FindBuildingForBizOwner($entity), NPCMods),
+
+	// loop through the modules
+	HumanMod in HumanMods,
+	HumanItems = HumanMod.ProduceAllItemsInCurrentRecipe().ToList(),
+
+	NPCMod in NPCMods,
+	NPCItems = NPCMod.ProduceAllItemsInCurrentRecipe().ToList(),
+
+	// items in common with opposite consumption
+	(Item in HumanItems,
+		OtherItem in NPCItems,
+		Item.id = OtherItem.id,
+		Item.consumed != OtherItem.consumed, // player buys, NPC sells
+		set! $label = Item.id, set! $arg1 = Item.consumed, set! $business = HumanMod);
+
+introTransactions <--
+	transactionsForHuman(Transactions),
+	bizModulesForBuilding($BuildingUtil.FindBuildingForBizOwner($entity), NPCMods),
+
+	NPCMod in NPCMods,
+	NPCItems = NPCMod.ProduceAllItemsInCurrentRecipe().ToList(),
+
+	(Item in Transactions,
+		OtherItem in NPCItems,
+		Item.resource = OtherItem.id,
+		Item.consumed != OtherItem.consumed, // player buys, NPC sells
+		set! $label = Item.resource, set! $arg1 = Item.consumed, set! $business = null);
+
+//   bizModulesForHuman(-BizModules)
+bizModulesForHuman(BizModules) <-- BizModules = $Game.ctx.players.Human.social.Transactions.GetPlayerBizzes();
+
+//   bizModulesForBuilding(+Building, -BizModules)
+bizModulesForBuilding(Building, BizModules) <-- BizModules = $ModulesUtil.GetBizModules(Building);
+
+//	transactionsForHuman(-Transactions)
+transactionsForHuman(Transactions) <-- Transactions = $Game.ctx.players.Human.social.Transactions.GetHistory();

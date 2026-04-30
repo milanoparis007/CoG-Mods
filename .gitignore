@@ -3,3 +3,24 @@ bin/
 obj/
 *.user
 *.suo
+Player.log
+Player-prev.log
+*.log
+.codex/
+.codex_build/
+.codex_tmp/
+.codex_tmp*/
+.codex_tmp_*.cs
+_buildtmp/
+tmp_video_frames/
+artifacts/
+GameOptimizer/obj_gameoptimizer/
+session_summary.md
+nul
+C*UsersUsertemp_session.txt
+*.codex-backup-*
+Things To Have/ffmpeg-8.1-full_build/
+Things To Have/**/CoG_Data/Managed/
+Things To Have/Vanilla Streamingassets and Csharp/
+Things To Have/PIA Mod After Prohibition/
+Things To Have/PIA Mod Vanilla/

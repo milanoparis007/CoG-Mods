@@ -1,0 +1,2096 @@
+{ maps [ { 
+	id atlantic-city
+	citytype atlantic-city
+
+	;; cityname "Chicago"  		;; let's use loc instead
+	;; statename "Illinois"
+	;; citydesc	"Story..."
+
+	citylockey	"city-name.atlantic-city"
+	statelockey	"state-name.new-jersey"
+	citydesckey	"city-desc.atlantic-city"
+	cityscreen	"Atlantic City Screenshot"
+	citylocicon	"city-icon.atlantic-city"
+	citypolunitkey	"city-pol-unit.ward"
+
+	map {
+		;; logical map specification
+		mapSize        { width 700 height 400 } ;; size in world units
+		;; heatmapSpacing { width 8 height 8 }  ;; should be similar or larger than smallest block size
+		;; beadSpacing { width 1 height 1 }     ;; should be default (1, 1) unless there's a good reason :)
+
+		streetNames [ 
+			"streets.usfounders" "streets.famouspeople" "streets.usstates" "streets.uscities"
+			"streets.smalltown" "streets.trees" "streets.plants" "streets.birds" "streets.chicago" 
+			"streets.lastnames" "streets.generic" ]
+
+		nodes [
+		;	{
+		;		id BaseGrid
+		;		nodeSpacing { width 8 height 10 }
+		;		forceStart { x 75 y 81 }
+		;		forceAngle 0
+		;		initialNames [ "streets.chicago" "streets.usfounders" "streets.lastnames" "streets.uscities" ] 
+		;	}
+			;; boardwalks
+			{
+				id "Boardwalk-AC"
+				nodeSpacing { width 8 height 9 }
+				forceStart { x 598 y 220 }
+				relativeSpeed 3
+				forceMaxSize 125
+				forceMaxSpread { width 40 height 1 }
+				forceAngle -22
+				railCost 50
+				dontSkipRoads #true
+				initialNames [ "streets.boardwalk" ]
+				boardwalk #true
+			}
+			{
+				id "Boardwalk-Ventnor"
+				nodeSpacing { width 8 height 9 }
+				forceStart { x 514 y 178 }
+				relativeSpeed 3
+				forceMaxSize 125
+				forceMaxSpread { width 20 height 1 }
+				forceAngle -30
+				railCost 50
+				dontSkipRoads #true
+				initialNames [ "streets.boardwalk" ]
+				boardwalk #true
+			}
+			{
+				id "Boardwalk-MG"
+				nodeSpacing { width 8 height 9 }
+				forceStart { x 447 y 137 }
+				relativeSpeed 3
+				forceMaxSize 125
+				forceMaxSpread { width 20 height 1 }
+				forceAngle -34
+				railCost 50
+				dontSkipRoads #true
+				initialNames [ "streets.boardwalk" ]
+				boardwalk #true
+			}
+			;; towns
+			{
+				id "AtlanticCity"
+				nodeSpacing { width 8 height 10 }
+				forceStart { x 614 y 265 }
+			;	relativeSpeed 1
+				forceMaxSize 400
+				forceAngle -22
+				initialNames [ "streets.atlantic-city" ]
+			}
+			{
+				id "Ventnor"
+				nodeSpacing { width 6 height 8 }
+				forceStart { x 485 y 185 }
+			;	relativeSpeed 1
+				forceMaxSize 400
+				forceAngle -30
+				initialNames [ "streets.atlantic-city" ]
+			}
+			{
+				id "Marvin Gardens"
+				nodeSpacing { width 6 height 8 }
+				forceStart { x 418 y 139 }
+			;	relativeSpeed 1
+				forceMaxSize 400
+				forceAngle -34
+				initialNames [ "streets.atlantic-city" ]
+			}
+			{
+				id Northfield1
+				nodeSpacing { width 10 height 8 }
+				forceStart { x 290 y 318 }
+			;	relativeSpeed 1
+				forceMaxSize 80
+				forceAngle 68
+				initialNames [ "streets.plants" ]
+			}
+			{
+				id Northfield2
+				nodeSpacing { width 10 height 8 }
+				forceStart { x 285 y 325 }
+			;	relativeSpeed 1
+				forceMaxSize 60
+				forceAngle 68
+				initialNames [ "streets.trees" ]
+			}
+			{
+				id Linwood1
+				nodeSpacing { width 8 height 10 }
+				forceStart { x 155 y 182 }
+			;	relativeSpeed 1
+				forceMaxSize 65
+				forceAngle -42
+				initialNames [ "streets.birds" ]
+			}
+			{
+				id Linwood2
+				nodeSpacing { width 8 height 10 }
+				forceStart { x 156 y 200 }
+			;	relativeSpeed 1
+				forceMaxSize 85
+				forceAngle -42
+				initialNames [ "streets.smalltown" ]
+			}
+			{
+				id Linwood3
+				nodeSpacing { width 6 height 10 }
+				forceStart { x 179 y 149 }
+			;	relativeSpeed 1
+				forceMaxSize 25
+				forceAngle -45
+				initialNames [ "streets.usfounders" ]
+			}
+			{
+				id SommersPoint1
+				nodeSpacing { width 8 height 8 }
+				forceStart { x 249 y 79 }
+			;	relativeSpeed 1
+				forceMaxSize 25
+				forceAngle 45
+				initialNames [ "streets.famouspeople" ]
+			}
+			{
+				id SommersPoint2
+				nodeSpacing { width 8 height 8 }
+				forceStart { x 253 y 82 }
+			;	relativeSpeed 1
+				forceMaxSize 100
+				forceAngle 45
+				initialNames [ "streets.lastnames" ]
+			}
+			{
+				id EggHarbor1
+				nodeSpacing { width 10 height 10 }
+				forceStart { x 98 y 329 }
+			;	relativeSpeed 1
+				forceMaxSize 60
+				forceAngle -15
+				initialNames [ "streets.uscities" ]
+			}
+			{
+				id EggHarbor2
+				nodeSpacing { width 10 height 10 }
+				forceStart { x 99 y 324 }
+			;	relativeSpeed 1
+				forceMaxSize 40
+				forceAngle -15
+				initialNames [ "streets.usstates" ]
+			}
+
+			;; connections
+			{
+				id "connection-absecon"
+				nodeSpacing { width 4 height 8 }
+				forceStart { x 504 y 339 }
+				relativeSpeed 4
+			;	forceMaxSize 400
+				forceMaxSpread { width 200 height 1 }
+				forceAngle 25
+				railCost 50
+				dontSkipRoads #true
+				initialNames [ "streets.atlantic-city.connections" ]
+				forceBridges #true
+				connection #true
+			}
+			{
+				id "connection-40"
+				nodeSpacing { width 4 height 8 }
+				forceStart { x 529 y 288 }
+				relativeSpeed 4
+			;	forceMaxSize 400
+				forceMaxSpread { width 200 height 1 }
+				forceAngle 85
+			;	railCost 50
+				dontSkipRoads #true
+				initialNames [ "streets.atlantic-city.connections" ]
+				forceBridges #true
+				connection #true
+			}
+			{
+				id "connection-margate"
+				nodeSpacing { width 4 height 8 }
+				forceStart { x 360 y 131 }
+				relativeSpeed 4
+			;	forceMaxSize 400
+				forceMaxSpread { width 200 height 1 }
+				forceAngle 70
+			;	railCost 50
+				dontSkipRoads #true
+				initialNames [ "streets.atlantic-city.connections" ]
+				forceBridges #true
+				connection #true
+			}
+			{
+				id "connection-shorerd"
+				nodeSpacing { width 4 height 8 }
+				forceStart { x 290 y 324 }
+				relativeSpeed 2
+			;	forceMaxSize 400
+				forceMaxSpread { width 200 height 1 }
+				forceAngle -20
+			;	railCost 50
+				dontSkipRoads #true
+				initialNames [ "streets.atlantic-city.connections" ]
+				connection #true
+			}
+			{
+				id "connection-shorerd-east"
+				nodeSpacing { width 4 height 8 }
+				forceStart { x 239 y 320 }
+				relativeSpeed 2
+			;	forceMaxSize 400
+				forceMaxSpread { width 200 height 1 }
+				forceAngle -20
+			;	railCost 50
+				dontSkipRoads #true
+				initialNames [ "streets.atlantic-city.connections" ]
+				connection #true
+			}
+			{
+				id "connection-9"
+				nodeSpacing { width 6 height 10 }
+				forceStart { x 265 y 278 }
+				relativeSpeed 2
+			;	forceMaxSize 400
+				forceMaxSpread { width 200 height 1 }
+				forceAngle -40
+			;	railCost 50
+				dontSkipRoads #true
+				initialNames [ "streets.atlantic-city.connections" ]
+				connection #true
+			}
+			{
+				id "connection-9s"
+				nodeSpacing { width 6 height 10 }
+				forceStart { x 200 y 170 }
+				relativeSpeed 2
+			;	forceMaxSize 400
+				forceMaxSpread { width 200 height 1 }
+				forceAngle -40
+			;	railCost 50
+				dontSkipRoads #true
+				initialNames [ "streets.atlantic-city.connections" ]
+				connection #true
+			}
+			{
+				id "connection-52"
+				nodeSpacing { width 6 height 10 }
+				forceStart { x 195 y 128 }
+				relativeSpeed 2
+			;	forceMaxSize 400
+				forceMaxSpread { width 200 height 1 }
+				forceAngle 40
+			;	railCost 50
+				dontSkipRoads #true
+				initialNames [ "streets.atlantic-city.connections" ]
+				connection #true
+			}
+			{
+				id "egg harbor rd"
+				nodeSpacing { width 10 height 10 }
+				forceStart { x 249 y 367 }
+				relativeSpeed 2
+			;	forceMaxSize 400
+				forceMaxSpread { width 200 height 1 }
+				forceAngle -15
+			;	railCost 50
+				dontSkipRoads #true
+				initialNames [ "streets.atlantic-city.connections" ]
+				connection #true
+			}
+			{
+				id "coast rd"
+				nodeSpacing { width 10 height 10 }
+				forceStart { x 317 y 86 }
+				relativeSpeed 2
+			;	forceMaxSize 400
+				forceMaxSpread { width 200 height 1 }
+				forceAngle -42
+			;	railCost 50
+				dontSkipRoads #true
+				forceBridges #true
+				initialNames [ "streets.atlantic-city.connections" ]
+				connection #true
+			}		
+		]
+
+		rails [
+			{
+				id ACrail
+				random true
+				randomRect { x 607 y 265 width 25 height 35 } 
+			}
+			{
+				id rail1
+				random true
+				randomRect { x 306 y 227 width 40 height 40 } 
+			}
+			{
+				id rail2
+				random true
+				randomRect { x 208 y 197 width 100 height 100 } 
+			}
+			{
+				id rail3
+				random true
+				randomRect { x 480 y 300 width 40 height 40 } 
+			}
+			{
+				id rail4
+				random true
+				randomRect { x 73 y 314 width 40 height 40 } 
+			}
+		]
+
+		districts [
+			{
+				tags [ downtown bizcenter ]
+				locname	"districts.atlanic-city" ;; optional to display on the map
+				start { x 614 y 265 } radius 15
+			}
+			{
+				tags [ bizcenter ]
+				locname "districts.egg-harbor"
+				start { x 98 y 329 } radius 20
+			}
+			{
+				tags [ bizcenter ]
+				locname "districts.marvin-gardens"
+				start { x 468 y 139 } radius 15
+			}
+			{
+				tags [ indcenter ]
+				locname "districts.linwood"
+				start { x 155 y 182 } radius 15
+			}
+			{
+				tags [ bizcenter ]
+				locname "districts.somers-point"
+				start { x 248 y 79 } radius 15
+			}
+			{
+				tags [ indcenter ]
+				locname "districts.northfield"
+				start { x 290 y 318 } radius 25
+			}
+		]
+	}
+
+	terrain {
+		;; terrain specification
+		chunktiles { width 40 height 40 }  ;; max world size of each chunk tile (could be less)
+		tileverts { width 1 height 1 } ;; number of vertices per tile, floats allowed to break up the grid
+		terrainscale 15
+
+		groundheight 0.5
+		waterheight -0.2
+		zwobble 0.01
+		; xywobble 0
+		mountainnodes [ ; mountains... Chicago.. hahaha... who do you think we are? Ubisoft?
+			; {
+			; 	id mountain
+			; 	forceStart { x 25 y 25}
+			; 	size 25
+			; }
+		]
+
+		waternodes [
+			{
+				id Ocean1
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 677 y 280 } ;top left
+					{ x 700 y 280 } ;top right
+					{ x 677 y 0 } ;bottom left
+					{ x 700 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean2
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 618 y 211 } ;top left
+					{ x 677 y 239 } ;top right
+					{ x 618 y 0 } ;bottom left
+					{ x 677 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean3
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 596 y 205 } ;top left
+					{ x 618 y 211 } ;top right
+					{ x 596 y 0 } ;bottom left
+					{ x 618 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean4
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 560 y 189 } ;top left
+					{ x 618 y 211 } ;top right
+					{ x 560 y 0 } ;bottom left
+					{ x 618 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean5
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 490 y 151 } ;top left
+					{ x 560 y 189 } ;top right
+					{ x 490 y 0 } ;bottom left
+					{ x 560 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean6
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 445 y 125 } ;top left
+					{ x 490 y 151 } ;top right
+					{ x 445 y 0 } ;bottom left
+					{ x 560 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean7
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 406 y 97 } ;top left
+					{ x 445 y 125 } ;top right
+					{ x 406 y 0 } ;bottom left
+					{ x 445 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean8
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 376 y 76 } ;top left
+					{ x 406 y 97 } ;top right
+					{ x 376 y 0 } ;bottom left
+					{ x 406 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean9
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 332 y 34 } ;top left
+					{ x 376 y 76 } ;top right
+					{ x 332 y 0 } ;bottom left
+					{ x 376 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean10		;; bottom of the AC peninsula
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 323 y 47 } ;top left
+					{ x 332 y 34 } ;top right
+					{ x 323 y 0 } ;bottom left
+					{ x 332 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean11
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 304 y 66 } ;top left
+					{ x 323 y 65 } ;top right
+					{ x 304 y 0 } ;bottom left
+					{ x 323 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean12
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 288 y 58 } ;top left
+					{ x 304 y 66 } ;top right
+					{ x 288 y 0 } ;bottom left
+					{ x 304 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean13
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 283 y 20 } ;top left
+					{ x 288 y 20 } ;top right
+					{ x 283 y 0 } ;bottom left
+					{ x 288 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean13m
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 279 y 40 } ;top left
+					{ x 288 y 40 } ;top right
+					{ x 283 y 20 } ;bottom left
+					{ x 283 y 20 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean13t
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 274 y 51 } ;top left
+					{ x 288 y 58 } ;top right
+					{ x 279 y 40 } ;bottom left
+					{ x 283 y 40 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean14
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 267 y 46 } ;top left
+					{ x 274 y 51 } ;top right
+					{ x 267 y 40 } ;bottom left
+					{ x 274 y 40 } ;bottom right
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id Ocean15
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 248 y 49 } ;top left
+					{ x 267 y 61 } ;top right
+					{ x 248 y 24 } ;bottom left
+					{ x 267 y 38 } ;bottom right
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id Ocean16
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 230 y 36 } ;top left
+					{ x 248 y 49 } ;top right
+					{ x 230 y 6 } ;bottom left
+					{ x 248 y 24 } ;bottom right
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id Ocean17
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 207 y 57 } ;top left
+					{ x 230 y 36 } ;top right
+					{ x 207 y 0 } ;bottom left
+					{ x 230 y 0 } ;bottom right
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id Ocean18
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 185 y 66 } ;top left
+					{ x 207 y 57 } ;top right
+					{ x 185 y 0 } ;bottom left
+					{ x 207 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean19
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 163 y 56 } ;top left
+					{ x 185 y 66 } ;top right
+					{ x 163 y 0 } ;bottom left
+					{ x 185 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean20
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 152 y 47 } ;top left
+					{ x 163 y 56 } ;top right
+					{ x 152 y 0 } ;bottom left
+					{ x 163 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean21
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 110 y 35 } ;top left
+					{ x 152 y 47 } ;top right
+					{ x 110 y 0 } ;bottom left
+					{ x 152 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean22
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 92 y 65 } ;top left
+					{ x 110 y 47 } ;top right
+					{ x 92 y 5 } ;bottom left
+					{ x 110 y 0 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean23
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 83 y 47 } ;top left
+					{ x 92 y 35 } ;top right
+					{ x 83 y 15 } ;bottom left
+					{ x 92 y 5 } ;bottom right
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id Ocean24
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 72 y 73 } ;top left
+					{ x 83 y 47 } ;top right
+					{ x 72 y 18 } ;bottom left
+					{ x 83 y 15 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean25
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 63 y 80 } ;top left
+					{ x 72 y 73 } ;top right
+					{ x 63 y 20 } ;bottom left
+					{ x 72 y 18 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean26
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 52 y 45 } ;top left
+					{ x 63 y 49 } ;top right
+					{ x 52 y 25 } ;bottom left
+					{ x 63 y 20 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean27
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 22 y 59 } ;top left
+					{ x 63 y 49 } ;top right
+					{ x 22 y 30 } ;bottom left
+					{ x 63 y 20 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean28
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 5 y 52 } ;top left
+					{ x 22 y 59 } ;top right
+					{ x 5 y 50 } ;bottom left
+					{ x 22 y 30 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Ocean29
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 0 y 85 } ;top left
+					{ x 5 y 73 } ;top right
+					{ x 0 y 60 } ;bottom left
+					{ x 5 y 55 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id AbseconInlet
+				forceStart { x 683 y 281 }
+				width 18
+				forceFixedWidth true
+				connectingNodes [
+					Absecon2
+				]
+				allowBridges false
+			}
+			{
+				id Absecon2
+				forceStart { x 664 y 318 }
+				width 15
+				forceFixedWidth true
+				connectingNodes [
+					Absecon3
+				]
+				allowBridges true
+			}
+			{
+				id Absecon3
+				forceStart { x 643 y 346 }
+				width 12
+				forceFixedWidth true
+				connectingNodes [
+					Absecon4
+				]
+				allowBridges true
+			}
+			{
+				id Absecon4
+				forceStart { x 643 y 346 }
+				width 15
+				forceFixedWidth true
+				connectingNodes [
+					Absecon5
+				]
+				allowBridges true
+			}
+			{
+				id Absecon5
+				forceStart { x 624 y 358 }
+				width 18
+				forceFixedWidth true
+				connectingNodes [
+					Absecon6
+				]
+				allowBridges true
+			}
+			{
+				id Absecon6
+				forceStart { x 624 y 368 }
+				width 18
+				forceFixedWidth true
+				connectingNodes [
+					AbseconBayInlet
+				]
+				allowBridges true
+			}
+			{
+				id AbseconBayInlet
+				forceStart { x 611 y 380 }
+				width 18
+				forceFixedWidth true
+				connectingNodes [
+
+				]
+				allowBridges true
+			}
+			{
+				id AbseconBay1
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 600 y 400 } ;top left
+					{ x 620 y 400 } ;top right
+					{ x 600 y 370 } ;bottom left
+					{ x 620 y 360 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id AbseconBay2
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 575 y 400 } ;top left
+					{ x 600 y 400 } ;top right
+					{ x 575 y 365 } ;bottom left
+					{ x 600 y 370 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id AbseconBay3
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 560 y 400 } ;top left
+					{ x 575 y 400 } ;top right
+					{ x 560 y 370 } ;bottom left
+					{ x 575 y 365 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id AbseconBay4
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 548 y 400 } ;top left
+					{ x 560 y 400 } ;top right
+					{ x 548 y 370 } ;bottom left
+					{ x 560 y 370 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id AbseconBay5
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 523 y 400 } ;top left
+					{ x 548 y 400 } ;top right
+					{ x 523 y 390 } ;bottom left
+					{ x 548 y 370 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id AbseconBay6
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 512 y 400 } ;top left
+					{ x 523 y 400 } ;top right
+					{ x 512 y 390 } ;bottom left
+					{ x 523 y 390 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id AbseconBay7
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 490 y 400 } ;top left
+					{ x 512 y 400 } ;top right
+					{ x 490 y 365 } ;bottom left
+					{ x 512 y 370 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id AbseconBay8
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 490 y 400 } ;top left
+					{ x 460 y 400 } ;top right
+					{ x 460 y 380 } ;bottom left
+					{ x 490 y 365 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id AbseconBay9
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 450 y 400 } ;top left
+					{ x 460 y 400 } ;top right
+					{ x 450 y 390 } ;bottom left
+					{ x 460 y 380 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Intercoastal1
+				forceStart { x 645 y 330 }
+				width 12
+				forceFixedWidth true
+				connectingNodes [
+					Intercoastal2
+				]
+				allowBridges false
+			}
+			{
+				id Intercoastal2
+				forceStart { x 600 y 332 }
+				width 12
+				forceFixedWidth true
+				connectingNodes [
+					Intercoastal3
+				]
+				allowBridges false
+			}
+			{
+				id Intercoastal3
+				forceStart { x 590 y 320 }
+				width 12
+				forceFixedWidth true
+				connectingNodes [
+					Intercoastal4
+				]
+				allowBridges false
+			}
+			{
+				id Intercoastal4
+				forceStart { x 580 y 310 }
+				width 10
+				forceFixedWidth true
+				connectingNodes [
+					Intercoastal5
+				]
+				allowBridges true
+			}
+			{
+				id Intercoastal5
+				forceStart { x 581 y 295 }
+				width 9
+				forceFixedWidth true
+				connectingNodes [
+					Intercoastal6
+				]
+				allowBridges true
+			}
+			{
+				id Intercoastal6
+				forceStart { x 575 y 288 }
+				width 8
+				forceFixedWidth true
+				connectingNodes [
+					Intercoastal7		
+				]
+				allowBridges true
+			}
+			{
+				id Intercoastal7
+				forceStart { x 568 y 285 }
+				width 10
+				forceFixedWidth true
+				connectingNodes [
+					Intercoastal8
+				]
+				allowBridges true
+			}
+			{
+				id Intercoastal8
+				forceStart { x 560 y 283 }
+				width 11
+				forceFixedWidth true
+				connectingNodes [
+					Intercoastal9
+				]
+				allowBridges false
+			}
+			{
+				id Intercoastal9
+				forceStart { x 555 y 275 }
+				width 11
+				forceFixedWidth true
+				connectingNodes [
+					Intercoastal10
+				]
+				allowBridges true
+			}
+			{
+				id Intercoastal10
+				forceStart { x 560 y 255 }
+				width 9
+				forceFixedWidth true
+				connectingNodes [
+					Intercoastal11		
+				]
+				allowBridges true
+			}
+			{
+				id Intercoastal11
+				forceStart { x 580 y 252 }
+				width 11
+				forceFixedWidth true
+				connectingNodes [
+					Intercoastal12
+				]
+				allowBridges true
+			}
+			{
+				id Intercoastal12
+				forceStart { x 582 y 235 }
+				width 7
+				forceFixedWidth true
+				connectingNodes [
+					Intercoastal13
+				]
+				allowBridges true
+			}
+			{
+				id Intercoastal13
+				forceStart { x 561 y 230 }
+				width 9
+				forceFixedWidth true
+				connectingNodes [
+					Intercoastal14		
+				]
+				allowBridges true
+			}
+			{
+				id Intercoastal14
+				forceStart { x 540 y 240 }
+				width 11
+				forceFixedWidth true
+				connectingNodes [
+					Intercoastal15
+				]
+				allowBridges true
+			}
+			{
+				id Intercoastal15
+				forceStart { x 525 y 244 }
+				width 12
+				forceFixedWidth true
+				connectingNodes [
+					IntercoastalNorth1
+					IntercoastalSouth1
+				]
+				allowBridges true
+			}
+			{
+				id IntercoastalNorth1
+				forceStart { x 510 y 260 }
+				width 12
+				forceFixedWidth true
+				connectingNodes [
+					IntercoastalNorth2
+				]
+				allowBridges false
+			}
+			{
+				id IntercoastalNorth2
+				forceStart { x 492 y 265 }
+				width 10
+				forceFixedWidth true
+				connectingNodes [
+					IntercoastalNorth3
+				]
+				allowBridges true
+			}
+			{
+				id IntercoastalNorth3
+				forceStart { x 477 y 263 }
+				width 10
+				forceFixedWidth true
+				connectingNodes [
+					IntercoastalNorth4
+				]
+				allowBridges true
+			}
+			{
+				id IntercoastalNorth4
+				forceStart { x 468 y 270 }
+				width 8
+				forceFixedWidth true
+				connectingNodes [
+					IntercoastalNorth5
+				]
+				allowBridges false
+			}
+			{
+				id IntercoastalNorth5
+				forceStart { x 465 y 290 }
+				width 8
+				forceFixedWidth true
+				connectingNodes [
+					IntercoastalNorth6
+				]
+				allowBridges false
+			}
+			{
+				id IntercoastalNorth6
+				forceStart { x 450 y 280 }
+				width 10
+				forceFixedWidth true
+				connectingNodes [
+					;; end
+				]
+				allowBridges false
+			}
+			{
+				id IntercoastalSouth1
+				forceStart { x 522 y 225 }
+				width 8
+				forceFixedWidth true
+				connectingNodes [
+					IntercoastalSouth2
+				]
+				allowBridges false
+			}
+			{
+				id IntercoastalSouth2
+				forceStart { x 511 y 227 }
+				width 8
+				forceFixedWidth true
+				connectingNodes [
+					IntercoastalSouth3
+				]
+				allowBridges true
+			}
+			{
+				id IntercoastalSouth3
+				forceStart { x 492 y 218 }
+				width 6
+				forceFixedWidth true
+				connectingNodes [
+					IntercoastalSouth4
+				]
+				allowBridges true
+			}
+			{
+				id IntercoastalSouth4
+				forceStart { x 475 y 220 }
+				width 6
+				forceFixedWidth true
+				connectingNodes [
+					IntercoastalSouth5
+				]
+				allowBridges false
+			}
+			{
+				id IntercoastalSouth5
+				forceStart { x 462 y 215 }
+				width 8
+				forceFixedWidth true
+				connectingNodes [
+					IntercoastalSouth6
+				]
+				allowBridges true
+			}
+			{
+				id IntercoastalSouth6
+				forceStart { x 445 y 210 }
+				width 8
+				forceFixedWidth true
+				connectingNodes [
+					IntercoastalSouth7
+				]
+				allowBridges false
+			}
+			{
+				id IntercoastalSouth7
+				forceStart { x 434 y 215 }
+				width 8
+				forceFixedWidth true
+				connectingNodes [
+					;;end
+				]
+				allowBridges false
+			}
+			{
+				id LakesBayCenter
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 356 y 285 } ;top left
+					{ x 441 y 285 } ;top right
+					{ x 365 y 250 } ;bottom left
+					{ x 450 y 250 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id LakesBayBottom1
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 365 y 250 } ;top left
+					{ x 450 y 250 } ;top right
+					{ x 373 y 240 } ;bottom left
+					{ x 440 y 250 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id LakesBayBottom2
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 373 y 240 } ;top left
+					{ x 440 y 240 } ;top right
+					{ x 364 y 220 } ;bottom left
+					{ x 425 y 220 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id LakesBayBottom3
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 364 y 220 } ;top left
+					{ x 425 y 220 } ;top right
+					{ x 378 y 170 } ;bottom left
+					{ x 420 y 175 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id LakesBayBottom4
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 378 y 170 } ;top left
+					{ x 415 y 175 } ;top right
+					{ x 388 y 165 } ;bottom left
+					{ x 408 y 168 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id LakesBayBottomLeft
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 425 y 220 } ;top left
+					{ x 445 y 225 } ;top right
+					{ x 420 y 175 } ;bottom left
+					{ x 440 y 178 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id LakesBayTop1
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 364 y 300 } ;top left
+					{ x 441 y 300 } ;top right
+					{ x 356 y 285 } ;bottom left
+					{ x 441 y 285 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id LakesBayTop2
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 373 y 310 } ;top left
+					{ x 420 y 310 } ;top right
+					{ x 364 y 300 } ;bottom left
+					{ x 441 y 300 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id LakesBayTop2
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 373 y 310 } ;top left
+					{ x 420 y 310 } ;top right
+					{ x 364 y 300 } ;bottom left
+					{ x 441 y 300 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id LakesBayTop3
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 381 y 305 } ;top left
+					{ x 400 y 305 } ;top right
+					{ x 368 y 310 } ;bottom left
+					{ x 415 y 310 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id WestOutflow1
+				forceStart { x 375 y 180 }
+				width 6
+				forceFixedWidth true
+				connectingNodes [
+					WestOutflow2
+				]
+				allowBridges true
+			}
+			{
+				id WestOutflow2
+				forceStart { x 358 y 164 }
+				width 6
+				forceFixedWidth true
+				connectingNodes [
+					WestOutflow3
+				]
+				allowBridges true
+			}
+			{
+				id WestOutflow3
+				forceStart { x 326 y 160 }
+				width 6
+				forceFixedWidth true
+				connectingNodes [
+					WestOutflow4
+				]
+				allowBridges true
+			}
+			{
+				id WestOutflow4
+				forceStart { x 323 y 151 }
+				width 7
+				forceFixedWidth true
+				connectingNodes [
+					WestOutflow5
+				]
+				allowBridges false
+			}
+			{
+				id WestOutflow5
+				forceStart { x 320 y 141 }
+				width 7
+				forceFixedWidth true
+				connectingNodes [
+					WestOutflow6
+				]
+				allowBridges false
+			}
+			{
+				id WestOutflow6
+				forceStart { x 328 y 128 }
+				width 7
+				forceFixedWidth true
+				connectingNodes [
+					WestOutflow7
+				]
+				allowBridges true
+			}
+			{
+				id WestOutflow7
+				forceStart { x 339 y 106 }
+				width 9
+				forceFixedWidth true
+				connectingNodes [
+					Outflow1
+				]
+				allowBridges false
+			}
+			{
+				id EastOutflow1
+				forceStart { x 390 y 170 }
+				width 6
+				forceFixedWidth true
+				connectingNodes [
+					EastOutflow2
+				]
+				allowBridges false
+			}
+			{
+				id EastOutflow2
+				forceStart { x 382 y 140 }
+				width 5
+				forceFixedWidth true
+				connectingNodes [
+					EastOutflow3
+				]
+				allowBridges true
+			}
+			{
+				id EastOutflow3
+				forceStart { x 374 y 120 }
+				width 5
+				forceFixedWidth true
+				connectingNodes [
+					EastOutflow4
+				]
+				allowBridges true
+			}
+			{
+				id EastOutflow4
+				forceStart { x 365 y 106 }
+				width 9
+				forceFixedWidth true
+				connectingNodes [
+					Outflow1
+				]
+				allowBridges true
+			}
+			{
+				id Outflow1
+				forceStart { x 352 y 96 }
+				width 9
+				forceFixedWidth true
+				connectingNodes [
+					Outflow2
+				]
+				allowBridges true
+			}
+			{
+				id Outflow2
+				forceStart { x 339 y 81 }
+				width 9
+				forceFixedWidth true
+				connectingNodes [
+					Outflow3
+				]
+				allowBridges true
+			}
+			{
+				id Outflow3
+				forceStart { x 334 y 70 }
+				width 9
+				forceFixedWidth true
+				connectingNodes [
+					Outflow4
+				]
+				allowBridges true
+			}
+			{
+				id Outflow4
+				forceStart { x 321 y 50 }
+				width 9
+				forceFixedWidth true
+				connectingNodes [
+					;; end
+				]
+				allowBridges true
+			}
+			{
+				id WestPondTop
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 274 y 180 } ;top left
+					{ x 305 y 175 } ;top right
+					{ x 256 y 150 } ;bottom left
+					{ x 290 y 140 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id WestPondBottom
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 256 y 150 } ;top left
+					{ x 290 y 140 } ;top right
+					{ x 263 y 125 } ;bottom left
+					{ x 297 y 120 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id Pond1
+				forceStart { x 292 y 166 }
+				width 4
+				forceFixedWidth true
+				connectingNodes [
+					Pond2
+				]
+				allowBridges true
+			}
+			{
+				id Pond2
+				forceStart { x 330 y 164 }
+				width 4
+				forceFixedWidth true
+				connectingNodes [
+					
+				]
+				allowBridges false
+			}
+			{
+				id SouthCreek1
+				forceStart { x 280 y 61 }
+				width 2
+				forceFixedWidth true
+				connectingNodes [
+					SouthCreek2
+				]
+				allowBridges false
+			}
+			{
+				id SouthCreek2
+				forceStart { x 278 y 80 }
+				width 2
+				forceFixedWidth true
+				connectingNodes [
+					SouthCreek3
+				]
+				allowBridges true
+			}
+			{
+				id SouthCreek3
+				forceStart { x 298 y 88 }
+				width 2
+				forceFixedWidth true
+				connectingNodes [
+					SouthCreek4
+				]
+				allowBridges true
+			}
+			{
+				id SouthCreek4
+				forceStart { x 307 y 101 }
+				width 2
+				forceFixedWidth true
+				connectingNodes [
+					SouthCreek5
+				]
+				allowBridges true
+			}
+			{
+				id SouthCreek5
+				forceStart { x 318 y 115 }
+				width 2
+				forceFixedWidth true
+				connectingNodes [
+					SouthCreek6
+				]
+				allowBridges true
+			}
+			
+			{
+				id SouthCreek6
+				forceStart { x 326 y 118 }
+				width 2
+				forceFixedWidth true
+				connectingNodes [
+					;; end
+				]
+				allowBridges false
+			}
+			{
+				id WestCreek1
+				forceStart { x 68 y 74 }
+				width 9
+				forceFixedWidth true
+				connectingNodes [
+					WestCreek2
+				]
+				allowBridges true
+			}
+			{
+				id WestCreek2
+				forceStart { x 74 y 94 }
+				width 8
+				forceFixedWidth true
+				connectingNodes [
+					WestCreek3
+				]
+				allowBridges false
+			}
+			{
+				id WestCreek3
+				forceStart { x 80 y 112 }
+				width 7
+				forceFixedWidth true
+				connectingNodes [
+					WestCreek4
+				]
+				allowBridges false
+			}
+			{
+				id WestCreek4
+				forceStart { x 92 y 136 }
+				width 5
+				forceFixedWidth true
+				connectingNodes [
+					WestCreek5
+				]
+				allowBridges true
+			}
+			{
+				id WestCreek5
+				forceStart { x 98 y 161 }
+				width 4
+				forceFixedWidth true
+				connectingNodes [
+					WestCreek6
+				]
+				allowBridges false
+			}
+			{
+				id WestCreek6
+				forceStart { x 102 y 190 }
+				width 3
+				forceFixedWidth true
+				connectingNodes [
+					WestCreek7
+				]
+				allowBridges false
+			}
+			{
+				id WestCreek7
+				forceStart { x 117 y 221 }
+				width 2
+				forceFixedWidth true
+				connectingNodes [
+					;; end
+				]
+				allowBridges true
+			}
+			{
+				id WestCreekPond
+
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 110 y 244 } ;top left
+					{ x 122 y 236 } ;top right
+					{ x 107 y 218 } ;bottom left
+					{ x 124 y 221 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+		]
+	}
+	
+	generator {
+		totalInflux 150000
+	
+		lots [
+			{ mindensity 0.4 		lot "empty-lot-42" probfail 0.2  skipOnBoardwalk #true }
+			{ mindensity 0.00001	lot "empty-lot-22" probfail 0.2 }
+			{ mindensity 0.0 		lot "empty-lot-12" }
+		]
+
+		decoNodes {
+			maxdensity	1
+			maxappeal	1
+			centers		40
+			spread 		{ default 2 lowappeal 7 }
+			lotpercent  { default 100 lowappeal 75 }
+		}
+
+		specialBuildings {
+			policeStation	{ configs [ "police-station" ] }
+			trainStation    { configs [ "passenger-station" "cargo-station" ] }
+			civicsAndOthers [
+
+				; these are everywhere
+
+				{ configs [ "worship-regular" "school-regular" ] 
+					skipEvery { from 340 to 720 } }
+
+				{ configs [ "fire-station-small" ] 
+					skipEvery { from 800 to 900 } }
+
+				{ configs [ "school-large" ] 
+					skipEvery { from 600 to 800 } }
+
+				{ configs [ "civic-government-medium" "civic-hospital-medium" "civic-post-office-medium" ] 
+					skipEvery { from 800 to 900 } }
+
+				; everywhere but uncommon
+
+				{ configs [ "fire-station-large" ] 
+					skipEvery { from 1000 to 2000 } }
+
+				{ configs [ "worship-large" ] 
+					skipEvery { from 1200 to 2000 } }
+
+				;; extremely uncommon oustide of downtown
+
+				{ configs [ "downtown-medium-commercial" "downtown-large-commercial" ]
+					skipEvery { from 10000 to 20000 } }
+				{ configs [ "ind-union-hall" "importm-regular" "industrial-zone-large" "industrial-zone-medium" ]
+					skipEvery { from 20000 to 40000 } }
+
+				; big ones stand out too much to be sprinkled around
+				;{ configs [ "civic-government-large" "civic-hospital-large" "civic-post-office-large" "school-large" ] 
+				;	skipEvery { from 500 to 600 } }
+
+				; higher distribution in specific districts
+
+				{ configs [ "worship-large" "civic-government-large" "civic-post-office-large" ] 
+					districtTags [ downtown ]
+					skipEvery { from 10 to 20 } }
+				{ configs [ "downtown-medium-commercial" ]
+					districtTags [ downtown ]
+					skipEvery { from 800 to 1600 } }
+				{ configs [ "downtown-medium-commercial" ]
+					districtTags [ bizcenter ]
+					skipEvery { from 900 to 1800 } }
+				{ configs [ "downtown-large-commercial" ]
+					districtTags [ downtown ]
+					skipEvery { from 80 to 140 } }
+				{ configs [ "downtown-large-commercial" ]
+					districtTags [ bizcenter ]
+					skipEvery { from 10 to 20 }
+					maxPerDistrict 1 }
+
+				{ configs [  "worship-large"
+							"civic-government-large" "civic-hospital-large" "civic-post-office-large" "school-large" ] 
+					districtTags [ bizcenter ]
+					skipEvery { from 4 to 8 } }
+				{ configs [ "ind-union-hall" "importm-regular" ]
+					districtTags [ indcenter ]
+					skipEvery { from 100 to 150 }
+					maxPerDistrict 5
+				}
+				{ configs [ "industrial-zone-medium" ]
+					districtTags [ indcenter ]
+					skipEvery { from 1800 to 2200 }
+				}
+				{ configs [ "industrial-zone-large" ]
+					districtTags [ indcenter ]
+					skipEvery { from 3000 to 4000 }
+					maxPerDistrict 4
+				}
+			]
+		}
+    	nodeCenterScore 1.0 
+    	otherCenterScore 0.3
+    	otherCenterCount 3	
+
+    	lowAppealThreshold 0.3
+    	midAppealThreshold 0.7
+	}
+
+	playerStart {
+    	nodesKnownAtStart 10
+    	nodesFriendlyAtStart 4
+    	mapEdgePlacementMargin 30
+    	mapEdgePlacementPenalty 0.1
+
+    	resourcesUnlocked [
+    		;; mundane resources
+    		apple-juice grape-juice crocks malt
+    		barrels half-barrels steel-barrels bottles small-bottles
+
+    		;; materials
+    		bricks lumber
+
+    		;; flavor resources
+    		gasoline
+
+    		;; initial illegal resources
+    		neutral-alcohol moonshine cider home-brew brick-wine dirty-cash counterfeitcash cook cfood rfood rfoodsupplies lockpicks liquor-license cigarettes french75 cloverclub bloodsand boulevardier negroni french75mix cloverclubmix bloodsandmix boulevardiermix negronimix 
+
+    		;; weapons
+    		weapon-crowbar weapon-bat weapon-knife
+
+    	]
+	}
+
+	moveinScores {
+		resSameEthnicityBoost 10
+
+		emptyLotBase { from 0 to 1 }
+
+		resInitialSeeds 5
+		resResidentialAreaBoost 1
+		resCommercialAreaBoost 0
+		resIndustrialAreaBoost -4
+		resRailOrTerminalBoost -4
+		
+		indInitialSeeds 50
+		indResidentialAreaBoost -1
+		indCommercialAreaBoost 1
+		indIndustrialAreaBoost 1
+		indRailOrTerminalBoost 0.5
+
+		comInitialSeeds 50
+		comResidentialAreaBoost 1
+		comCommercialAreaBoost 0.8
+		comIndustrialAreaBoost 0
+		comRailOrTerminalBoost 0
+
+		interestingNodeProbabilities {
+			;; this means: 10% of nodes prefer to have 3 businesses, etc
+			;; they should add up to 1.0 but if they don't it's okay
+			3  0.1
+			2  0.5
+			1  0.3
+			0  0.1
+		}
+
+		;; means that 90% of nodes are allowed to have a potential
+		;; business if the interesting count is below total count
+		potentialNodeProbability 0.9
+	}
+
+	familyGenerator {
+		initialFamiliesRatio 0.75 ; initial fams compared to real businesses
+		kidsCount [ 0 0 1 2 2 3 3 3 4 4 4 5 5 6 7 ]
+		marriageRatio 0.9
+		marriageAgeRange { from 18 to 30 }
+
+		childMortalityRatio 0.05
+        childMortalityAgeRange { from 0 to 2 }
+        adultMortalityAgeRange { from 50 to 80 }
+
+		traitsPerPerson { from 1 to 3 }
+		probTraitInherited 0.8
+		probTraitOther 0.2
+
+		friendsAge { from 16 to 19 }
+		friendsCount { from 2 to 5 }
+	}
+
+	seasons {
+		seasonBlendASRWidth 15
+		resGroundColor { r 164 g 193 b 94 a 255 }
+		;comGroundColor { r 139 g 173 b 55 a 255 }
+		comGroundColor { r 164 g 193 b 94 a 255 }
+		indGroundColor { r 132 g 126 b 111 a 255 }
+
+		data [
+		{	season spring
+			dateRange { from 75 to 175 }
+			
+			foliageHueShift { from 0 to 0 }
+			foliageSaturationShift -0.1
+			groundHueShift -0.04
+			groundSaturationShift -0.1
+
+			sunColor { r 255 g 253 b 249 a 255 }
+			sunIntensity 1.2
+			ambientColor { r 179 g 184 b 209 a 255 }
+			ambientIntensity 0.1
+			fogColor { r 190 g 157 b 96 a 255 }
+			fogIntensity 0.003
+
+			weather { type rain hoursOfDay { from 21 to 24 } prob 0.7 }
+		} 
+		{	season summer
+			dateRange { from 160 to 260 }
+
+			foliageHueShift { from 0 to 0.1 }
+			foliageSaturationShift 0
+			groundHueShift -0.02
+			groundSaturationShift -0.1
+			
+			sunColor { r 255 g 247 b 230 a 255 }
+			sunIntensity 1.2
+			ambientColor { r 209 g 209 b 209 a 255 }
+			ambientIntensity 0.1
+			fogColor { r 190 g 157 b 96 a 255 }
+			fogIntensity 0.005
+
+			weather { type dust hoursOfDay { from 17 to 20 } prob 0.8 }
+		}
+		{	season fall
+			dateRange { from 245 to 345 }
+
+			foliageHueShift { from -0.14 to -0.04 }
+			foliageSaturationShift 0.1
+			groundHueShift -0.1
+			groundSaturationShift -0.2
+			
+			sunColor { r 255 g 244 b 220 a 255 }
+			sunIntensity 1.2
+			ambientColor { r 204 g 170 b 155 a 255 }
+			ambientIntensity 0.1
+			fogColor { r 212 g 164 b 47 a 255 }
+			fogIntensity 0.005
+
+			weather { type rain hoursOfDay { from 21 to 24 } prob 0.7 }
+		}
+		{	season winter
+			dateRange { from 330 to 90 }
+
+			foliageHueShift { from -0.14 to -0.04 } ;; keep fall colors
+			foliageSaturationShift 0.0
+			groundHueShift -0.1
+			groundSaturationShift -0.7
+			
+			sunColor { r 221 g 221 b 235 a 255 }
+			sunIntensity 0.9
+			ambientColor { r 128 g 144 b 196 a 255 }
+			ambientIntensity 0
+			fogColor { r 190 g 157 b 96 a 255 }
+			fogIntensity 0.007
+
+			weather { type snow hoursOfDay { from 6 to 21 } prob 0.3 }
+		}
+		]
+	}
+
+	ethnicMakeup { 
+		nationalities {
+			am 32
+			it 7
+			ru 5
+			as 2
+			af 8
+			ru 5
+			la 3
+			de 4
+			pl 5
+			hu 5
+			ir 4
+			en 4
+			at 4
+			ca 2
+			cz 2
+			sc 2
+			gr 2
+			lt 2
+			cb 2
+		}
+		skin {
+			am { names [ light medium ] proportions [ 80 20 ] }
+			cb { names [ medium dark ] proportions [ 20 80 ] }
+			it { names [ light medium ] proportions [ 80 20 ] }
+			af { names [ dark ] proportions [ 100 ] }
+			la { names [ medium ] proportions [ 100 ] }
+			as { names [ light medium ] proportions [ 80 20 ] }
+			others { names [ light ] proportions [ 100 ] }
+		}
+	}
+
+	groups [
+		{ type AgentPlayer count 2 }
+		{ type CopPlayer count 25 }
+		{ type GangPlayer count 16 }
+ 		{ type GoonPlayer count 40 }
+	]
+
+	newspaperExtras {
+		;; these are loc strings unique to this city
+		subheadsCityGeneral [ newspaper-chicago ]
+		subheadsCityDated [ newspaper-dated-chicago ]
+		subheadsCitySequences [ newspaper-seq-chicago-barrel newspaper-seq-chicago-whiskey ]
+	}
+
+} ] }

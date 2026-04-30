@@ -1,0 +1,4 @@
+interface:
+  display_name: "City of Gangsters UI Debugger"
+  short_description: "Diagnose and patch CoG UI bugs"
+  default_prompt: "Use $city-of-gangsters-ui-debugger to diagnose, stabilize, or patch a City of Gangsters UI bug using live logs, repo code, and decompiled UI sources."

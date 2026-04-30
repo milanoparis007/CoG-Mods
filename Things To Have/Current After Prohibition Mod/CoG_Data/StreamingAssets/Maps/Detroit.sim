@@ -1,0 +1,774 @@
+{ maps [ { 
+	id detroit
+	citytype detroit
+
+	;; cityname "Detroit"  		;; let's use loc instead
+	;; statename "Michigan"
+
+	citylockey	"city-name.detroit"
+	statelockey	"state-name.michigan"
+	citydesckey	"city-desc.detroit"
+	cityscreen	"Detroit Screenshot"
+	citypolunitkey	"city-pol-unit.district"
+
+	map {
+		;; logical map specification
+		mapSize        { width 400 height 400 } ;; size in world units
+		;; heatmapSpacing { width 8 height 8 }  ;; should be similar or larger than smallest block size
+		;; beadSpacing { width 1 height 1 }     ;; should be default (1, 1) unless there's a good reason :)
+
+		streetNames [ 
+			"streets.usfounders" "streets.famouspeople" "streets.usstates" "streets.uscities"
+			"streets.smalltown" "streets.trees" "streets.plants" "streets.birds" 
+			"streets.lastnames" "streets.generic" ]
+
+		nodes [
+			{
+				id GrandRiverAve
+				nodeSpacing { width 6 height 8 }
+				forceStart { x 0 y 275 }
+				forceAngle -160
+				forceMaxSize 200
+				forceMaxSpread { width 70 height 1 }
+				relativeSpeed 2
+			;	railCost 50
+				dontSkipRoads #true
+			}
+			{
+				id GratiotAve
+				nodeSpacing { width 6 height 8 }
+				forceStart { x 325 y 399 }
+				forceAngle 120
+				forceMaxSize 200
+				forceMaxSpread { width 150 height 1 }
+				relativeSpeed 2
+			;	railCost 50
+				dontSkipRoads #true
+			}
+			{
+				id MichiganAve
+				forceStart { x 0 y 157 }
+				nodeSpacing { width 8 height 6 }
+				forceAngle 0
+				forceMaxSize 200
+				forceMaxSpread { width 80 height 1 }
+				relativeSpeed 1
+				dontSkipRoads #true
+			}
+			{
+				id Downtown
+				nodeSpacing { width 12 height 12 }
+				forceStart { x 207 y 158 }
+				forceMaxSize 80
+				forceAngle -35
+				dontSkipRoads #true
+				initialNames [ "streets.usfounders" ]
+				relativeSpeed 1
+				stopAtWater #true
+			}
+			{
+				id Jefferson
+				nodeSpacing { width 6 height 8 }
+				forceStart { x 270 y 194 }
+				forceMaxSize 80
+				forceMaxSpread { width 90 height 1 } 
+				forceAngle -20
+				dontSkipRoads #true
+				relativeSpeed 2
+			}
+			{
+				id Corktown
+				nodeSpacing { width 10 height 10 }
+				forceStart { x 170 y 150 }
+				forceAngle -30
+				relativeSpeed 1
+				forceMaxSize 90
+				stopAtWater #true
+			}
+			{
+				id NorthGrid
+				nodeSpacing { width 12 height 12 }
+				forceStart { x 197 y 337 }
+				forceAngle -35
+				forceMaxSize 180
+			}
+			{
+				id EastGrid
+				nodeSpacing { width 12 height 12 }
+				forceStart { x 270 y 228 }
+				forceAngle -40
+				relativeSpeed 1
+				forceMaxSize 120
+			}
+			{
+				id WestGrid
+				nodeSpacing { width 10 height 10 }
+				forceStart { x 53 y 223 }
+				forceAngle -25
+				forceMaxSize 150
+			}
+			{
+				id Dearborn
+				nodeSpacing { width 10 height 10 }
+				forceStart { x 50 y 150 }
+				forceAngle -25
+				forceMaxSize 150
+			}
+			{
+				id Grandmont
+				nodeSpacing { width 10 height 10 }
+				forceStart { x 31 y 340 }
+				forceAngle -25
+				forceMaxSize 80
+			}
+			{
+				id GrossePointeWoods
+				nodeSpacing { width 10 height 10 }
+				forceAngle -10
+				relativeSpeed 1
+				forceStart { x 382 y 344 }
+				forceMaxSize 120
+			}
+			{
+				id Canada
+				nodeSpacing { width 12 height 12 }
+				forceAngle 15
+				relativeSpeed 1
+				forceStart { x 271 y 111 }
+				forceMaxSize 150
+				allowAsIsland #true
+				stopAtWater #true
+			}	
+			
+		]
+
+		rails [
+			{
+				id one
+				nodes [
+					{ x 61 y 122 }
+					{ x 166 y 230 }
+					{ x 262 y 365 }
+				]
+			}
+			{
+				id cc
+				random true 
+				randomRect { x 299 y 239 width 25 height 25 }
+			}
+			{
+				id rr
+				random true 
+				randomRect { x 71 y 47 width 25 height 25 }
+			}
+			{
+				id rr2
+				random true
+				randomRect { x 182 y 307 width 180 height 90 }
+			}
+			{
+				id canada-random
+				random true
+				randomRect { x 226 y 62 width 50 height 60 }
+			}
+		]
+		districts [
+			{
+				tags [ downtown bizcenter ]
+				locname "districts.downtown"
+				start { x 214 y 180 } radius 25
+			}
+			{
+				tags [ bizcenter ]
+				locname "districts.highland-park"
+				start { x 144 y 278 } radius 20
+			}
+			{
+				tags [ indcenter ]
+				locname "districts.dearborn"
+				start { x 51 y 144 } radius 50
+			}
+			{
+				tags [ indcenter ]
+				locname "districts.conner-creek"
+				start { x 299 y 239 } radius 40
+			}
+			{
+				tags [ indcenter ]
+				locname "districts.hamtramck"
+				start { x 209 y 246 } radius 30
+			}
+			{
+				tags [ bizcenter ]
+				locname "districts.grandmont-rosedale"
+				start { x 31 y 340 } radius 20
+			}
+			{
+				tags [ bizcenter ]
+				locname "districts.grosse-pointe"
+				start { x 359 y 271 } radius 15
+			}
+			{
+				tags [ canada ]
+				locname "districts.canada"
+				start { x 283 y 83 } radius 105
+			}
+			{
+				tags [ canada-two ]
+				locname "districts.canada-two"
+				start { x 362 y 125 } radius 60
+			}
+		]
+	}
+
+	terrain {
+		;; terrain specification
+		chunktiles { width 40 height 40 }  ;; max world size of each chunk tile (could be less)
+		tileverts { width 1 height 1 } ;; number of vertices per tile, floats allowed to break up the grid
+		terrainscale 15
+
+		groundheight 0.5
+		waterheight -0.2
+		zwobble 0.01
+		; xywobble 0
+		mountainnodes [ 
+			
+		]
+
+		waternodes [
+			{
+				id LakeStClair
+			;	forceStart { x 300 y 400 }
+				width 20
+				deformers [
+					{ x 350 y 206 } ;top left
+					{ x 400 y 270 } ;top right
+					{ x 350 y 173 } ;bottom left
+					{ x 400 y 163 } ;bottom right
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id DetroitRiverMouth
+				forceStart { x 350 y 192 }
+				width 25
+				forceFixedWidth true
+				connectingNodes [
+					BelleIsleEast
+				]
+				allowBridges false
+			}
+			{
+				id BelleIsleEast
+				forceStart { x 318 y 188 }
+				width 25
+				forceFixedWidth true
+				connectingNodes [
+					BelleIsleNorth1
+					BelleIlseSouth1
+				]
+				allowBridges false
+			}
+			{
+				id BelleIsleNorth1
+				forceStart { x 322 y 192 }
+				width 8
+				connectingNodes [
+					BelleIsleNorth2
+				]
+				allowBridges false
+			}
+			{
+				id BelleIsleNorth2
+				forceStart { x 300 y 195 }
+				width 8
+				connectingNodes [
+					BelleIsleNorth3
+				]
+				allowBridges false
+			}
+			{
+				id BelleIsleNorth3
+				forceStart { x 255 y 175 }
+				width 9
+				connectingNodes [
+					DetroitRiverMain1
+				]
+				allowBridges false
+			}
+			{
+				id BelleIlseSouth1
+				forceStart { x 322 y 182 }
+				width 8
+				connectingNodes [
+					BelleIlseSouth2
+				]
+				allowBridges false
+			}
+			{
+				id BelleIlseSouth2
+				forceStart { x 310 y 166 }
+				width 8
+				connectingNodes [
+					BelleIlseSouth3
+				]
+				allowBridges false
+			}
+			{
+				id BelleIlseSouth3
+				forceStart { x 258 y 166 }
+				width 8
+				connectingNodes [
+					DetroitRiverMain1
+				]
+				allowBridges false
+			}
+			{
+				id DetroitRiverMain1
+				forceStart { x 185 y 140 }
+				width 11
+				connectingNodes [
+					DetroitRiverMain2
+				]
+				allowBridges false
+			}
+			{
+				id DetroitRiverMain2
+				forceStart { x 153 y 108 }
+				width 10
+				connectingNodes [
+					DetroitRiverMain3
+				]
+				allowBridges false
+			}
+			{
+				id DetroitRiverMain3
+				forceStart { x 127 y 42 }
+				width 14
+				connectingNodes [
+					FightingIslandSplit
+				]
+				allowBridges false
+			}
+			{
+				id FightingIslandSplit
+				forceStart { x 120 y 20 }
+				width 18
+				connectingNodes [
+					SouthExit1
+					SouthExit2
+				]
+				allowBridges false
+			}
+			{
+				id SouthExit1
+				forceStart { x 90 y 0 }
+				width 12
+				allowBridges false
+			}
+			{
+				id SouthExit2
+				forceStart { x 130 y 0 }
+				width 8
+				allowBridges false
+			}
+			{
+				id RougeRiverMouth
+				forceStart { x 132 y 66 }
+				width 4
+				connectingNodes [
+					RougeRiver1
+				]
+			}
+			{
+				id RougeRiver1
+				forceStart { x 116 y 75 }
+				width 4
+				connectingNodes [
+					RougeRiver2
+				]
+			}
+			{
+				id RougeRiver2
+				forceStart { x 97 y 82 }
+				width 4
+				connectingNodes [
+					RougeRiver3
+				]
+			}
+			{
+				id RougeRiver3
+				forceStart { x 88 y 98 }
+				width 4
+				connectingNodes [
+					RougeRiver4
+				]
+			}
+			{
+				id RougeRiver4
+				forceStart { x 82 y 103 }
+				width 5
+				connectingNodes [
+					RougeRiverPool
+				]
+			}
+			{
+				id RougeRiverPool
+				forceStart { x 74 y 101 }
+				width 7
+				connectingNodes [
+					RougeRiver5
+				]
+			}
+			{
+				id RougeRiver5
+				forceStart { x 72 y 97 }
+				width 6
+				connectingNodes [
+					RougeRiver6
+				]
+			}
+			{
+				id RougeRiver6
+				forceStart { x 62 y 94 }
+				width 5
+				connectingNodes [
+					RougeRiver7
+				]
+			}
+			{
+				id RougeRiver7
+				forceStart { x 50 y 102 }
+				width 4
+				connectingNodes [
+					RougeRiver8
+				]
+			}
+			{
+				id RougeRiver8
+				forceStart { x 32 y 102 }
+				width 3
+				connectingNodes [
+					RougeRiver9
+				]
+			}
+			{
+				id RougeRiver9
+				forceStart { x 0 y 125 }
+				width 2
+			}
+
+		]
+	}
+	
+	generator {
+		totalInflux 140000
+
+		lots [
+			{ mindensity 0.8 		lot "empty-lot-42" probfail 0.2 }
+			{ mindensity 0.00001	lot "empty-lot-22" probfail 0.2 }
+			{ mindensity 0.0 		lot "empty-lot-12" }
+		]
+
+		decoNodes {
+			maxdensity	1
+			maxappeal	1
+			centers		40
+			spread 		{ default 2 lowappeal 5 }
+			lotpercent  { default 100 lowappeal 75 }
+		}
+
+		specialBuildings {
+			policeStation	{ configs [ "police-station" ] }
+			trainStation    { configs [ "passenger-station" "cargo-station" ] }
+			civicsAndOthers [
+
+				; these are everywhere
+
+				{ configs [ "worship-regular" "school-regular" ] 
+					skipEvery { from 340 to 720 } }
+
+				{ configs [ "fire-station-small" ] 
+					skipEvery { from 800 to 900 } }
+
+				{ configs [ "school-large" ] 
+					skipEvery { from 600 to 800 } }
+
+				{ configs [ "civic-government-medium" "civic-hospital-medium" "civic-post-office-medium" ] 
+					skipEvery { from 800 to 900 } }
+
+				; everywhere but uncommon
+
+				{ configs [ "fire-station-large" ] 
+					skipEvery { from 100 to 2000 } }
+
+				{ configs [ "worship-large" ] 
+					skipEvery { from 1200 to 2000 } }
+
+				;; extremely uncommon oustide of downtown
+
+				{ configs [ "downtown-medium-commercial" "downtown-large-commercial" ]
+					skipEvery { from 10000 to 20000 } }
+				{ configs [ "ind-union-hall" "importm-regular" "industrial-zone-large" "industrial-zone-medium" ]
+					skipEvery { from 20000 to 40000 } }
+
+				; big ones stand out too much to be sprinkled around
+				;{ configs [ "civic-government-large" "civic-hospital-large" "civic-post-office-large" "school-large" ] 
+				;	skipEvery { from 500 to 600 } }
+
+				; higher distribution in specific districts
+
+				{ configs [ "worship-large" "civic-government-large" "civic-post-office-large" ] 
+					districtTags [ downtown ]
+					skipEvery { from 10 to 20 } }
+				{ configs [ "downtown-medium-commercial" ]
+					districtTags [ downtown ]
+					skipEvery { from 800 to 1600 } }
+				{ configs [ "downtown-medium-commercial" ]
+					districtTags [ bizcenter ]
+					skipEvery { from 900 to 1800 } }
+				{ configs [ "downtown-large-commercial" ]
+					districtTags [ downtown ]
+					skipEvery { from 80 to 140 } }
+				{ configs [ "downtown-large-commercial" ]
+					districtTags [ bizcenter ]
+					skipEvery { from 10 to 20 }
+					maxPerDistrict 1 }
+
+				{ configs [ "worship-large" 
+							"civic-government-large" "civic-hospital-large" "civic-post-office-large" "school-large" ] 
+					districtTags [ bizcenter ]
+					skipEvery { from 4 to 8 } }
+				{ configs [ "ind-union-hall" "importm-regular" ]
+					districtTags [ indcenter ]
+					skipEvery { from 100 to 150 }
+					maxPerDistrict 5
+				}
+				{ configs [ "industrial-zone-medium" ]
+					districtTags [ indcenter ]
+					skipEvery { from 1800 to 2200 }
+				}
+				{ configs [ "industrial-zone-large" ]
+					districtTags [ indcenter ]
+					skipEvery { from 3000 to 4000 }
+					maxPerDistrict 4
+				}
+			]
+		}
+    	nodeCenterScore 1.0 
+    	otherCenterScore 0.3
+    	otherCenterCount 3	
+
+    	lowAppealThreshold 0.3
+    	midAppealThreshold 0.7
+	}
+
+	playerStart {
+    	nodesKnownAtStart 10
+    	nodesFriendlyAtStart 4
+    	mapEdgePlacementMargin 30
+    	mapEdgePlacementPenalty 0.1
+
+    	resourcesUnlocked [
+    		;; mundane resources
+    		apple-juice grape-juice crocks malt fruit-other
+    		barrels half-barrels steel-barrels bottles small-bottles
+
+    		;; materials
+    		bricks lumber
+
+    		;; flavor resources
+    		gasoline
+
+    		;; initial illegal resources
+    		neutral-alcohol moonshine cider home-brew brick-wine dirty-cash counterfeitcash cook cfood rfood rfoodsupplies lockpicks liquor-license cigarettes fruit-wine french75 cloverclub bloodsand boulevardier negroni french75mix cloverclubmix bloodsandmix boulevardiermix negronimix
+
+    		;; weapons
+    		weapon-crowbar weapon-bat weapon-knife
+    	]
+
+    	copsSkipDistricts [ canada canada-two ]
+	}
+
+	moveinScores {
+		resSameEthnicityBoost 10
+
+		emptyLotBase { from 0 to 1 }
+
+		resInitialSeeds 5
+		resResidentialAreaBoost 1
+		resCommercialAreaBoost 0
+		resIndustrialAreaBoost -4
+		resRailOrTerminalBoost -4
+		
+		indInitialSeeds 50
+		indResidentialAreaBoost -1
+		indCommercialAreaBoost 1
+		indIndustrialAreaBoost 1
+		indRailOrTerminalBoost 0.5
+
+		comInitialSeeds 50
+		comResidentialAreaBoost 1
+		comCommercialAreaBoost 0.8
+		comIndustrialAreaBoost 0
+		comRailOrTerminalBoost 0
+
+		interestingNodeProbabilities {
+			;; this means: 10% of nodes prefer to have 3 businesses, etc
+			;; they should add up to 1.0 but if they don't it's okay
+			3  0.1
+			2  0.5
+			1  0.3
+			0  0.1
+		}
+
+		;; means that 90% of nodes are allowed to have a potential
+		;; business if the interesting count is below total count
+		potentialNodeProbability 0.9
+	}
+
+	familyGenerator {
+		initialFamiliesRatio 0.75 ; initial fams compared to real businesses
+		kidsCount [ 0 0 1 2 2 3 3 3 4 4 4 5 5 6 7 ]
+		marriageRatio 0.9
+		marriageAgeRange { from 18 to 30 }
+
+		childMortalityRatio 0.05
+        childMortalityAgeRange { from 0 to 2 }
+        adultMortalityAgeRange { from 50 to 80 }
+
+		traitsPerPerson { from 1 to 3 }
+		probTraitInherited 0.6
+		probTraitOther 0.4
+
+		friendsAge { from 16 to 19 }
+		friendsCount { from 2 to 8 }
+	}
+
+	seasons {
+		seasonBlendASRWidth 15
+		resGroundColor { r 164 g 193 b 94 a 255 }
+		;comGroundColor { r 139 g 173 b 55 a 255 }
+		comGroundColor { r 164 g 193 b 94 a 255 }
+		indGroundColor { r 132 g 126 b 111 a 255 }
+
+		data [
+		{	season spring
+			dateRange { from 75 to 175 }
+			
+			foliageHueShift { from 0 to 0 }
+			foliageSaturationShift -0.1
+			groundHueShift -0.04
+			groundSaturationShift -0.1
+
+			sunColor { r 255 g 253 b 249 a 255 }
+			sunIntensity 1.2
+			ambientColor { r 179 g 184 b 209 a 255 }
+			ambientIntensity 0.1
+			fogColor { r 190 g 157 b 96 a 255 }
+			fogIntensity 0.003
+
+			weather { type rain hoursOfDay { from 21 to 24 } prob 0.3 }
+		} 
+		{	season summer
+			dateRange { from 160 to 260 }
+
+			foliageHueShift { from 0 to 0.1 }
+			foliageSaturationShift 0
+			groundHueShift -0.02
+			groundSaturationShift -0.1
+			
+			sunColor { r 255 g 247 b 230 a 255 }
+			sunIntensity 1.2
+			ambientColor { r 209 g 209 b 209 a 255 }
+			ambientIntensity 0.1
+			fogColor { r 190 g 157 b 96 a 255 }
+			fogIntensity 0.005
+
+			weather { type dust hoursOfDay { from 17 to 20 } prob 0.3 }
+		}
+		{	season fall
+			dateRange { from 245 to 345 }
+
+			foliageHueShift { from -0.14 to -0.04 }
+			foliageSaturationShift 0.1
+			groundHueShift -0.1
+			groundSaturationShift -0.2
+			
+			sunColor { r 255 g 244 b 220 a 255 }
+			sunIntensity 1.2
+			ambientColor { r 204 g 170 b 155 a 255 }
+			ambientIntensity 0.1
+			fogColor { r 212 g 164 b 47 a 255 }
+			fogIntensity 0.005
+
+			weather { type rain hoursOfDay { from 21 to 24 } prob 0.3 }
+		}
+		{	season winter
+			dateRange { from 330 to 90 }
+
+			foliageHueShift { from -0.14 to -0.04 } ;; keep fall colors
+			foliageSaturationShift 0.0
+			groundHueShift -0.1
+			groundSaturationShift -0.7
+			
+			sunColor { r 221 g 221 b 235 a 255 }
+			sunIntensity 0.9
+			ambientColor { r 128 g 144 b 196 a 255 }
+			ambientIntensity 0
+			fogColor { r 190 g 157 b 96 a 255 }
+			fogIntensity 0.007
+
+			weather { type snow hoursOfDay { from 6 to 21 } prob 0.3 }
+		}
+		]
+
+		;temperature { from -27.0 to 49.0 }
+		;springHues { from 0.0 to 0.1 }
+		;fallHues { from -0.16 to 0.0 }
+	}
+
+	ethnicMakeup {
+		nationalities {
+			am 29
+			ca 10
+			la 4
+			af 5
+			as 3
+			pl 5
+			de 5
+			ru 6
+			en 5
+			it 6
+			hu 4
+			at 4
+			ir 6
+			nl 3
+			sc 3
+			ju 1
+			gr 1
+		}
+		skin {
+			am { names [ light ] proportions [ 100 ] }
+			it { names [ light medium ] proportions [ 80 20 ] }
+			as { names [ light medium ] proportions [ 80 20 ] }
+			ju { names [ light medium ] proportions [ 80 20 ] }
+			af { names [ dark ] proportions [ 100 ] }
+			la { names [ medium ] proportions [ 100 ] }
+			gr { names [ light medium ] proportions [ 80 20 ] }
+			others { names [ light ] proportions [ 100 ] }
+		}
+	}
+	
+
+	groups [
+		{ type AgentPlayer count 1 }
+		{ type CopPlayer count 20 }
+		{ type GangPlayer count 16 }
+ 		{ type GoonPlayer count 35 }
+	]
+
+	newspaperExtras { }
+
+} ] }

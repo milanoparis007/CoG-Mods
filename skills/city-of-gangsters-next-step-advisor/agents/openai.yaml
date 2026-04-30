@@ -1,0 +1,4 @@
+interface:
+  display_name: "City of Gangsters Next Step Advisor"
+  short_description: "Prioritize CoG mod next steps"
+  default_prompt: "Use $city-of-gangsters-next-step-advisor to review the current City of Gangsters mod repo and recommend the highest-value next steps from live code, AppData logs, method-heavy files, and recent additions."

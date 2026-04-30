@@ -1,0 +1,1390 @@
+﻿{
+ map {
+  groups [{count 2 type 5} {count 46 type 2} {count 44 type 3} {count 70 type 4}]
+  seasons {
+   indGroundColor {
+    b 111
+    a 255
+    r 132
+    g 126}
+   comGroundColor {
+    b 94
+    a 255
+    r 164
+    g 193}
+   seasonBlendASRWidth 15
+   resGroundColor {
+    b 94
+    a 255
+    r 164
+    g 193}
+   data [{
+     dateRange {from 75 to 175}
+     foliageSaturationShift -0.1
+     ambientIntensity 0.1
+     weather {hoursOfDay {from 21 to 24} type 1 prob 0.3}
+     sunColor {
+      b 249
+      a 255
+      r 255
+      g 253}
+     fogColor {
+      b 96
+      a 255
+      r 190
+      g 157}
+     groundHueShift -0.0399
+     ambientColor {
+      b 209
+      a 255
+      r 179
+      g 184}
+     fogIntensity 0.003
+     groundSaturationShift -0.1
+     sunIntensity 1.2}
+    {
+     dateRange {from 160 to 260}
+     fogColor {
+      b 96
+      a 255
+      r 190
+      g 157}
+     season 1
+     ambientIntensity 0.1
+     weather {hoursOfDay {from 17 to 20} type 3 prob 0.8}
+     sunColor {
+      b 230
+      a 255
+      r 255
+      g 247}
+     groundHueShift -0.0199
+     ambientColor {
+      b 209
+      a 255
+      r 209
+      g 209}
+     fogIntensity 0.0049
+     groundSaturationShift -0.1
+     sunIntensity 1.2
+     foliageHueShift {to 0.1}}
+    {
+     ambientColor {
+      b 155
+      a 255
+      r 204
+      g 170}
+     groundSaturationShift -0.2
+     weather {hoursOfDay {from 21 to 24} type 1 prob 0.3}
+     fogIntensity 0.0049
+     foliageHueShift {from -0.14 to -0.0399}
+     groundHueShift -0.1
+     sunIntensity 1.2
+     dateRange {from 245 to 345}
+     fogColor {
+      b 47
+      a 255
+      r 212
+      g 164}
+     season 2
+     ambientIntensity 0.1
+     sunColor {
+      b 220
+      a 255
+      r 255
+      g 244}
+     foliageSaturationShift 0.1}
+    {
+     dateRange {from 330 to 90}
+     fogColor {
+      b 96
+      a 255
+      r 190
+      g 157}
+     season 3
+     weather {hoursOfDay {from 6 to 21} type 2 prob 0.5}
+     sunColor {
+      b 235
+      a 255
+      r 221
+      g 221}
+     groundHueShift -0.1
+     ambientColor {
+      b 196
+      a 255
+      r 128
+      g 144}
+     fogIntensity 0.007
+     groundSaturationShift -0.6999
+     sunIntensity 0.8999
+     foliageHueShift {from -0.14 to -0.0399}}]}
+  map {
+   nodes [{
+     id "Ogden"
+     forceStart {x 257 y 324}
+     forceAngle 60
+     railCost 50
+     initialNames []
+     nodeSpacing {width 8 height 8}
+     forceMaxSpread { width 1 height 20 }
+     dontSkipRoads #true
+     forceMaxSize 200}
+    {
+     id "Archer"
+     forceStart {x 282 y 252}
+     forceAngle 55
+     railCost 50
+     initialNames []
+     forceBridges #true
+     nodeSpacing {width 8 height 8}
+     forceMaxSpread { width 1 height 20 }
+     dontSkipRoads #true
+     forceMaxSize 200}
+    {
+     id "Downtown"
+     forceStart {x 379 y 352}
+     forceAngle 90
+     dontSkipRoads #true
+     forceBridges #true
+     initialNames []
+     nodeSpacing {width 10 height 10}
+     forceMaxSize 350}
+    {
+     id "Milwaukee"
+     forceStart {x 289 y 437}
+     forceAngle -35
+     initialNames []
+     railCost 50
+     nodeSpacing {width 6 height 8}
+     forceMaxSpread { width 1 height 20 }
+     dontSkipRoads #true
+     forceMaxSize 200}
+    {
+     id "Clark"
+     forceStart {x 341 y 472}
+     forceAngle 65
+     initialNames []
+     railCost 50
+     nodeSpacing {width 6 height 8}
+     forceMaxSpread { width 20 height 1 }
+     dontSkipRoads #true
+     forceMaxSize 200}
+    {
+     id "Lincoln"
+     forceStart {x 383 y 472}
+     forceAngle 71
+     initialNames []
+     railCost 50
+     nodeSpacing {width 6 height 8}
+     forceMaxSpread { width 20 height 1 }
+     dontSkipRoads #true
+     forceMaxSize 200}
+    {
+     id "NorthGrid"
+     forceStart {x 303 y 522}
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 10 height 10}
+     forceMaxSize 800}
+    {
+     id "NorthWest Grid"
+     forceStart {x 256 y 440}
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 10 height 10}
+     forceMaxSize 200}
+    {
+     id "Grand"
+     forceStart {x 228 y 416}
+     forceAngle 13
+     initialNames []
+     railCost 50
+     nodeSpacing {width 6 height 8}
+     forceMaxSpread { width 20 height 1 }
+     dontSkipRoads #true
+     forceMaxSize 800}
+    {
+     id "WestSide Grid"
+     forceStart {x 225 y 347}
+     forceAngle 0
+     initialNames []
+     nodeSpacing {width 8 height 10}
+     forceMaxSize 250}
+    {
+     id "Southside Grid"
+     forceStart {x 386 y 235}
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 8 height 8}
+     forceMaxSize 300}
+    {
+     id "Southwest Grid"
+     forceStart {x 312 y 235}
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 8 height 10}
+     forceMaxSize 300}
+    {
+     id "Cicero"
+     forceStart {x 164 y 335}
+     railCost 50
+     forceAngle 0
+     initialNames []
+     forceMaxSpread { width 1 height 100 }
+     forceBridges #true
+     nodeSpacing {width 12 height 12}
+     dontSkipRoads #true
+     forceMaxSize 400}
+    {
+     id "95th"
+     forceStart {x 286 y 144}
+     railCost 50
+     forceAngle 0
+     initialNames []
+     forceMaxSpread { width 40 height 1 }
+     forceBridges #true
+     nodeSpacing {width 8 height 10}
+     dontSkipRoads #true
+     forceMaxSize 400}
+    {
+     id "Irving"
+     forceStart {x 261 y 550}
+     railCost 50
+     forceAngle 0
+     initialNames []
+     forceMaxSpread { width 100 height 1 }
+     forceBridges #true
+     nodeSpacing {width 8 height 10}
+     dontSkipRoads #true
+     forceMaxSize 400}
+    {
+     id "West Chicago Burbs Interstate"
+     forceStart {x 23 y 531}
+     relativeSpeed 4
+     forceBridges #true
+     dontSkipRoads #true
+     forceMaxSpread { width 1 height 40 }
+     forceAngle 0
+     connection #true
+     initialNames []
+     nodeSpacing {width 8 height 10}
+     forceMaxSize 100}
+    {
+     id "West Chicago Express"
+     forceStart {x 58 y 304}
+     relativeSpeed 4
+     forceBridges #true
+     dontSkipRoads #true
+     forceMaxSpread { width 100 height 1 }
+     forceAngle 0
+     connection #true
+     initialNames []
+     nodeSpacing {width 6 height 8}
+     forceMaxSize 100}
+    {
+     id "Joliet Express"
+     forceStart {x 105 y 97}
+     relativeSpeed 4
+     forceBridges #true
+     dontSkipRoads #true
+     forceMaxSpread { width 1 height 40 }
+     forceAngle 60
+     connection #true
+     initialNames []
+     nodeSpacing {width 6 height 8}
+     forceMaxSize 100}
+    {
+     id "Joliet"
+     forceStart {x 49 y 50}
+     dontSkipRoads #true
+     forceMaxSpread { width 80 height 80 }
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 12 height 12}
+     forceMaxSize 100}
+    {
+     id "Indiana1"
+     forceStart {x 417 y 108}
+     relativeSpeed 4
+     forceBridges #true
+     dontSkipRoads #true
+     forceMaxSpread { width 1 height 20 }
+     forceAngle -43
+     connection #true
+     initialNames []
+     nodeSpacing {width 6 height 8}
+     forceMaxSize 100}
+    {
+     id "Indiana2"
+     forceStart {x 522 y 76}
+     relativeSpeed 4
+     dontSkipRoads #true
+     forceMaxSpread { width 40 height 1 }
+     forceAngle 0
+     connection #true
+     initialNames []
+     nodeSpacing {width 6 height 8}
+     forceMaxSize 100}
+    {
+     id "Gary"
+     forceStart {x 579 y 56}
+     dontSkipRoads #true
+     forceMaxSpread { width 40 height 40 }
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 12 height 12}
+     forceMaxSize 100}
+    {
+     id "Lake Shore Drive"
+     forceStart {x 420 y 325}
+     relativeSpeed 4
+     forceBridges #true
+     dontSkipRoads #true
+     forceMaxSpread { width 90 height 1 }
+     forceAngle 90
+     connection #true
+     initialNames []
+     nodeSpacing {width 12 height 12}
+     forceMaxSize 100}
+    {
+     id "West Loop"
+     forceStart {x 275 y 348}
+     forceAngle 0
+     initialNames []
+     nodeSpacing {width 8 height 8}
+     forceMaxSize 400}
+    {
+     id "Grid Connection"
+     forceStart {x 21 y 748}
+     relativeSpeed 2
+     forceBridges #true
+     railCost 50
+     dontSkipRoads #true
+     forceMaxSpread { width 1 height 100 }
+     forceAngle 0
+     connection #true
+     initialNames []
+     nodeSpacing {width 12 height 12}
+     forceMaxSize 400}
+    {
+     id "West Mil Interstate"
+     forceStart {x 107 y 1232}
+     relativeSpeed 4
+     forceBridges #true
+     dontSkipRoads #true
+     forceMaxSpread { width 1 height 40 }
+     forceAngle 90
+     connection #true
+     initialNames []
+     nodeSpacing {width 6 height 10}
+     forceMaxSize 100}
+    {
+     id "Grid End 1"
+     forceStart {x 190 y 1265}
+     forceAngle 0
+     forceBridges #true
+     dontSkipRoads #true
+     initialNames []
+     forceMaxSpread { width 1 height 100 }
+     nodeSpacing {width 12 height 12}
+     forceMaxSize 100}
+    {
+     id "Grid End 2"
+     forceStart {x 280 y 902}
+     forceAngle 0
+     forceBridges #true
+     dontSkipRoads #true
+     initialNames []
+     forceMaxSpread { width 100 height 1 }
+     nodeSpacing {width 10 height 12}
+     forceMaxSize 200}
+    {
+     id "MilDt"
+     forceStart {x 401 y 1154}
+     allowAsIsland #true
+     forceAngle 76
+     initialNames []
+     nodeSpacing {width 10 height 12}
+     dontSkipRoads #true
+     forceMaxSize 250}
+    {
+     id "MilDt2"
+     forceStart {x 369 y 1201}
+     allowAsIsland #true
+     forceAngle 76
+     initialNames []
+     nodeSpacing {width 10 height 10}
+     dontSkipRoads #true
+     forceMaxSize 250}
+    {
+     id "MilUT"
+     forceStart {x 376 y 1266}
+     allowAsIsland #true
+     forceAngle 76
+     initialNames []
+     nodeSpacing {width 10 height 10}
+     dontSkipRoads #true
+     forceMaxSize 250}
+    {
+     id "MilNorth Grid East"
+     forceStart {x 414 y 1350}
+     allowAsIsland #true
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 12 height 12}
+     dontSkipRoads #true
+     forceMaxSize 100}
+    {
+     id "MilNorth Grid West"
+     forceStart {x 271 y 1362}
+     allowAsIsland #true
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 12 height 12}
+     dontSkipRoads #true
+     forceMaxSize 250}
+    {
+     id "MilUp West Grid"
+     forceStart {x 281 y 1286}
+     allowAsIsland #true
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 10 height 10}
+     forceMaxSize 250}
+    {
+     id "MilUp Angle"
+     forceStart {x 238 y 1266}
+     forceMaxSpread { width 1 height 20 }
+     allowAsIsland #true
+     forceAngle -35
+     initialNames []
+     nodeSpacing {width 10 height 10}
+     dontSkipRoads #true
+     forceMaxSize 100}
+    {
+     id "Mil West Grid"
+     forceStart {x 289 y 1229}
+     allowAsIsland #true
+     forceAngle 82
+     initialNames []
+     nodeSpacing {width 10 height 10}
+     forceMaxSize 250}
+    {
+     id "MilUp SouthWest Grid"
+     forceStart {x 247 y 1098}
+     allowAsIsland #true
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 12 height 12}
+     forceMaxSize 250}
+    {
+     id "MilUp SouthWest Grid 2"
+     forceStart {x 333 y 1052}
+     allowAsIsland #true
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 12 height 12}
+     forceMaxSize 250}
+    {
+     id "Mil SouthWest Angle 1"
+     forceStart {x 246 y 1019}
+     allowAsIsland #true
+     railCost 50
+     forceAngle 28
+     initialNames []
+     nodeSpacing {width 8 height 10}
+     forceMaxSpread { width 1 height 20 }
+     dontSkipRoads #true
+     forceMaxSize 40}
+    {
+     id "Mil SouthWest Angle 2"
+     forceStart {x 288 y 971}
+     allowAsIsland #true
+     railCost 50
+     forceAngle 35
+     initialNames []
+     nodeSpacing {width 10 height 10}
+     forceMaxSpread { width 1 height 20 }
+     dontSkipRoads #true
+     forceMaxSize 40}
+    {
+     id "Mil Far SouthWest Grid"
+     forceStart {x 252 y 940}
+     allowAsIsland #true
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 12 height 12}
+     forceMaxSize 100}
+    {
+     id "Industrial Mid"
+     forceStart {x 286 y 1177}
+     allowAsIsland #true
+     forceAngle 0
+     initialNames []
+     nodeSpacing {width 12 height 12}
+     dontSkipRoads #true
+     forceMaxSize 100}
+    {
+     id "South Jones Grid"
+     forceStart {x 394 y 945}
+     allowAsIsland #true
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 10 height 10}
+     forceMaxSize 80}
+    {
+     id "South Jones Angle"
+     forceStart {x 436 y 940}
+     allowAsIsland #true
+     forceAngle 76
+     initialNames []
+     nodeSpacing {width 8 height 10}
+     forceMaxSize 100}
+    {
+     id "Midtown"
+     forceStart {x 348 y 1157}
+     allowAsIsland #true
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 10 height 10}
+     forceMaxSize 350}
+    {
+     id "Jones"
+     forceStart {x 425 y 1034}
+     forceAngle 76
+     allowAsIsland #true
+     initialNames []
+     forceBridges #true
+     nodeSpacing {width 10 height 12}
+     dontSkipRoads #true
+     forceMaxSize 100}
+    {
+     id "Waukesha"
+     forceStart {x 30 y 1197}
+     dontSkipRoads #true
+     forceMaxSpread { width 50 height 50 }
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 12 height 12}
+     forceMaxSize 100}
+    {
+     id "Elmhurst"
+     forceStart {x 69 y 426}
+     dontSkipRoads #true
+     railCost 50
+     forceMaxSpread { width 30 height 30 }
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 10 height 10}
+     forceMaxSize 50}
+    {
+     id "Schaumburg"
+     forceStart {x 68 y 580}
+     dontSkipRoads #true
+     forceMaxSpread { width 40 height 40 }
+     forceAngle 90
+     initialNames []
+     nodeSpacing {width 10 height 10}
+     forceMaxSize 50}]
+   streetNames [streets.usfounders streets.famouspeople streets.usstates streets.uscities streets.smalltown streets.trees streets.plants streets.birds streets.chicago streets.lastnames streets.generic]
+   rails [{
+     nodes [{ x 275 y 235}{ x 275 y 143}]
+     id "t1"}
+    { 
+     randomRect { x 275 y 143 width 5 height 5 }
+     random true
+     id "t1rec"}
+    { 
+     nodes [{ x 187 y 350}{ x 259 y 350}]
+     id "t2"}
+    { 
+     randomRect { x 259 y 350 width 5 height 5 }
+     random true
+     id "t2rec"}
+    { 
+     nodes [{ x 49 y 1198}{ x 49 y 1157}]
+     id "t8"}
+    { 
+     randomRect { x 49 y 1157 width 5 height 5 }
+     random true
+     id "t8rec"}
+    { 
+     nodes [{ x 629 y 46}{ x 548 y 46}]
+     id "t9"}
+    { 
+     randomRect { x 548 y 46 width 5 height 5 }
+     random true
+     id "t9rec"}
+    { 
+     nodes [{ x 326 y 265}{ x 326 y 143}]
+     id "t3"}
+    { 
+     randomRect { x 326 y 143 width 5 height 5 }
+     random true
+     id "t3rec"}
+    { 
+     nodes [{ x 311 y 535}{ x 311 y 478}]
+     id "t4"}
+    { 
+     randomRect { x 311 y 478 width 5 height 5 }
+     random true
+     id "t4rec"}
+    { 
+     nodes [{ x 249 y 470}{ x 177 y 470}]
+     id "t5"}
+    { 
+     randomRect { x 187 y 470 width 5 height 5 }
+     random true
+     id "t5rec"}
+    { 
+     nodes [{ x 378 y 952}{ x 378 y 915}]
+     id "t6"}
+    { 
+     randomRect { x 378 y 952 width 5 height 5 }
+     random true
+     id "t6rec"}
+    { 
+     nodes [{ x 193 y 1214}{ x 290 y 1214}]
+     id "t7"}
+    { 
+     randomRect { x 290 y 1214 width 5 height 5 }
+     random true
+     id "t7rec"}]
+   mapSize {width 650 height 1400}
+   districts [{
+     customname "Downtown\nMilwaukee"
+     start {x 356 y 1230}
+     radius 15
+     tags [bizcenter downtown]}
+    {
+     customname "Third Ward"
+     start {x 365 y 1190}
+     radius 12
+     tags [bizcenter downtown]}
+    {
+     customname "East Side"
+     start {x 390 y 1260}
+     radius 10
+     tags [downtown]}
+    {
+     customname "Brady\nStreet"
+     start {x 380 y 1290}
+     radius 10
+     tags [downtown]}
+    {
+     customname "Brewers Hill"
+     start {x 365 y 1300}
+     radius 10
+     tags [downtown]}
+    {
+     customname "River West"
+     start {x 385 y 1326}
+     radius 12
+     tags [bizcenter]}
+    {
+     customname "Shorewood"
+     start {x 390 y 1370}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "Williamsburg"
+     start {x 281 y 1352}
+     radius 12
+     tags [bizcenter]}
+    {
+     customname "Walkers\nPoint"
+     start {x 329 y 1131}
+     radius 12
+     tags [downtown]}
+    {
+     customname "West\nMilwaukee"
+     start {x 300 y 1200}
+     radius 10
+     tags [downtown]}
+    {
+     customname "Menomonee\nValley"
+     start {x 254 y 1155}
+     radius 40
+     tags [indcenter]}
+    {
+     customname "West Allis"
+     start {x 190 y 1130}
+     radius 12
+     tags [indcenter bizcenter]}
+    {
+     customname "Port\nMilwaukee"
+     start {x 408 y 1045}
+     radius 40
+     tags [indcenter]}
+    {
+     customname "Bay View"
+     start {x 394 y 983}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "Greenfield"
+     start {x 220 y 1000}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "Lincoln\nVillage"
+     start {x 261 y 959}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "South\nMilwaukee"
+     start {x 398 y 949}
+     radius 12
+     tags [indcenter]}
+    {
+     customname "Cudahy"
+     start {x 414 y 912}
+     radius 10
+     tags [indcenter]}
+    {
+     customname "Evanston"
+     start {x 397 y 583}
+     radius 10
+     tags [bizcenter downtown]}
+    {
+     customname "Uptown"
+     start {x 394 y 541}
+     radius 10
+     tags [downtown]}
+    {
+     customname "Lakeview"
+     start {x 389 y 511}
+     radius 10
+     tags [downtown bizcenter]}
+    {
+     customname "Lincoln Park"
+     start {x 395 y 479}
+     radius 14
+     tags [bizcenter downtown]}
+    {
+     customname "Old Town"
+     start {x 375 y 455}
+     radius 10
+     tags [downtown]}
+    {
+     customname "Goose\nIsland"
+     start {x 323 y 428}
+     radius 40
+     tags [indcenter]}
+    {
+     customname "Wicker Park"
+     start {x 290 y 445}
+     radius 10
+     tags [downtown]}
+    {
+     customname "Logan\nSquare"
+     start {x 260 y 484}
+     radius 10
+     tags [downtown]}
+    {
+     customname "Humboldt\nPark"
+     start {x 245 y 431}
+     radius 10
+     tags [downtown]}
+    {
+     customname "Far NorthWest\nSide"
+     start {x 201 y 491}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "Near North\nSide"
+     start {x 403 y 434}
+     radius 12
+     tags [downtown bizcenter]}
+    {
+     customname "River North"
+     start {x 385 y 405}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "The Loop"
+     start {x 387 y 354}
+     radius 20
+     tags [downtown bizcenter]}
+    {
+     customname "West Loop"
+     start {x 325 y 361}
+     radius 14
+     tags [bizcenter]}
+    {
+     customname "Ukrainian\nVillage"
+     start {x 277 y 412}
+     radius 10
+     tags [downtown]}
+    {
+     customname "Heart Of Italy"
+     start {x 294 y 329}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "Far West\nSide"
+     start {x 227 y 355}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "South Loop"
+     start {x 386 y 312}
+     radius 12
+     tags [bizcenter]}
+    {
+     customname "Pilsen"
+     start {x 320 y 329}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "Chinatown"
+     start {x 358 y 299}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "Bridgeport"
+     start {x 344 y 278}
+     radius 10
+     tags [downtown]}
+    {
+     customname "Bronzeville"
+     start {x 384 y 265}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "Back Of\nThe Yards"
+     start {x 303 y 237}
+     radius 35
+     tags [indcenter]}
+    {
+     customname "Stockyards"
+     start {x 344 y 250}
+     radius 12
+     tags [indcenter]}
+    {
+     customname "Kenwood"
+     start {x 408 y 249}
+     radius 10
+     tags [downtown bizcenter]}
+    {
+     customname "Englewood"
+     start {x 344 y 221}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "Hyde Park"
+     start {x 396 y 222}
+     radius 10
+     tags [downtown bizcenter]}
+    {
+     customname "Burbank"
+     start {x 207 y 186}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "Gary\nIndiana"
+     start {x 595 y 37}
+     radius 10
+     tags [indcenter bizcenter]}
+    {
+     customname "Joliet"
+     start {x 59 y 60}
+     radius 15
+     tags [indcenter bizcenter]}
+    {
+     customname "Elmhurst"
+     start {x 49 y 425}
+     radius 10
+     tags [indcenter bizcenter]}
+    {
+     customname "Oak Park"
+     start {x 188 y 371}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "Schaumburg"
+     start {x 68 y 580}
+     radius 10
+     tags [indcenter bizcenter]}
+    {
+     customname "Cicero"
+     start {x 225 y 301}
+     radius 10
+     tags [indcenter bizcenter]}
+    {
+     customname "Berwyn"
+     start {x 183 y 302}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "Waukesha"
+     start {x 30 y 1197}
+     radius 10
+     tags [indcenter bizcenter]}
+    {
+     customname "Chicago Lawm"
+     start {x 305 y 219}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "Little Village"
+     start {x 270 y 319}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "Brighton Park"
+     start {x 259 y 255}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "McKinley Park"
+     start {x 301 y 279}
+     radius 10
+     tags [bizcenter]}
+    {
+     customname "Gage Park"
+     start {x 253 y 216}
+     radius 10
+     tags [bizcenter]}]}
+  familyGenerator {
+   friendsAge {from 16 to 19}
+   traitsPerPerson {from 1 to 3}
+   marriageAgeRange {from 18 to 30}
+   probTraitOther 0.4
+   childMortalityRatio 0.05
+   marriageRatio 0.8999
+   friendsCount {from 2 to 5}
+   childMortalityAgeRange {to 2}
+   initialFamiliesRatio 0.9499
+   adultMortalityAgeRange {from 50 to 80}
+   probTraitInherited 0.6
+   kidsCount [0 0 1 2 2 3 3 3 4 4 4 5 5 6 6 7 7 8 8 9 9 10]}
+  citypolunitkey city-pol-unit.ward
+  generator {
+   nodeCenterScore 1
+   totalInflux 475000
+   otherCenterCount 3
+   decoNodes {
+    spread {default 2 lowappeal 7}
+    maxdensity 1
+    maxappeal 1
+    lotpercent {default 100 lowappeal 75}
+    centers 40}
+   otherCenterScore 0.3
+   lots [{mindensity 0.4 lot empty-lot-42 probfail 0.2} {mindensity 0 lot empty-lot-22 probfail 0.2} {lot empty-lot-12}]
+   midAppealThreshold 0.6999
+   specialBuildings {
+    policeStation {
+     configs [police-station]}
+    civicsAndOthers [{
+      skipEvery {from 340 to 720}
+      configs [worship-regular school-regular]}
+     {
+      skipEvery {from 1200 to 2000}
+      configs [fire-station-small]}
+     {
+      skipEvery {from 600 to 800}
+      configs [school-large]}
+     {
+      skipEvery {from 800 to 900}
+      configs [civic-government-medium civic-hospital-medium civic-post-office-medium]}
+     {
+      skipEvery {from 1000 to 2000}
+      configs [fire-station-large]}
+     {
+      skipEvery {from 1200 to 2000}
+      configs [worship-large]}
+     {
+      skipEvery {from 10000 to 20000}
+      configs [downtown-medium-commercial downtown-large-commercial]}
+     {
+      skipEvery {from 20000 to 40000}
+      configs [ind-union-hall importm-regular industrial-zone-large industrial-zone-medium]}
+     {
+      configs [worship-large civic-government-large civic-post-office-large]
+      skipEvery {from 10 to 20}
+      districtTags [downtown]}
+     {
+      configs [downtown-medium-commercial]
+      skipEvery {from 800 to 1600}
+      districtTags [downtown]}
+     {
+      configs [downtown-medium-commercial]
+      skipEvery {from 900 to 1800}
+      districtTags [bizcenter]}
+     {
+      configs [downtown-large-commercial]
+      skipEvery {from 80 to 140}
+      districtTags [downtown]}
+     {
+      configs [downtown-large-commercial]
+      maxPerDistrict 1
+      skipEvery {from 10 to 20}
+      districtTags [bizcenter]}
+     {
+      configs [worship-large civic-government-large civic-hospital-large civic-post-office-large school-large]
+      skipEvery {from 4 to 8}
+      districtTags [bizcenter]}
+     {
+      configs [ind-union-hall importm-regular]
+      maxPerDistrict 5
+      skipEvery {from 100 to 150}
+      districtTags [indcenter]}
+     {
+      configs [industrial-zone-medium]
+      skipEvery {from 1800 to 2200}
+      districtTags [indcenter]}
+     {
+      configs [industrial-zone-large]
+      maxPerDistrict 4
+      skipEvery {from 3000 to 4000}
+      districtTags [indcenter]}]
+    trainStation {
+     configs [passenger-station cargo-station]}}
+   lowAppealThreshold 0.3}
+  id "1435967435"
+  citylockey city-name.chicago
+  citytype chicago
+  citydesckey city-desc.chicago
+  moveinScores {
+   resIndustrialAreaBoost -4
+   comCommercialAreaBoost 0.8
+   resRailOrTerminalBoost -4
+   indInitialSeeds 50
+   indCommercialAreaBoost 1
+   indRailOrTerminalBoost 0.5
+   indResidentialAreaBoost -1
+   indIndustrialAreaBoost 1
+   resSameEthnicityBoost 10
+   comInitialSeeds 50
+   comResidentialAreaBoost 1
+   interestingNodeProbabilities {
+    3 0.1
+    2 0.2
+    1 0.4
+    0 0.3}
+   potentialNodeProbability 0.8999
+   resInitialSeeds 5
+   resResidentialAreaBoost 1
+   emptyLotBase {}}
+  statename "My Own Illinois"
+  terrain {
+   chunktiles {width 40 height 40}
+   groundheight 0.5
+   terrainscale 15
+   flattenHills #true
+   waterheight -0.2
+   zwobble 0.0099
+   tileverts {width 1 height 1}
+   mountainnodes [{size 45 id "park 1" forceStart {x 423 y 150}} {size 10 id "park 3" forceStart {x 344 y 205}} {size 10 id "park 4" forceStart {x 179 y 183}} {size 10 id "park 5" forceStart {x 193 y 319}} {size 10 id "park 6" forceStart {x 183 y 476}} {size 10 id "park 7" forceStart {x 223 y 433}} {size 10 id "park 8" forceStart {x 252 y 1359}} {size 10 id "park 9" forceStart {x 425 y 1326}}]
+   waternodes [{
+     width 6
+     connectingNodes ["14"]
+     id "13"
+     allowBridges true
+     forceStart {x 450 y 388}}
+    {
+     width 7
+     connectingNodes ["15"]
+     allowBridges true
+     id "14"
+     forceStart {x 345 y 388}}
+    {
+     width 7
+     connectingNodes ["16"]
+     allowBridges true
+     id "15"
+     forceStart {x 345 y 325}}
+    {
+     width 4
+     connectingNodes ["24"]
+     allowBridges true
+     id "16"
+     forceStart {x 209 y 261}}
+    {
+     width 4
+     connectingNodes ["40""25"]
+     id "24"
+     forceStart {x 319 y 309}}
+    {
+     width 3
+     connectingNodes []
+     id "25"
+     forceStart {x 319 y 281}}
+    {
+     width 4
+     connectingNodes ["17""des1""cal1"]
+     id "40"
+     forceStart {x 66 y 203}}
+    {
+     width 3
+     connectingNodes ["des2"]
+     id "des1"
+     forceStart {x 66 y 317}}
+    {
+     width 3
+     connectingNodes ["des3"]
+     id "des2"
+     forceStart {x 62 y 443}}
+    {
+     width 3
+     connectingNodes ["des4"]
+     id "des3"
+     forceStart {x 59 y 543}}
+    {
+     width 3
+     connectingNodes ["des5"]
+     id "des4"
+     forceStart {x 58 y 602}}
+    {
+     width 3
+     connectingNodes []
+     id "des5"
+     forceStart {x 166 y 710}}
+    {
+     width 3
+     connectingNodes ["cal2"]
+     id "cal1"
+     forceStart {x 119 y 147}}
+    {
+     width 3
+     connectingNodes ["cal3"]
+     id "cal2"
+     forceStart {x 174 y 82}}
+    {
+     width 3
+     connectingNodes ["cal4"]
+     id "cal3"
+     forceStart {x 252 y 90}}
+    {
+     width 3
+     connectingNodes ["cal5"]
+     id "cal4"
+     forceStart {x 348 y 87}}
+    {
+     width 3
+     connectingNodes ["cal6"]
+     id "cal5"
+     forceStart {x 409 y 87}}
+    {
+     width 3
+     connectingNodes []
+     id "cal6"
+     forceStart {x 454 y 117}}
+    {
+     width 4
+     connectingNodes []
+     id "17"
+     forceStart {x 0 y 167}}
+    {
+     width 3
+     connectingNodes ["14"]
+     id "22"
+     forceStart {x 313 y 449}}
+    {
+     width 3
+     connectingNodes ["22"]
+     id "21"
+     forceStart {x 271 y 513}}
+    {
+     width 3
+     connectingNodes ["21"]
+     id "20"
+     forceStart {x 271 y 569}}
+    {
+     width 3
+     connectingNodes ["20"]
+     id "19"
+     forceStart {x 315 y 597}}
+    {
+     width 3
+     connectingNodes ["19"]
+     id "18"
+     forceStart {x 319 y 649}}
+    {
+     width 3
+     connectingNodes ["18"]
+     id "23"
+     forceStart {x 450 y 699}}
+    {
+     width 8
+     connectingNodes ["27"]
+     id "26"
+     forceStart {x 450 y 1124}}
+    {
+     width 8
+     connectingNodes ["28"]
+     id "27"
+     forceStart {x 387 y 1117}}
+    {
+     width 8
+     connectingNodes ["29"]
+     id "28"
+     forceStart {x 370 y 1077}}
+    {
+     width 8
+     connectingNodes ["30"]
+     id "29"
+     forceStart {x 394 y 1028}}
+    {
+     width 3
+     connectingNodes ["31"]
+     id "30"
+     forceStart {x 355 y 963}}
+    {
+     width 3
+     connectingNodes ["32"]
+     id "31"
+     forceStart {x 305 y 963}}
+    {
+     width 3
+     connectingNodes ["56"]
+     id "32"
+     forceStart {x 305 y 898}}
+    {
+     width 3
+     connectingNodes ["57"]
+     id "56"
+     forceStart {x 287 y 884}}
+    {
+     width 3
+     connectingNodes ["58"]
+     id "57"
+     forceStart {x 255 y 878}}
+    {
+     width 3
+     connectingNodes ["59"]
+     id "58"
+     forceStart {x 212 y 874}}
+    {
+     width 3
+     connectingNodes ["60"]
+     id "59"
+     forceStart {x 182 y 873}}
+    {
+     width 3
+     connectingNodes []
+     id "60"
+     forceStart {x 147 y 873}}
+    {
+     width 6
+     connectingNodes ["29"]
+     id "39"
+     forceStart {x 394 y 996}}
+    {
+     width 4
+     connectingNodes ["33"]
+     id "50"
+     forceStart {x 301 y 1183}}
+    {
+     width 3
+     connectingNodes ["52""50"]
+     id "51"
+     forceStart {x 301 y 1160}}
+    {
+     width 3
+     connectingNodes ["53""55"]
+     id "52"
+     forceStart {x 284 y 1158}}
+    {
+     width 3
+     connectingNodes ["54"]
+     id "53"
+     forceStart {x 286 y 1136}}
+    {
+     width 3
+     connectingNodes []
+     id "54"
+     forceStart {x 227 y 1136}}
+    {
+     width 3
+     connectingNodes []
+     id "55"
+     forceStart {x 259 y 1146}}
+    {
+     width 5
+     connectingNodes ["27" "37"]
+     id "33"
+     forceStart {x 321 y 1194}}
+    {
+     width 5
+     connectingNodes ["50"]
+     id "34"
+     forceStart {x 24 y 1194}}
+    {
+     width 5
+     connectingNodes ["34"]
+     id "35"
+     forceStart {x 20 y 1144}}
+    {
+     width 5
+     connectingNodes ["35"]
+     id "36"
+     forceStart {x 0 y 1128}}
+    {
+     width 4
+     connectingNodes ["38"]
+     id "37"
+     forceStart {x 303 y 1371}}
+    {
+     width 4
+     connectingNodes []
+     id "38"
+     forceStart {x 344 y 1400}}
+    {
+     id "12"
+     forceStart {x 450 y 1400}
+     allowBridges #false
+     connectingNodes []
+     deformers [{x 460 y 1400} {x 650 y 1400} {x 480 y 140} {x 650 y 140}]
+     body #true
+     width 200}]}
+  statelockey state-name.illinois
+  cityname "Chicago/Milwaukee"
+  cityscreen "Chicago Screenshot"
+  proc #true
+  ethnicMakeup {
+   nationalities {
+    la 3
+    dk 3
+    en 3
+    ca 4
+    hu 3
+    it 4
+    no 2
+    at 2
+    af 14
+    cz 2
+    as 3
+    de 6
+    ir 7
+    se 4
+    lt 1
+    sc 2
+    pl 8
+    ru 2
+    am 28}
+   skin {
+    am {
+     names [1]
+     proportions [100]}
+    it {
+     names [1 2]
+     proportions [80 20]}
+    others {
+     names [1]
+     proportions [100]}
+    la {
+     names [2]
+     proportions [100]}
+    as {
+     names [1 2]
+     proportions [80 20]}
+    af {
+     names [3]
+     proportions [100]}}}
+  playerStart {
+   resourcesUnlocked [apple-juice grape-juice crocks malt barrels half-barrels steel-barrels bottles small-bottles bricks lumber gasoline neutral-alcohol moonshine cider home-brew brick-wine dirty-cash counterfeitcash cook cfood rfood rfoodsupplies lockpicks liquor-license cigarettes french75 cloverclub bloodsand boulevardier negroni french75mix cloverclubmix bloodsandmix boulevardiermix negronimix weapon-crowbar weapon-bat weapon-knife]
+   nodesKnownAtStart 14
+   nodesFriendlyAtStart 5
+   mapEdgePlacementMargin 40}}
+ type 1}

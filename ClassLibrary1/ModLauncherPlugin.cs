@@ -3,7 +3,7 @@ using BepInEx.Logging;
 
 namespace ModLauncher
 {
-    [BepInPlugin("com.mods.modlauncher", "Mod Launcher", "1.0.0")]
+    [BepInPlugin("com.mods.modlauncher", "Prohibition Launcher Bridge", "1.0.0")]
     public class ModLauncherPlugin : BaseUnityPlugin
     {
         internal static ManualLogSource Log;
@@ -11,7 +11,7 @@ namespace ModLauncher
         void Awake()
         {
             Log = Logger;
-            Log.LogInfo("Mod Launcher loaded.");
+            Log.LogInfo("Prohibition Launcher Bridge loaded (GUID com.mods.modlauncher).");
         }
     }
 }

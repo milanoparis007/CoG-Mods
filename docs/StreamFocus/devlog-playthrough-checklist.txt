@@ -1,0 +1,208 @@
+DEVLOG PLAYTHROUGH CHECKLIST
+============================
+
+Goal
+----
+
+- Show the major After Prohibition changes without turning the recording into a full tutorial.
+- Aim for a 20-35 minute devlog, not a full campaign run.
+- Start from a save where the boss has a crew, a vehicle, nearby enemy territory, at least one pact or enemy outfit, and a few businesses/fronts already visible.
+- Keep the first recording focused on what players can immediately see: split plugins, custom assets, crew/vehicle controls, robberies, enemy AI pressure, and public-log cleanup.
+
+Before Recording
+----------------
+
+- Load a save that already has:
+  - the player boss and at least one passenger-capable vehicle;
+  - two or more crew members available for combat or travel;
+  - at least one nearby enemy outfit;
+  - at least one enemy boss known on the map;
+  - a shop/business the player has bought from or sold to recently;
+  - enough cash on crew to make robbery pressure possible.
+
+- Open with the package folder only briefly:
+  - show that BepInEx has the split plugins;
+  - mention that the mod is no longer one giant GameplayTweaks-only system;
+  - point out custom assets and the public guide/changelog files.
+
+- Do not spend more than 2-3 minutes on install/package files.
+- Do not read the full changelog on video; use it as a reference.
+- Keep a save backup before testing robbery or combat.
+
+Suggested Recording Order
+-------------------------
+
+- Start at the main menu or loaded map and show the custom asset/menu look.
+- Load the prepared save.
+- Show the crew/vehicle setup first because it is easy to understand visually.
+- Demonstrate switching passengers and vehicle crew behavior.
+- Demonstrate the attack crew conversation UI and the updated combat options.
+- Move into or near enemy territory to set up robbery pressure.
+- Show that outfit robbery/conversation actions should be handled through the outfit boss, not random non-boss crew members.
+- Trigger or explain robbery pressure.
+- Show the boss crew relations robbery response toggle.
+- End with enemy AI expectations: robberies, business pressure, expansion pressure, and possible coordinated attacks.
+
+Opening Talking Points
+----------------------
+
+- "This build is the public v1.3.98 After Prohibition package."
+- "A lot of systems have been split out of GameplayTweaks into separate plugins."
+- "The big focus of this devlog is what that means in play: cleaner UI behavior, better vehicle crew handling, robbery/extortion pressure, and less noisy public logs."
+- "This is still an evolving overhaul, but the public build is now cleaner for normal play and first bug reports."
+
+What To Show: Split Plugins And Custom Assets
+---------------------------------------------
+
+- Show the BepInEx plugins list briefly.
+- Mention these standalone systems:
+  - AfterProhibitionAssets for custom images and asset manifest support;
+  - AfterProhibitionCompatibility for external mod detection;
+  - AfterProhibitionEconomy for shop, stock, Dirty Cash, and legal-business handling;
+  - AfterProhibitionFamily for family and relationship safety;
+  - AfterProhibitionPolitics for politics-owned behavior;
+  - AfterProhibitionRoutes for route-owned behavior;
+  - AfterProhibitionUI for UI-only cleanup and visuals.
+
+- Explain that GameplayTweaks is still required because it owns shared state and fallback behavior.
+- Show the custom menu/background or asset-driven UI piece if it is visible.
+- Keep this section short. The viewer mostly needs to know the mod is more modular now.
+
+What To Show: Vehicle Crew And Passengers
+-----------------------------------------
+
+- Put the boss and at least one crew member in a vehicle.
+- Show that the vehicle can carry multiple crew members when the vehicle supports it.
+- Show switching who is in the vehicle if the UI allows it in the current situation.
+- Show that passengers are treated as part of the vehicle group for relevant travel/combat checks.
+- Explain that vehicle authority was tightened so passenger moves should not steal control from the driver.
+- If attacking a vehicle, show that confirmed passengers can be targeted or included.
+
+Quick passenger talking points:
+
+- "Vehicle crew is now handled more carefully."
+- "The driver should control the route."
+- "Passengers can matter for attacks and defenses."
+- "The combat UI now tries to make the target and spread options clearer."
+
+What To Show: Combat UI
+-----------------------
+
+- Open the attack crew conversation.
+- Show the updated controls:
+  - Attack Type;
+  - On-Foot Crew;
+  - Range;
+  - Targets;
+  - Spread or multi-target behavior when available.
+
+- If the player is on foot, show how the on-foot crew count is chosen.
+- If the player is in a vehicle, show the drive-by/vehicle attack setup.
+- If only one crew member is attacking, mention that the UI should still expose the relevant spread/target options when available.
+- Do not force a long combat unless it helps demonstrate passenger targeting.
+
+What To Show: Robbery And Extortion Pressure
+--------------------------------------------
+
+- Move the player into enemy territory or near an enemy outfit that has local pressure.
+- Explain that robberies are more like extortion pressure before or alongside other gang pressure.
+- Explain that robberies can be triggered when:
+  - the player crew is in enemy territory;
+  - the player looks weak enough for an outfit to try pressure;
+  - the player is near a hostile or opportunistic outfit;
+  - the outfit personality and local situation make robbery/extortion likely.
+
+- Mention that peaceful outfits should lean away from robberies.
+- Mention that aggressive outfits are more likely to use robbery pressure and quick retaliation.
+- Explain that robbery prompts are delayed to the player turn instead of firing awkwardly mid-turn.
+- Show the prompt only if it naturally appears during the run.
+
+Boss-only outfit interaction note:
+
+- Robbery crew conversation choices should be used through the outfit boss.
+- Do not demonstrate repeated robbery choices on random non-boss enemy crew members.
+- If showing the system, select or talk to the outfit boss so the correct outfit-level buff/cooldown logic applies.
+- Explain that this avoids infinite repeat use on ordinary enemy crew members.
+
+What To Show: Robbery Response Toggle
+-------------------------------------
+
+- Open the boss crew relations menu.
+- Show the robbery response option:
+  - Robbery: Prompt means the player wants the manual prompt to show;
+  - Robbery: Auto Evade means the prompt is suppressed and the crew follows the boss standing order.
+
+- Explain that Auto Evade is for players who do not want to answer every robbery prompt manually.
+- Explain that Prompt is for players who want to choose whether to pay, refuse, or use available options.
+- Mention that refusal/evasion has risk; it is not meant to be a free cancel.
+
+What To Expect From Robbery Outcomes
+------------------------------------
+
+- A robbery can resolve by payment if the robber succeeds.
+- A successful refusal/evasion can still create pressure later.
+- Enemy outfits can respond with:
+  - important-business pressure;
+  - a rare coordinated/quick attack warning;
+  - continued expansion or war pressure through normal AI behavior.
+
+- The same robber outfit should not immediately spam the same human target after resolution because pair cooldowns are longer now.
+- Important-business pressure should target valid visible shops/businesses, not invisible invalid buildings.
+- Forced-closed shops should block normal buy/sell interaction while closed.
+
+What To Show: Enemy AI Expectations
+-----------------------------------
+
+- Enemy outfits should not only shoot first.
+- They can use a mix of:
+  - robbery/extortion pressure;
+  - normal expansion pressure;
+  - business pressure;
+  - war heat and local conflict logic;
+  - rare coordinated attack pressure.
+
+- Larger or stronger outfits should feel more willing to pressure weaker crews or smaller gangs.
+- Smaller gangs can still act locally, but should not constantly target far-away enemies.
+- Enemy pressure may not all happen on one turn; use a save where a few turns can be advanced quickly.
+- If the run is quiet, explain that personality, local strength, territory, and nearby targets affect behavior.
+
+What To Avoid Spending Too Much Time On
+---------------------------------------
+
+- Do not spend all day waiting for a perfect robbery prompt.
+- Do not try to explain every plugin file.
+- Do not demonstrate every family, politics, economy, and route feature in one video.
+- Do not open every guide file on screen.
+- Do not chase a rare coordinated attack for too long; explain it if it does not happen naturally.
+- Do not record a long silent turn-advance section. Cut or summarize if needed.
+
+Fast Demo Flow
+--------------
+
+- 0-3 minutes: intro, package split, custom assets.
+- 3-8 minutes: loaded save, crew, vehicle, passenger behavior.
+- 8-13 minutes: attack crew UI, spread/targets, on-foot versus vehicle attack setup.
+- 13-22 minutes: move near enemy territory, explain robbery triggers, show boss-only outfit interaction rule.
+- 22-28 minutes: show robbery response toggle and explain prompt versus auto evade.
+- 28-35 minutes: advance a few turns and explain enemy AI pressure expectations.
+
+Backup Plan If Robbery Does Not Trigger
+---------------------------------------
+
+- Explain the trigger conditions while showing the map:
+  - enemy territory;
+  - nearby hostile outfit;
+  - weak or cash-carrying crew;
+  - outfit personality and local pressure.
+
+- Show the boss crew relations toggle anyway.
+- Show the enemy outfit boss and explain that outfit-level robbery interactions should go through bosses.
+- Mention that the system is balanced to avoid constant spam, so not every move produces a prompt.
+
+Bug/Devlog Note
+---------------
+
+- If a bug appears during recording, keep it in if it helps explain the dev process.
+- Normal public logs are cleaner now.
+- First bug reports should be useful without requiring players to enable verbose diagnostics first.
+- Detailed diagnostics can still be enabled later if a bug needs deeper repro evidence.

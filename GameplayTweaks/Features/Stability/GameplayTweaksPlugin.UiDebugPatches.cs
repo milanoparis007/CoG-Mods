@@ -352,29 +352,11 @@ public partial class GameplayTweaksPlugin
 
 			matchingCrew = CrewAssignment.EMPTY;
 			matchingCount = 0;
-			sourceTag = "none";
-			PlayerCrew humanCrew = G.GetHumanCrew();
-			if (humanCrew == null
-				|| !MultiCrewVehicleHelper.TryGetHumanCrewUsableForScopePreviewAtNode(humanCrew, targetNodeId, out List<CrewAssignment> previewMatches, out string previewSource)
-				|| previewMatches == null
-				|| previewMatches.Count <= 0)
-			{
-				return false;
-			}
-
-			CrewAssignment selected = previewMatches.FirstOrDefault(match => match.peepId.IsValid);
-			if (!selected.peepId.IsValid)
-			{
-				return false;
-			}
-
-			matchingCrew = selected;
-			matchingCount = previewMatches.Count;
-			sourceTag = "scope-preview-" + (string.IsNullOrWhiteSpace(previewSource) ? "final-goal" : previewSource);
+			sourceTag = "actual-only";
 			GameplayTweaksPlugin.VerificationLog(
 				"HostileMobileSelect",
-				$"preview-crew-match node={targetNodeId} crew={matchingCrew.peepId.id} matches={matchingCount} source={sourceTag}");
-			return true;
+				$"preview-crew-match-blocked node={targetNodeId} reason=actual-human-crew-required");
+			return false;
 		}
 
 		private static void LogSelectionFix(Entity mobileEntity, Entity clickedPeep, Entity resolvedPeep, CrewAssignment crew, NodeID targetNodeId, int matchingCount, string sourceTag)

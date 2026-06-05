@@ -1,19 +1,137 @@
 # Current After Prohibition Mod Guide
 
+## Dev Snapshot Notice
+
+The current GitHub snapshot is a development build for robbery/front-pressure validation. It is not the cleaned public release. Verification logging is still intentionally heavy so the next live passes can confirm duplicate robbery prompt cleanup, deferred prompt timing, important-business closure follow-through, and AI pressure routing.
+
+Use this snapshot for testing only. After the log cleanup pass is finished, the guide and changelog should be refreshed back to public-release wording and the cleaned package should be pushed/tagged separately.
+
+This package is the current public After Prohibition build. It includes StreamingAssets content plus staged BepInEx plugins for the active runtime systems.
+
+For the full gameplay explanation, read `SYSTEMS_GUIDE.md` in this folder.
+
 ## Install
 
 1. Open the City of Gangsters install folder.
 2. Copy this release folder's `BepInEx` contents into the game's `BepInEx` folder.
-3. Keep the included `CoG_Data` and `Custom Maps` contents aligned with this release package when those folders are part of the release.
+3. Copy this release folder's `CoG_Data` contents into the game's `CoG_Data` folder when the release includes StreamingAssets changes.
+4. Install `CoGCustomAssets` for this build. Some current icons and asset references expect `CoGCustomAssets` to be present.
+5. Copy this release folder's `Custom Maps` contents when custom map files are included.
+6. Start the game and check `BepInEx\LogOutput.log` or the City of Gangsters `Player.log` if something does not load.
 
-## Current DLL Staging
+## Important Requirements
 
-- `BepInEx\plugins\GameplayTweaks.dll` is staged from `GameplayTweaks\bin\Release`.
-- Until symlinks are restored, manually copy staged DLLs from this release folder to the live game install.
-- Public release DLLs should stay in this repo release folder first so the package remains ready for users.
+- Do not install this as a DLL-only update. The current build expects the included `CoG_Data\StreamingAssets` files to be installed.
+- `CoGCustomAssets` is required for now because this build references custom icons/assets through that stack.
+- `CoGCustomAssets` should be installed under `BepInEx\plugins`, usually as `BepInEx\plugins\CoGCustomAssets\CoGCustomAssets.dll`.
+- If maps or new-game setup do not load correctly, first confirm that `CoG_Data\StreamingAssets` was copied and that `CoGCustomAssets` is installed.
 
-## GameplayTweaks Inventory Behavior
+## Included Runtime DLL
 
-- Storage transfer works when the crew vehicle is physically at the owned building or safehouse.
-- Storage transfer also works while the selected vehicle is actively traveling to that exact storage building as its final goal.
-- If the vehicle leaves or targets another corner, building and selected-vehicle storage can still be viewed, but loading and unloading are disabled for that vehicle.
+- `BepInEx\plugins\GameplayTweaks.dll`
+- `BepInEx\plugins\AfterProhibitionAssets.dll`
+- `BepInEx\plugins\AfterProhibitionCompatibility.dll`
+- `BepInEx\plugins\AfterProhibitionEconomy.dll`
+- `BepInEx\plugins\AfterProhibitionFamily.dll`
+- `BepInEx\plugins\AfterProhibitionPolitics.dll`
+- `BepInEx\plugins\AfterProhibitionRoutes.dll`
+- `BepInEx\plugins\AfterProhibitionUI.dll`
+
+This DLL is staged from the repo release build. For local testing, copy the staged DLL into the live game install until symlinks are restored.
+
+The standalone After Prohibition plugins split assets, compatibility, economy, family, politics, routes, and UI behavior away from `GameplayTweaks` so each system can be debugged and disabled more safely. `GameplayTweaks` is still required; the split plugins currently delegate only proven slices and leave fallback behavior in place.
+
+`AfterProhibitionUI` owns UI-only cleanup and rendering surfaces such as stale crew-pick portraits, connection-card render guards, crew HUD refresh scheduling, aggro crew-pick refresh scheduling, popup docking, menu retheme bridging, crew inspect footer buttons, and crew jail visuals. Gameplay behavior remains in `GameplayTweaks` or the owning split plugin.
+
+## StreamingAssets Content
+
+This release also includes updated `CoG_Data\StreamingAssets` content. Do not treat it as a DLL-only update.
+
+Main content changes included in the package:
+
+- legal-front business data for grocery, restaurant, barber, florist, funeral, cafe, hardware, laundry, car dealership, real estate, wholesale, contractor, gas station, jewelry, hotel, liquor, pub, movie theater, pawnshop, law office, record, film, gym, talent, and money-laundering fronts;
+- bank-counter and employment-agency style front modules;
+- updated business seeding so some fronts use legal modules, bank counters, delis/home-booze sources, and newer tobacconist content instead of generic placeholder storage;
+- controlled bank map placement and more reachable funeral-home starter fronts;
+- connected-connector fake-account scheme work through funeral homes and churches;
+- rail shipment quests for bulk liquor movement through train stations;
+- school support, church support, church loan, and church repayment conversation paths;
+- pact, cop-killing, politics-protection, and gang-loot relationship/heat buffs;
+- AI, people, skills, schemes, gambling, and economy retuning for the newer legal-front and backroom systems;
+- city map generation updates for schools and business/family density.
+
+When installing a public build, copy the `CoG_Data` folder from this package along with `BepInEx` so these data changes are present.
+
+## Quick Start
+
+- Use normal City of Gangsters play as the base.
+- Crew members now have more long-term identity through loyalty, happiness, odd jobs, spouse/family hooks, snitch risk, and street credit.
+- Pacts and independent gangs can build pressure, retaliate, protect turf, and expand.
+- Legal-front businesses, banks, schools, churches, train stations, and map generation are also changed through StreamingAssets data.
+- Safehouse and owned-building storage follow stricter vehicle-position rules.
+- Delivery routes can optionally try to expand collection fronts with the compact `+` toggle on `Collect front` steps.
+
+## Content To Look For
+
+- Train stations can offer bulk rail shipments when you have the right storage/territory setup.
+- Schools can start a support path that can lead into a payout and a short local recruiting window.
+- Churches can start support and loan paths, including repayment.
+- Connected connector crew can start fake-account paperwork schemes through funeral homes or churches when they have paper, ink, and cash.
+- Legal fronts now matter more because data files give more businesses real front modules and upkeep hooks.
+- Banks and employment-style fronts have more specific modules and resource roles.
+- Maps should generate large schools and controlled bank locations through the current civic-style placement lists while leaving more room for businesses on most updated cities.
+
+## Storage Rules
+
+- Vehicle at safehouse: safehouse resources can be accessed normally.
+- Vehicle not at safehouse: safehouse resources should not be transferable for that vehicle.
+- Vehicle at owned business: owned-building storage can be accessed normally.
+- Vehicle traveling to that exact owned storage target: transfer can remain available for that intended action.
+- Vehicle leaves the corner or targets another corner: storage may remain visible for context, but transfer buttons should be disabled.
+
+## Delivery Route Front Expansion
+
+- Open a delivery route step that collects from a front.
+- Use the compact `+` marker to enable expansion for that route step.
+- When the route successfully collects from that front, the mod can ask the vanilla expansion system to start an expansion.
+- Expansion still requires a valid next corner and enough vehicle cash.
+- If no legal expansion corner exists, the route continues and the log records the skip.
+
+## Route Split Ownership
+
+- `AfterProhibitionRoutes` is installed as a separate plugin, but `GameplayTweaks` remains required.
+- `AfterProhibitionRoutes` currently owns read-only route state audits and route decision bridges.
+- `GameplayTweaks` reads those route decisions and keeps the mutating fallback behavior active.
+- Full route behavior ownership is still false for travel continuation, vehicle node authority, delivery-route pump, and route-simulated access.
+- This means the current route split should improve diagnostics and prevent double-ownership without removing the existing GameplayTweaks route fixes.
+
+## Route-In Shop Staging
+
+- Old/departure businesses should stop allowing buy/sell once the vehicle leaves that corner.
+- The committed next-destination business can open route-simulated business conversation and stage buy/sell while the vehicle is en route when `VehicleRouteSimulation.EnableRouteSimulatedConvenienceActions=true`.
+- Shift-clicking the committed next-destination business is supported as an intentional route-in opener for the selected vehicle.
+- Staged buy/sell does not move cash, goods, vehicle cargo, or shop stock until the vehicle physically arrives at that destination or a validated shop frontage/access node.
+- More than one different resource or buy/sell direction can be staged for the same vehicle destination; staging the same shop/resource/direction again updates that matching order.
+- Destination glow and automatic pop-ups are not used as arrival proof.
+
+## Useful Log Markers
+
+- `route-command-deferred` means a route command waited because the vehicle was still arriving.
+- `routes-baseline` and `route-state-audit` show the read-only `AfterProhibitionRoutes` bridge loaded.
+- `travel-continuation`, `vehicle-node-authority`, `delivery-route-pump`, and `route-sim-access` show `AfterProhibitionRoutes` decision classifications.
+- `Routes behavior fallback active` means `GameplayTweaks` is still correctly handling route mutation because `AfterProhibitionRoutes` does not yet own that behavior slice.
+- `FrontRouteExpand` shows route expansion arming, skip, and success details.
+- `routeSimConvenienceEnabled=True/False` in the startup log shows whether route-in destination conversations and staged shop orders are enabled.
+- `route-in-shift-destination-open` shows the Shift-click route-in opener accepted the selected vehicle's current destination.
+- `route-sim-convo`, `route-shop-stage-opened`, `route-shop-staged`, and `route-shop-committed` show route-in shop staging working.
+- `safehouse-access-crew-filtered` shows strict safehouse access filtering.
+- `scope-wrong-corner-presence-blocked` shows wrong-corner preview rejection.
+- `[PoliticsStarter] delegated owner=AfterProhibitionPolitics` shows `GameplayTweaks` has handed the New York starter quest fallback to `AfterProhibitionPolitics`.
+- `uiRetheme=delegated`, `crewHudRefresh=delegated`, and `aggroUiRefresh=delegated` show `GameplayTweaks` is using the `AfterProhibitionUI` bridge for migrated UI surfaces.
+- `CrewHUD refresh ... owner=AfterProhibitionUI`, `AggroUI ... owner=AfterProhibitionUI`, and `PopupDocking ... owner=AfterProhibitionUI` show the UI split is active.
+- `scheduler=AfterProhibitionUI fallback=GameplayTweaks` means `AfterProhibitionUI` owns the visible aggro refresh scheduler while `GameplayTweaks` still provides the gameplay-coupled reconciliation fallback.
+- `politics-audit`, `bribe-state-audit`, `judge-law-office-audit`, and `campaign-election-audit` show read-only politics diagnostics.
+- `[Loyalty]` shows crew relation turn updates.
+- `[OddJob]` shows odd-job pay.
+- `[GangOps.Pact]` and `[GangOps.Independent]` show pact and gang automation.
+- `[CopKilling]` shows cop-war safety cleanup.

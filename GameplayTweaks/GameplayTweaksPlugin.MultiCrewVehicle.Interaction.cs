@@ -26,6 +26,7 @@ using Game.UI.Session.Picks;
 using Game.UI.Session.Popups;
 using Game.UI.Util;
 using HarmonyLib;
+using SomaSim.Util;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -128,6 +129,10 @@ namespace GameplayTweaks
 
 		private static bool _loggedGetCrewOverrideOnce;
 
+		private static bool _loggedHumanFindPeepOverrideOnce;
+
+		private static bool _loggedHumanGetCrewOverrideOnce;
+
 		private static bool IsVehicleLookupAssignmentUsable(PlayerCrew crew, CrewAssignment assignment, EntityID vehicleId, MultiCrewVehicleHelper.EnemyVehicleDisplayState state)
 		{
 			if (!assignment.IsValid || !assignment.IsInVehicle || assignment.VehicleID != vehicleId)
@@ -152,11 +157,42 @@ namespace GameplayTweaks
 					return true;
 
 				Entity vehicle = vehicleId.FindEntity();
-				bool isAiVehicle = vehicle?.data?.mobile?.pid.IsAIPlayer == true;
-				if (!isAiVehicle)
+				if (vehicle?.components?.mobile == null)
 				{
 					return true;
 				}
+
+				if (vehicle.data?.mobile?.pid.IsHumanPlayer == true)
+				{
+					EntityID driverPeepId = MultiCrewVehicleHelper.GetDriverPeepId(__instance, vehicleId);
+					if (!driverPeepId.IsValid)
+					{
+						return true;
+					}
+
+					CrewAssignment driverAssignment = __instance.GetCrewForPeep(driverPeepId);
+					if (!driverAssignment.IsValid
+						|| !driverAssignment.IsInVehicle
+						|| driverAssignment.VehicleID != vehicleId
+						|| !MultiCrewVehicleHelper.IsActiveVehicleOccupant(__instance, driverAssignment))
+					{
+						return true;
+					}
+
+					__result = driverPeepId;
+					if (!_loggedHumanFindPeepOverrideOnce)
+					{
+						_loggedHumanFindPeepOverrideOnce = true;
+						Debug.Log($"[GameplayTweaks] DriverMappedCrewLookupPatch.FindPeepAssignedToVehicle human-driver override vehicle={vehicleId.id} peep={driverPeepId.id}");
+					}
+					return false;
+				}
+
+				if (!vehicle.data.mobile.pid.IsAIPlayer)
+				{
+					return true;
+				}
+
 				if (!MultiCrewVehicleHelper.TryGetEnemyVehicleDisplayState(__instance, vehicleId, out MultiCrewVehicleHelper.EnemyVehicleDisplayState state))
 				{
 					return true;
@@ -200,6 +236,33 @@ namespace GameplayTweaks
 				Entity target = targetId.FindEntity();
 				if (target?.components?.mobile == null)
 					return true;
+
+				if (target.data?.mobile?.pid.IsHumanPlayer == true)
+				{
+					EntityID driverPeepId = MultiCrewVehicleHelper.GetDriverPeepId(__instance, targetId);
+					if (!driverPeepId.IsValid)
+					{
+						return true;
+					}
+
+					CrewAssignment driverAssignment = __instance.GetCrewForPeep(driverPeepId);
+					if (!driverAssignment.IsValid
+						|| !driverAssignment.IsInVehicle
+						|| driverAssignment.VehicleID != targetId
+						|| !MultiCrewVehicleHelper.IsActiveVehicleOccupant(__instance, driverAssignment))
+					{
+						return true;
+					}
+
+					__result = driverAssignment;
+					if (!_loggedHumanGetCrewOverrideOnce)
+					{
+						_loggedHumanGetCrewOverrideOnce = true;
+						Debug.Log($"[GameplayTweaks] DriverMappedCrewLookupPatch.GetCrewForTarget human-driver override vehicle={targetId.id} peep={driverPeepId.id}");
+					}
+					return false;
+				}
+
 				if (!target.data.mobile.pid.IsAIPlayer)
 				{
 					return true;
@@ -875,10 +938,44 @@ namespace GameplayTweaks
 					&& MultiCrewVehicleHelper.TryGetHumanCrewUsableForScopePreviewAtBuilding(humanCrew, building, out List<CrewAssignment> previewMatches, out string previewSource)
 					&& previewMatches.Count > 0)
 				{
-					matches = previewMatches;
-					GameplayTweaksPlugin.VerificationLog(
-						"ScopeOut",
-						$"building-presence-scope-preview building={building.Id.id} node={nodeId} crew={string.Join(",", matches.Where(match => match.IsValid && match.peepId.IsValid).Select(match => match.peepId.id.ToString()))} source={previewSource}");
+					List<NodeID> physicalPresenceNodes = (comparisonNodeIds ?? new List<NodeID> { nodeId })
+						.Where(candidate => candidate.IsValid)
+						.Distinct()
+						.ToList();
+					List<CrewAssignment> physicalPreviewMatches = previewMatches
+						.Where(match => match.IsValid
+							&& match.IsInVehicle
+							&& match.VehicleID.IsValid
+							&& physicalPresenceNodes.Any(candidate => MultiCrewVehicleHelper.IsHumanVehiclePhysicallyAtNode(match.VehicleID, candidate)))
+						.ToList();
+					List<CrewAssignment> routeExpectedPreviewMatches = physicalPreviewMatches.Count > 0
+						? new List<CrewAssignment>()
+						: previewMatches
+							.Where(match => match.IsValid
+								&& match.IsInVehicle
+								&& match.VehicleID.IsValid
+								&& physicalPresenceNodes.Any(candidate => MultiCrewVehicleHelper.IsHumanVehicleRouteSimExpectedAccessNode(match.VehicleID, candidate, "building-presence-scope-preview", out _)))
+							.ToList();
+					if (physicalPreviewMatches.Count > 0)
+					{
+						matches = physicalPreviewMatches;
+						GameplayTweaksPlugin.VerificationLog(
+							"ScopeOut",
+							$"building-presence-scope-preview-physical building={building.Id.id} node={nodeId} crew={string.Join(",", matches.Where(match => match.IsValid && match.peepId.IsValid).Select(match => match.peepId.id.ToString()))} source={previewSource}");
+					}
+					else if (routeExpectedPreviewMatches.Count > 0)
+					{
+						matches = routeExpectedPreviewMatches;
+						GameplayTweaksPlugin.VerificationLog(
+							"ScopeOut",
+							$"building-presence-scope-preview-route building={building.Id.id} node={nodeId} crew={string.Join(",", matches.Where(match => match.IsValid && match.peepId.IsValid).Select(match => match.peepId.id.ToString()))} source={previewSource} reason=route-expected-access");
+					}
+					else
+					{
+						GameplayTweaksPlugin.VerificationLog(
+							"ScopeOut",
+							$"building-presence-scope-preview-blocked building={building.Id.id} node={nodeId} previewCrew={string.Join(",", previewMatches.Where(match => match.IsValid && match.peepId.IsValid).Select(match => match.peepId.id.ToString()))} source={previewSource} reason=vehicle-not-physical");
+					}
 				}
 				__result = matches.Count > 0;
 				if (building != null)
@@ -897,16 +994,395 @@ namespace GameplayTweaks
 
 	internal static class HumanVehicleBuildingInteractionScopePatch
 	{
+		private static readonly MethodInfo BizStartConversationForCrewMethod = typeof(BizComponent).GetMethod("StartConversation", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null, new[] { typeof(CrewAssignment), typeof(Entity), typeof(bool) }, null);
+		private static readonly Dictionary<ulong, int> BuildingPickVisualRepairLogFrames = new Dictionary<ulong, int>();
+
 		[HarmonyPrefix]
 		internal static void RefreshContentsPrefix()
 		{
 			MultiCrewVehicleHelper.PushPendingBuildingInteractionScope("BuildingPick.RefreshContents");
 		}
 
+		[HarmonyPostfix]
+		internal static void RefreshContentsPostfix(object __instance)
+		{
+			try
+			{
+				EnsureBuildingPickVisualState(__instance);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] BuildingPick visual repair failed: " + ex.Message);
+			}
+		}
+
 		[HarmonyPrefix]
-		internal static void OnClickPrefix()
+		internal static bool OnClickPrefix(object __instance)
 		{
 			MultiCrewVehicleHelper.PushPendingBuildingInteractionScope("BuildingPick.OnClick");
+			bool stalePickData = false;
+			try
+			{
+				if (__instance == null)
+				{
+					return true;
+				}
+
+				Traverse pickTraverse = Traverse.Create(__instance);
+				object pickData = pickTraverse.Field("_pickdata").GetValue();
+				if (pickData == null)
+				{
+					stalePickData = true;
+					try
+					{
+						pickTraverse.Method("RefreshContents").GetValue();
+					}
+					catch (Exception ex)
+					{
+						LogBuildingPickOnClickGuard("refresh-failed", __instance, ex, stalePickData);
+						return false;
+					}
+
+					pickData = pickTraverse.Field("_pickdata").GetValue();
+					if (pickData == null)
+					{
+						LogBuildingPickOnClickGuard("refresh-missing-pickdata", __instance, null, stalePickData);
+						return false;
+					}
+				}
+
+				try
+				{
+					if (TryOpenRouteInDestinationOnShiftClick(__instance))
+					{
+						return false;
+					}
+				}
+				catch (Exception ex)
+				{
+					LogBuildingPickOnClickGuard("route-open-failed", __instance, ex, stalePickData);
+				}
+			}
+			catch (Exception ex)
+			{
+				LogBuildingPickOnClickGuard("guard-failed", __instance, ex, stalePickData);
+				return !stalePickData;
+			}
+			return true;
+		}
+
+		private static void LogBuildingPickOnClickGuard(string reason, object pickInstance, Exception ex, bool stalePickData)
+		{
+			try
+			{
+				ulong buildingId = 0UL;
+				NodeID nodeId = NodeID.INVALID;
+				if (pickInstance is BasePick pick)
+				{
+					Entity building = pick.Target.FindEntity();
+					buildingId = building?.Id.id ?? 0UL;
+					nodeId = building?.data?.board?.bead.nodeId ?? NodeID.INVALID;
+				}
+
+				EntityID selectedVehicleId = EntityID.INVALID;
+				string selectedSource = "none";
+				string routeText = "none";
+				PlayerCrew humanCrew = G.GetHumanCrew();
+				if (humanCrew != null
+					&& MultiCrewVehicleHelper.TryGetSelectedHumanVehicleForMapScope(humanCrew, out selectedVehicleId, out selectedSource)
+					&& selectedVehicleId.IsValid
+					&& MultiCrewVehicleHelper.TryGetPendingHumanVehicleTravel(selectedVehicleId, out _, out NodeID expectedNodeId, out NodeID goalNodeId))
+				{
+					routeText = $"expected={expectedNodeId},goal={goalNodeId},active={MultiCrewVehicleHelper.IsHumanVehicleTravelActive(selectedVehicleId)},queued={MultiCrewVehicleHelper.HasQueuedHumanVehiclePendingResume(selectedVehicleId)}";
+				}
+
+				string exceptionText = ex == null ? "none" : ex.GetType().Name + ":" + ex.Message;
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"building-pick-click-guard",
+					$"{reason}:{buildingId}:{nodeId}:{selectedVehicleId.id}:{ex?.GetType().Name ?? "none"}",
+					$"building-pick-click-guard reason={reason} building={buildingId} node={nodeId} selectedVehicle={selectedVehicleId.id} selectedSource={selectedSource} stalePickData={stalePickData} route={routeText} ex={exceptionText}",
+					dedupe: false);
+			}
+			catch (Exception logEx)
+			{
+				Debug.LogWarning("[GameplayTweaks] BuildingPick.OnClick guard logging failed: " + logEx.Message);
+			}
+		}
+
+		private static bool TryOpenRouteInDestinationOnShiftClick(object pickInstance)
+		{
+			if (!IsShiftDown() || !(pickInstance is BasePick pick))
+			{
+				return false;
+			}
+
+			Entity building = pick.Target.FindEntity();
+			Entity biz = BuildingUtil.FindBizForBuilding(building);
+			if (building == null || biz == null)
+			{
+				return false;
+			}
+
+			PlayerCrew humanCrew = G.GetHumanCrew();
+			if (humanCrew == null
+				|| !MultiCrewVehicleHelper.TryGetSelectedHumanVehicleForMapScope(humanCrew, out EntityID vehicleId, out string selectedSource)
+				|| !vehicleId.IsValid)
+			{
+				return false;
+			}
+
+			List<NodeID> accessNodeIds = HumanBuySellVehiclePhysicalGatePatch.FindShopAccessNodeIds(building);
+			foreach (NodeID nodeId in accessNodeIds.Where(nodeId => nodeId.IsValid).Distinct())
+			{
+				if (!MultiCrewVehicleHelper.IsHumanVehicleRouteSimAccessNode(vehicleId, nodeId, "shift-route-destination", out string routeSource))
+				{
+					continue;
+				}
+
+				global::Game.Game.ctx?.selection?.SetActive(building);
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-in-shift-destination-open",
+					$"{vehicleId.id}:{building.Id.id}:{nodeId}:{routeSource}",
+					$"route-in-shift-destination-open vehicle={vehicleId.id} building={building.Id.id} node={nodeId} routeSource={routeSource} selectedSource={selectedSource} reason=shift-click",
+					dedupe: false);
+				if (TryStartRouteInShopConversation(humanCrew, vehicleId, building, biz, nodeId, routeSource, selectedSource))
+				{
+					return true;
+				}
+
+				return true;
+			}
+
+			return false;
+		}
+
+		private static bool TryStartRouteInShopConversation(PlayerCrew humanCrew, EntityID vehicleId, Entity building, Entity biz, NodeID nodeId, string routeSource, string selectedSource)
+		{
+			try
+			{
+				if (humanCrew == null
+					|| !vehicleId.IsValid
+					|| building == null
+					|| biz == null
+					|| BizStartConversationForCrewMethod == null)
+				{
+					MultiCrewVehicleHelper.LogVehicleAuthority(
+						"route-in-shift-convo-blocked",
+						$"{vehicleId.id}:{building?.Id.id ?? 0UL}:{nodeId}:missing-context",
+						$"route-in-shift-convo-blocked vehicle={vehicleId.id} building={building?.Id.id ?? 0UL} node={nodeId} reason=missing-context hasMethod={BizStartConversationForCrewMethod != null}",
+						dedupe: false);
+					return false;
+				}
+
+				EntityID driverPeepId = MultiCrewVehicleHelper.GetDriverPeepId(humanCrew, vehicleId);
+				CrewAssignment driver = driverPeepId.IsValid ? humanCrew.GetCrewForPeep(driverPeepId) : CrewAssignment.EMPTY;
+				if (!driver.IsValid
+					|| !driver.IsInVehicle
+					|| driver.VehicleID != vehicleId
+					|| !MultiCrewVehicleHelper.IsActiveVehicleOccupant(humanCrew, driver))
+				{
+					MultiCrewVehicleHelper.LogVehicleAuthority(
+						"route-in-shift-convo-blocked",
+						$"{vehicleId.id}:{building.Id.id}:{nodeId}:driver",
+						$"route-in-shift-convo-blocked vehicle={vehicleId.id} building={building.Id.id} node={nodeId} driver={driverPeepId.id} reason=invalid-driver",
+						dedupe: false);
+					return false;
+				}
+
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-sim-convo",
+					$"{vehicleId.id}:{nodeId}:BuildingPick.OnClick:{routeSource}",
+					$"route-sim-convo vehicle={vehicleId.id} node={nodeId} source={routeSource}-shift-click context=BuildingPick.OnClick",
+					dedupe: true);
+				RouteShopStagingState.RememberRouteInConversation(vehicleId, nodeId, "BuildingPick.OnClick", routeSource);
+				BizStartConversationForCrewMethod.Invoke(null, new object[] { driver, biz, false });
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-in-shift-convo-opened",
+					$"{vehicleId.id}:{building.Id.id}:{biz.Id.id}:{nodeId}",
+					$"route-in-shift-convo-opened vehicle={vehicleId.id} crew={driver.peepId.id} building={building.Id.id} biz={biz.Id.id} node={nodeId} routeSource={routeSource} selectedSource={selectedSource}",
+					dedupe: false);
+				return true;
+			}
+			catch (Exception ex)
+			{
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-in-shift-convo-failed",
+					$"{vehicleId.id}:{building?.Id.id ?? 0UL}:{nodeId}:{ex.GetType().Name}",
+					$"route-in-shift-convo-failed vehicle={vehicleId.id} building={building?.Id.id ?? 0UL} node={nodeId} ex={ex.GetType().Name}: {ex.Message}",
+					dedupe: false);
+				return false;
+			}
+		}
+
+		private static bool IsShiftDown()
+		{
+			return Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+		}
+
+		private static void EnsureBuildingPickVisualState(object pickInstance)
+		{
+			if (!(pickInstance is BasePick pick) || pick.go == null)
+			{
+				return;
+			}
+
+			Entity building = pick.Target.FindEntity();
+			if (building == null || building.components?.building == null)
+			{
+				return;
+			}
+
+			object pickDataObject = Traverse.Create(pickInstance).Field("_pickdata").GetValue();
+			if (!(pickDataObject is BuildingPickData pickData))
+			{
+				return;
+			}
+
+			GameObject moduleIconGo = FindChild(pick.go, "Button/Module Icon");
+			GameObject textGo = FindChild(pick.go, "Button/Text");
+			GameObject unscopedIconGo = FindChild(pick.go, "Button/BG Unscoped Icon");
+			bool moduleActiveBefore = moduleIconGo != null && moduleIconGo.activeSelf;
+			bool textActiveBefore = textGo != null && textGo.activeSelf;
+			bool unscopedActiveBefore = unscopedIconGo != null && unscopedIconGo.activeSelf;
+			bool moduleHasSpriteBefore = HasImageSprite(moduleIconGo);
+			bool textHasValueBefore = HasTextValue(textGo);
+			bool repaired = false;
+			string reason = "none";
+
+			if (pickData.ownedBuildingIcon != null)
+			{
+				if (!moduleActiveBefore || !moduleHasSpriteBefore)
+				{
+					SetImageSprite(moduleIconGo, pickData.ownedBuildingIcon);
+					SetActiveIfPresent(moduleIconGo, true);
+					repaired = true;
+					reason = "owned-module-icon";
+				}
+				SetActiveIfPresent(textGo, false);
+				SetActiveIfPresent(unscopedIconGo, false);
+			}
+			else if (pickData.scoped)
+			{
+				string icon = pickData.icon;
+				if (string.IsNullOrWhiteSpace(icon))
+				{
+					icon = BuildingPickUtil.GenerateBuildingButtonIcon(building, forceScoped: true).icon;
+				}
+
+				if (!textActiveBefore || !textHasValueBefore)
+				{
+					SetTextValue(textGo, icon);
+					SetActiveIfPresent(textGo, true);
+					repaired = true;
+					reason = "scoped-text-icon";
+				}
+				SetActiveIfPresent(moduleIconGo, false);
+				SetActiveIfPresent(unscopedIconGo, false);
+			}
+			else
+			{
+				if (!unscopedActiveBefore)
+				{
+					SetActiveIfPresent(unscopedIconGo, true);
+					repaired = true;
+					reason = "unscoped-question-icon";
+				}
+				SetActiveIfPresent(moduleIconGo, false);
+				SetActiveIfPresent(textGo, false);
+			}
+
+			if (!repaired || !ShouldLogBuildingPickVisualRepair(building.Id.id))
+			{
+				return;
+			}
+
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"building-pick-visual-repair",
+				$"{building.Id.id}:{reason}",
+				$"building-pick-visual-repair building={building.Id.id} node={building.data?.board?.bead.nodeId ?? NodeID.INVALID} scoped={pickData.scoped} ownedIcon={pickData.ownedBuildingIcon != null} reason={reason} moduleActive={moduleActiveBefore} moduleSprite={moduleHasSpriteBefore} textActive={textActiveBefore} textValue={textHasValueBefore} unscopedActive={unscopedActiveBefore} frame={Time.frameCount}",
+				dedupe: false);
+		}
+
+		private static GameObject FindChild(GameObject root, string path)
+		{
+			if (root == null || string.IsNullOrWhiteSpace(path))
+			{
+				return null;
+			}
+			Transform child = root.transform.Find(path);
+			return child != null ? child.gameObject : null;
+		}
+
+		private static void SetActiveIfPresent(GameObject child, bool active)
+		{
+			if (child != null && child.activeSelf != active)
+			{
+				child.SetActive(active);
+			}
+		}
+
+		private static bool HasImageSprite(GameObject child)
+		{
+			Image image = child != null ? child.GetComponent<Image>() : null;
+			return image != null && (image.sprite != null || image.overrideSprite != null);
+		}
+
+		private static void SetImageSprite(GameObject child, Sprite sprite)
+		{
+			Image image = child != null ? child.GetComponent<Image>() : null;
+			if (image == null || sprite == null)
+			{
+				return;
+			}
+			image.sprite = sprite;
+			image.overrideSprite = sprite;
+			image.enabled = true;
+		}
+
+		private static bool HasTextValue(GameObject child)
+		{
+			if (child == null)
+			{
+				return false;
+			}
+			TextMeshProUGUI tmp = child.GetComponent<TextMeshProUGUI>();
+			if (tmp != null && !string.IsNullOrWhiteSpace(tmp.text))
+			{
+				return true;
+			}
+			Text text = child.GetComponent<Text>();
+			return text != null && !string.IsNullOrWhiteSpace(text.text);
+		}
+
+		private static void SetTextValue(GameObject child, string value)
+		{
+			if (child == null)
+			{
+				return;
+			}
+			TextMeshProUGUI tmp = child.GetComponent<TextMeshProUGUI>();
+			if (tmp != null)
+			{
+				tmp.text = value ?? string.Empty;
+				tmp.enabled = true;
+			}
+			Text text = child.GetComponent<Text>();
+			if (text != null)
+			{
+				text.text = value ?? string.Empty;
+				text.enabled = true;
+			}
+		}
+
+		private static bool ShouldLogBuildingPickVisualRepair(ulong buildingId)
+		{
+			int frame = Time.frameCount;
+			if (BuildingPickVisualRepairLogFrames.TryGetValue(buildingId, out int lastFrame) && frame - lastFrame < 120)
+			{
+				return false;
+			}
+			BuildingPickVisualRepairLogFrames[buildingId] = frame;
+			return true;
 		}
 
 		[HarmonyFinalizer]
@@ -914,6 +1390,543 @@ namespace GameplayTweaks
 		{
 			MultiCrewVehicleHelper.PopPendingBuildingInteractionScope();
 			return __exception;
+		}
+	}
+
+	internal static class BuildingPickPositionVisibilityPatch
+	{
+		private static readonly Dictionary<ulong, int> LastForcedFrameByBuilding = new Dictionary<ulong, int>();
+		private static readonly Dictionary<ulong, int> LastHiddenFrameByBuilding = new Dictionary<ulong, int>();
+
+		[HarmonyPrefix]
+		internal static void SetPositionAndVisibilityPrefix(BasePick __instance, Vector2 anchoredPos, ref bool show)
+		{
+			try
+			{
+				if (show || __instance == null || __instance.Type != PickType.BuildingPick)
+				{
+					return;
+				}
+				if (!IsBuildingPickVisibleAtCurrentZoom())
+				{
+					return;
+				}
+
+				Entity building = __instance.Target.FindEntity();
+				if (building == null || building.components?.building == null)
+				{
+					return;
+				}
+
+				if (!TryResolveSelectedVehicleBuildingPickContext(building, out EntityID vehicleId, out NodeID buildingNodeId, out string reason))
+				{
+					if (TryResolveSelectedVehicleViewportBuildingPickContext(anchoredPos, out vehicleId, out reason))
+					{
+						show = true;
+						LogBuildingPickForced(building, vehicleId, buildingNodeId, anchoredPos, reason);
+						return;
+					}
+
+					LogBuildingPickHidden(building, buildingNodeId, anchoredPos, "not-selected-node");
+					return;
+				}
+
+				show = true;
+				LogBuildingPickForced(building, vehicleId, buildingNodeId, anchoredPos, reason);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] BuildingPickPositionVisibilityPatch failed: " + ex.Message);
+			}
+		}
+
+		private static bool TryResolveSelectedVehicleBuildingPickContext(Entity building, out EntityID vehicleId, out NodeID buildingNodeId, out string reason)
+		{
+			vehicleId = EntityID.INVALID;
+			buildingNodeId = building?.data?.board?.bead.nodeId ?? NodeID.INVALID;
+			reason = "none";
+			if (building == null || !buildingNodeId.IsValid)
+			{
+				return false;
+			}
+
+			PlayerCrew humanCrew = G.GetHumanCrew();
+			if (humanCrew == null)
+			{
+				return false;
+			}
+
+			bool hasSelectedVehicle = MultiCrewVehicleHelper.TryGetSelectedHumanVehicleForMapScope(humanCrew, out vehicleId, out string selectedSource)
+				&& vehicleId.IsValid;
+			if (!hasSelectedVehicle
+				&& !GameplayTweaksPlugin.TryGetBuildingPickVisibilityGraceVehicle(humanCrew, out vehicleId, out selectedSource))
+			{
+				return false;
+			}
+
+			bool routeActive = MultiCrewVehicleHelper.IsHumanVehicleTravelActive(vehicleId);
+			bool queuedResume = MultiCrewVehicleHelper.HasQueuedHumanVehiclePendingResume(vehicleId);
+			bool pending = MultiCrewVehicleHelper.TryGetPendingHumanVehicleTravel(vehicleId, out _, out NodeID expectedNodeId, out NodeID goalNodeId);
+			bool graceActive = GameplayTweaksPlugin.IsBuildingPickVisibilityGraceActive(vehicleId);
+			if (!routeActive && !queuedResume && !pending && !graceActive)
+			{
+				return false;
+			}
+
+			bool hasAuthoritativeNode = MultiCrewVehicleHelper.TryGetAuthoritativeVehicleNodeId(vehicleId, out NodeID authoritativeNodeId, out string authoritySource)
+				&& authoritativeNodeId.IsValid;
+			if (hasAuthoritativeNode && authoritativeNodeId == buildingNodeId)
+			{
+				reason = $"authoritative-node:{authoritySource}:{selectedSource}";
+				return true;
+			}
+
+			if (hasAuthoritativeNode && GameplayTweaksPlugin.IsNodeInSelectedVehicleCornerCluster(authoritativeNodeId, buildingNodeId))
+			{
+				reason = $"authoritative-corner-cluster:{authoritySource}:{selectedSource}:{authoritativeNodeId}";
+				return true;
+			}
+
+			if (pending && expectedNodeId.IsValid && expectedNodeId == buildingNodeId)
+			{
+				reason = $"expected-node:{selectedSource}";
+				return true;
+			}
+
+			if (pending && expectedNodeId.IsValid && GameplayTweaksPlugin.IsNodeInSelectedVehicleCornerCluster(expectedNodeId, buildingNodeId))
+			{
+				reason = $"expected-corner-cluster:{selectedSource}:{expectedNodeId}";
+				return true;
+			}
+
+			if (pending && goalNodeId.IsValid && goalNodeId == buildingNodeId)
+			{
+				reason = $"goal-node:{selectedSource}";
+				return true;
+			}
+
+			if (pending && goalNodeId.IsValid && GameplayTweaksPlugin.IsNodeInSelectedVehicleCornerCluster(goalNodeId, buildingNodeId))
+			{
+				reason = $"goal-corner-cluster:{selectedSource}:{goalNodeId}";
+				return true;
+			}
+
+			if (GameplayTweaksPlugin.TryGetSelectedVehicleUiFinalNode(vehicleId, out NodeID finalNodeId)
+				&& finalNodeId.IsValid
+				&& finalNodeId == buildingNodeId)
+			{
+				reason = $"ui-final-node:{selectedSource}";
+				return true;
+			}
+
+			if (finalNodeId.IsValid && GameplayTweaksPlugin.IsNodeInSelectedVehicleCornerCluster(finalNodeId, buildingNodeId))
+			{
+				reason = $"ui-final-corner-cluster:{selectedSource}:{finalNodeId}";
+				return true;
+			}
+
+			return false;
+		}
+
+		private static bool TryResolveSelectedVehicleViewportBuildingPickContext(Vector2 anchoredPos, out EntityID vehicleId, out string reason)
+		{
+			vehicleId = EntityID.INVALID;
+			reason = "none";
+			if (!IsInsideBuildingPickTravelGraceViewport(anchoredPos))
+			{
+				return false;
+			}
+
+			PlayerCrew humanCrew = G.GetHumanCrew();
+			if (humanCrew == null)
+			{
+				return false;
+			}
+
+			bool hasSelectedVehicle = MultiCrewVehicleHelper.TryGetSelectedHumanVehicleForMapScope(humanCrew, out vehicleId, out string selectedSource)
+				&& vehicleId.IsValid;
+			if (!hasSelectedVehicle
+				&& !GameplayTweaksPlugin.TryGetBuildingPickVisibilityGraceVehicle(humanCrew, out vehicleId, out selectedSource)
+				&& !GameplayTweaksPlugin.TryGetSingleOccupiedHumanVehicleForBuildingPickVisibility(humanCrew, out vehicleId, out selectedSource))
+			{
+				return false;
+			}
+
+			bool routeActive = MultiCrewVehicleHelper.IsHumanVehicleTravelActive(vehicleId);
+			bool queuedResume = MultiCrewVehicleHelper.HasQueuedHumanVehiclePendingResume(vehicleId);
+			bool pending = MultiCrewVehicleHelper.TryGetPendingHumanVehicleTravel(vehicleId, out _, out NodeID expectedNodeId, out NodeID goalNodeId)
+				&& (expectedNodeId.IsValid || goalNodeId.IsValid);
+			bool graceActive = GameplayTweaksPlugin.IsBuildingPickVisibilityGraceActive(vehicleId);
+			if (routeActive || queuedResume || pending || graceActive)
+			{
+				reason = $"viewport-travel-grace:{selectedSource}:active={routeActive}:queued={queuedResume}:pending={pending}:grace={graceActive}";
+				return true;
+			}
+
+			if (IsSelectedVehicleMapFocusSource(selectedSource))
+			{
+				reason = $"viewport-selection-focus:{selectedSource}";
+				return true;
+			}
+
+			return false;
+		}
+
+		private static bool IsSelectedVehicleMapFocusSource(string selectedSource)
+		{
+			if (string.IsNullOrWhiteSpace(selectedSource))
+			{
+				return false;
+			}
+
+			return string.Equals(selectedSource, "selection-mobile", StringComparison.Ordinal)
+				|| string.Equals(selectedSource, "previous-selection-mobile", StringComparison.Ordinal)
+				|| string.Equals(selectedSource, "remembered-selection", StringComparison.Ordinal)
+				|| string.Equals(selectedSource, "single-occupied-human-vehicle", StringComparison.Ordinal);
+		}
+
+		internal static bool IsBuildingPickVisibleAtCurrentZoom()
+		{
+			try
+			{
+				if (global::Game.Game.serv?.camera?.Settings == null || global::Game.Game.serv?.globals?.settings?.general?.territory == null)
+				{
+					return true;
+				}
+
+				float zoom = global::Game.Game.serv.camera.GetZoom();
+				float minZoom = global::Game.Game.serv.camera.Settings.minZZoom;
+				float maxZoom = global::Game.Game.serv.camera.Settings.maxZZoom;
+				float zoomPercent = MathUtil.Uninterpolate(zoom, minZoom, maxZoom);
+				return global::Game.Game.serv.globals.settings.general.territory.showBuildingPicksZoomRange.InInterval(zoomPercent);
+			}
+			catch
+			{
+				return true;
+			}
+		}
+
+		private static void LogBuildingPickForced(Entity building, EntityID vehicleId, NodeID buildingNodeId, Vector2 anchoredPos, string reason)
+		{
+			int frame = Time.frameCount;
+			if (LastForcedFrameByBuilding.TryGetValue(building.Id.id, out int lastFrame) && frame - lastFrame < 30)
+			{
+				return;
+			}
+
+			LastForcedFrameByBuilding[building.Id.id] = frame;
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"building-pick-visibility-grace",
+				$"{building.Id.id}:{vehicleId.id}:{buildingNodeId}",
+				$"building-pick-visibility-grace building={building.Id.id} vehicle={vehicleId.id} node={buildingNodeId} x={anchoredPos.x:0.0} y={anchoredPos.y:0.0} reason={reason} frame={frame}",
+				dedupe: false);
+		}
+
+		private static void LogBuildingPickHidden(Entity building, NodeID buildingNodeId, Vector2 anchoredPos, string reason)
+		{
+			if (!IsNearVisibleBuildingPickArea(anchoredPos))
+			{
+				return;
+			}
+
+			int frame = Time.frameCount;
+			if (LastHiddenFrameByBuilding.TryGetValue(building.Id.id, out int lastFrame) && frame - lastFrame < 120)
+			{
+				return;
+			}
+
+			LastHiddenFrameByBuilding[building.Id.id] = frame;
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"building-pick-hidden",
+				$"{building.Id.id}:{buildingNodeId}:{reason}",
+				$"building-pick-hidden building={building.Id.id} node={buildingNodeId} x={anchoredPos.x:0.0} y={anchoredPos.y:0.0} reason={reason} frame={frame}",
+				dedupe: false);
+		}
+
+		private static bool IsNearVisibleBuildingPickArea(Vector2 anchoredPos)
+		{
+			return anchoredPos.x >= -350f
+				&& anchoredPos.x <= 1500f
+				&& anchoredPos.y >= -350f
+				&& anchoredPos.y <= 1100f;
+		}
+
+		private static bool IsInsideBuildingPickTravelGraceViewport(Vector2 anchoredPos)
+		{
+			return IsNearVisibleBuildingPickArea(anchoredPos);
+		}
+	}
+
+	internal static class BuildingPickLifecycleDiagnosticsPatch
+	{
+		private static readonly Dictionary<string, int> LastContainerLogFrameByKey = new Dictionary<string, int>(StringComparer.Ordinal);
+		private static readonly Dictionary<ulong, int> LastRemoveLogFrameByTarget = new Dictionary<ulong, int>();
+		private static readonly Dictionary<ulong, int> LastResetLogFrameByTarget = new Dictionary<ulong, int>();
+
+		[HarmonyPrefix]
+		internal static void RefreshAllPrefix(PickContainer __instance, ref bool show, out bool __state)
+		{
+			__state = false;
+			GameplayTweaksPlugin.BeginPickContainerRefresh();
+			try
+			{
+				if (__instance == null || __instance.type != PickType.BuildingPick)
+				{
+					return;
+				}
+
+				__state = __instance.go != null && __instance.go.activeSelf;
+				if (show)
+				{
+					return;
+				}
+				if (!BuildingPickPositionVisibilityPatch.IsBuildingPickVisibleAtCurrentZoom())
+				{
+					LogContainer("building-pick-container-hidden", "zoom-hidden", EntityID.INVALID, __instance, __state, show, 180);
+					return;
+				}
+
+				if (ShouldKeepBuildingPickContainerVisible(out EntityID vehicleId, out string reason))
+				{
+					show = true;
+					LogContainer("building-pick-container-visibility-grace", reason, vehicleId, __instance, __state, show, 45);
+					return;
+				}
+
+				LogContainer("building-pick-container-hidden", "base-show-false", EntityID.INVALID, __instance, __state, show, 90);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] BuildingPickLifecycleDiagnosticsPatch.RefreshAllPrefix failed: " + ex.Message);
+			}
+		}
+
+		[HarmonyPostfix]
+		internal static void RefreshAllPostfix(PickContainer __instance, bool show, bool __state)
+		{
+			try
+			{
+				if (__instance == null || __instance.type != PickType.BuildingPick || __instance.go == null)
+				{
+					return;
+				}
+
+				if (!BuildingPickPositionVisibilityPatch.IsBuildingPickVisibleAtCurrentZoom())
+				{
+					int hiddenChildren = ForceHideBuildingPickContainerForZoom(__instance);
+					if (__instance.go.activeSelf || hiddenChildren > 0)
+					{
+						__instance.go.SetActive(false);
+						LogContainer("building-pick-container-forced-hidden", "zoom-hidden-postfix", EntityID.INVALID, __instance, __state, show, 180);
+					}
+					return;
+				}
+
+				bool activeAfter = __instance.go.activeSelf;
+				if (__state && !activeAfter)
+				{
+					LogContainer("building-pick-container-deactivated", "post-refresh-inactive", EntityID.INVALID, __instance, __state, show, 60);
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] BuildingPickLifecycleDiagnosticsPatch.RefreshAllPostfix failed: " + ex.Message);
+			}
+		}
+
+		[HarmonyFinalizer]
+		internal static Exception RefreshAllFinalizer(Exception __exception)
+		{
+			GameplayTweaksPlugin.EndPickContainerRefresh();
+			return __exception;
+		}
+
+		private static int ForceHideBuildingPickContainerForZoom(PickContainer container)
+		{
+			int hidden = 0;
+			if (container?.picks == null)
+			{
+				return hidden;
+			}
+
+			foreach (BasePick pick in container.picks.Values)
+			{
+				if (pick == null)
+				{
+					continue;
+				}
+
+				try
+				{
+					if (pick.go != null && pick.go.activeSelf)
+					{
+						pick.go.SetActive(false);
+						hidden++;
+					}
+					pick.active = false;
+				}
+				catch
+				{
+				}
+			}
+
+			return hidden;
+		}
+
+		[HarmonyPrefix]
+		internal static void RemovePrefix(PickContainer __instance, PickTarget target)
+		{
+			try
+			{
+				if (__instance == null || __instance.type != PickType.BuildingPick)
+				{
+					return;
+				}
+
+				LogTarget("building-pick-container-remove", target, __instance.picks?.Count ?? -1, LastRemoveLogFrameByTarget);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] BuildingPickLifecycleDiagnosticsPatch.RemovePrefix failed: " + ex.Message);
+			}
+		}
+
+		[HarmonyPrefix]
+		internal static void ResetPrefix(BasePick __instance)
+		{
+			try
+			{
+				if (__instance == null || __instance.Type != PickType.BuildingPick)
+				{
+					return;
+				}
+
+				PickTarget target = __instance.Target;
+				if (!target.IsValid)
+				{
+					return;
+				}
+
+				Vector2 pos = __instance.gorect != null ? __instance.gorect.anchoredPosition : Vector2.zero;
+				if (!IsNearVisibleBuildingPickArea(pos) && __instance.go?.activeSelf != true)
+				{
+					return;
+				}
+
+				LogTarget("building-pick-reset", target, __instance.go?.activeSelf == true ? 1 : 0, LastResetLogFrameByTarget);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] BuildingPickLifecycleDiagnosticsPatch.ResetPrefix failed: " + ex.Message);
+			}
+		}
+
+		private static bool ShouldKeepBuildingPickContainerVisible(out EntityID vehicleId, out string reason)
+		{
+			vehicleId = EntityID.INVALID;
+			reason = "none";
+			PlayerCrew humanCrew = G.GetHumanCrew();
+			if (humanCrew == null)
+			{
+				return false;
+			}
+
+			bool hasVehicle = MultiCrewVehicleHelper.TryGetSelectedHumanVehicleForMapScope(humanCrew, out vehicleId, out string selectedSource)
+				&& vehicleId.IsValid;
+			if (!hasVehicle
+				&& !GameplayTweaksPlugin.TryGetBuildingPickVisibilityGraceVehicle(humanCrew, out vehicleId, out selectedSource)
+				&& !GameplayTweaksPlugin.TryGetSingleOccupiedHumanVehicleForBuildingPickVisibility(humanCrew, out vehicleId, out selectedSource))
+			{
+				return false;
+			}
+
+			bool routeActive = MultiCrewVehicleHelper.IsHumanVehicleTravelActive(vehicleId);
+			bool queuedResume = MultiCrewVehicleHelper.HasQueuedHumanVehiclePendingResume(vehicleId);
+			bool pending = MultiCrewVehicleHelper.TryGetPendingHumanVehicleTravel(vehicleId, out _, out NodeID expectedNodeId, out NodeID goalNodeId)
+				&& (expectedNodeId.IsValid || goalNodeId.IsValid);
+			bool graceActive = GameplayTweaksPlugin.IsBuildingPickVisibilityGraceActive(vehicleId);
+			if (routeActive || queuedResume || pending || graceActive)
+			{
+				reason = $"travel:{selectedSource}:active={routeActive}:queued={queuedResume}:pending={pending}:grace={graceActive}";
+				return true;
+			}
+
+			if (IsSelectedVehicleMapFocusSource(selectedSource))
+			{
+				reason = $"selection-focus:{selectedSource}";
+				return true;
+			}
+
+			return false;
+		}
+
+		private static bool IsSelectedVehicleMapFocusSource(string selectedSource)
+		{
+			if (string.IsNullOrWhiteSpace(selectedSource))
+			{
+				return false;
+			}
+
+			return string.Equals(selectedSource, "selection-mobile", StringComparison.Ordinal)
+				|| string.Equals(selectedSource, "previous-selection-mobile", StringComparison.Ordinal)
+				|| string.Equals(selectedSource, "remembered-selection", StringComparison.Ordinal)
+				|| string.Equals(selectedSource, "single-occupied-human-vehicle", StringComparison.Ordinal);
+		}
+
+		private static void LogContainer(
+			string marker,
+			string reason,
+			EntityID vehicleId,
+			PickContainer container,
+			bool activeBefore,
+			bool requestedShow,
+			int throttleFrames)
+		{
+			int frame = Time.frameCount;
+			string key = $"{marker}:{reason}:{vehicleId.id}";
+			if (LastContainerLogFrameByKey.TryGetValue(key, out int lastFrame) && frame - lastFrame < throttleFrames)
+			{
+				return;
+			}
+
+			LastContainerLogFrameByKey[key] = frame;
+			int count = container?.picks?.Count ?? -1;
+			bool activeNow = container?.go != null && container.go.activeSelf;
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				marker,
+				key,
+				$"{marker} vehicle={vehicleId.id} reason={reason} count={count} activeBefore={activeBefore} activeNow={activeNow} requestedShow={requestedShow} frame={frame}",
+				dedupe: false);
+		}
+
+		private static void LogTarget(string marker, PickTarget target, int countOrActive, Dictionary<ulong, int> throttle)
+		{
+			if (!target.IsValid)
+			{
+				return;
+			}
+
+			ulong targetId = target.eid.id;
+			int frame = Time.frameCount;
+			if (throttle.TryGetValue(targetId, out int lastFrame) && frame - lastFrame < 90)
+			{
+				return;
+			}
+
+			throttle[targetId] = frame;
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				marker,
+				$"{targetId}:{countOrActive}",
+				$"{marker} building={targetId} countOrActive={countOrActive} frame={frame}",
+				dedupe: false);
+		}
+
+		private static bool IsNearVisibleBuildingPickArea(Vector2 anchoredPos)
+		{
+			return anchoredPos.x >= -350f
+				&& anchoredPos.x <= 1500f
+				&& anchoredPos.y >= -350f
+				&& anchoredPos.y <= 1100f;
 		}
 	}
 
@@ -994,9 +2007,24 @@ namespace GameplayTweaks
 		}
 
 		[HarmonyPrefix]
-		internal static void BuildingPickMouseoverPrefix()
+		internal static bool BuildingPickMouseoverPrefix(Entity building, ref string __result)
 		{
 			MultiCrewVehicleHelper.PushPendingBuildingInteractionScope("BuildingPickUtil.MakeMouseover");
+			try
+			{
+				if (TryMakeSafeBuildingPickMouseover(building, out string safeMouseover))
+				{
+					__result = safeMouseover;
+					return false;
+				}
+			}
+			catch (Exception ex)
+			{
+				GameplayTweaksPlugin.VerificationLog(
+					"VehicleNodeAuthority",
+					$"building-pick-mouseover-prefix-failed building={building?.Id.id ?? 0UL} exception={ex.GetType().Name}");
+			}
+			return true;
 		}
 
 		[HarmonyFinalizer]
@@ -1005,10 +2033,81 @@ namespace GameplayTweaks
 			MultiCrewVehicleHelper.PopPendingBuildingInteractionScope();
 			return __exception;
 		}
+
+		private static bool TryMakeSafeBuildingPickMouseover(Entity building, out string mouseover)
+		{
+			mouseover = null;
+			if (building == null || !building.Id.IsValid || building.components?.building == null)
+			{
+				mouseover = string.Empty;
+				return true;
+			}
+
+			bool scoped = false;
+			bool safehouseNotHuman = false;
+			try
+			{
+				scoped = global::Game.Game.ctx?.players?.Human?.territory?.IsScoped(building) == true;
+				safehouseNotHuman = building.components.building.IsSafehouseNotOf(PlayerID.HumanPlayer);
+			}
+			catch
+			{
+				mouseover = BuildingUtil.FindBuildingName(building) ?? string.Empty;
+				return true;
+			}
+
+			if (!safehouseNotHuman || !scoped)
+			{
+				return false;
+			}
+
+			PlayerInfo safehouseOwner = null;
+			try
+			{
+				PlayerID ownerPid = building.components.building.SafehouseOwner;
+				safehouseOwner = ownerPid.IsValid ? ownerPid.FindPlayer() : null;
+			}
+			catch
+			{
+				safehouseOwner = null;
+			}
+
+			if (safehouseOwner != null)
+			{
+				return false;
+			}
+
+			string buildingName = BuildingUtil.FindBuildingName(building);
+			mouseover = !string.IsNullOrWhiteSpace(buildingName)
+				? Loc.Get("ui.pick.name.scoped", "name", buildingName)
+				: Loc.Get("ui.pick.aicontrolled.unscoped.brief");
+			GameplayTweaksPlugin.VerificationLog(
+				"VehicleNodeAuthority",
+				$"building-pick-mouseover-ownerless-safehouse building={building.Id.id}");
+			return true;
+		}
 	}
 
 	internal static class OwnedBizVehicleVisitStatePatch
 	{
+		private const int OwnedBizPhysicalAccessCacheFrameTtl = 12;
+		private static int _ownedBizPhysicalAccessCacheUntilFrame = -1;
+		private static ulong _ownedBizPhysicalAccessCacheBuildingId;
+		private static bool _ownedBizPhysicalAccessCacheResult;
+		private static CrewAssignment _ownedBizPhysicalAccessCacheDriver = CrewAssignment.EMPTY;
+		private static readonly MethodInfo BusinessTrackerFindAndAssignRealOwnerMethod = typeof(BusinessTracker).GetMethod(
+			"FindAndAssignRealOwner",
+			BindingFlags.Instance | BindingFlags.NonPublic,
+			null,
+			new[] { typeof(Entity), typeof(Entity), typeof(Entity) },
+			null);
+		private static readonly MethodInfo BusinessTrackerAssignOwnerToBusinessMethod = typeof(BusinessTracker).GetMethod(
+			"AssignOwnerToBusiness",
+			BindingFlags.Instance | BindingFlags.NonPublic,
+			null,
+			new[] { typeof(Entity), typeof(Entity) },
+			null);
+
 		[HarmonyPrefix]
 		internal static void SetModelPrefix(VisitState visit)
 		{
@@ -1023,10 +2122,17 @@ namespace GameplayTweaks
 		}
 
 		[HarmonyPrefix]
-		internal static void RefreshFooterPrefix(object __instance)
+		internal static bool RefreshFooterPrefix(object __instance)
 		{
 			MultiCrewVehicleHelper.PushPendingBuildingInteractionScope("OwnedBizDialog.RefreshFooter");
 			NormalizeOwnedBizDialogVisit(__instance, "OwnedBizDialog.RefreshFooter");
+			return !ShouldSkipOwnedBizFooterForInvalidInventoryVehicle(__instance, "OwnedBizDialog.RefreshFooter");
+		}
+
+		[HarmonyPrefix]
+		internal static void RefreshHeaderPrefix(object __instance)
+		{
+			NormalizeOwnedBizDialogVisit(__instance, "OwnedBizDialog.RefreshHeader");
 		}
 
 		[HarmonyFinalizer]
@@ -1049,6 +2155,8 @@ namespace GameplayTweaks
 				return false;
 			}
 
+			TryAssignMissingOwnedBizOwner(visit, source);
+			EnsureOwnedBizVisitRepresentative(visit, source);
 			if (OwnedBuildingInteractionSelectionPatch.TryResolveSelectedDirectedOwnedBuildingVehicleDriver(humanCrew, visit.building, out CrewAssignment selectedDriver, out string selectedMatchSource))
 			{
 				if (selectedDriver.IsValid
@@ -1123,28 +2231,28 @@ namespace GameplayTweaks
 					"ownedbiz-inventory-physical-allowed",
 					$"{visit.building.Id.id}:{physicalDriver.peepId.id}:{physicalDriver.VehicleID.id}:{source}",
 					$"ownedbiz-inventory-physical-allowed building={visit.building.Id.id} crew={physicalDriver.peepId.id} vehicle={physicalDriver.VehicleID.id} source={source}",
-					dedupe: false);
+					dedupe: true);
 				return true;
 			}
 
 			if (TryResolveOwnedBizFinalGoalVehicleAccess(humanCrew, visit.building, out CrewAssignment finalGoalDriver, out NodeID finalGoalNodeId, out NodeID finalGoalMatchedNodeId, out string finalGoalSource))
 			{
-				visit.SetCrew(finalGoalDriver);
+				visit.SetCrew(CrewAssignment.EMPTY);
 				MultiCrewVehicleHelper.LogVehicleAuthority(
-					"ownedbiz-inventory-finalgoal-allowed",
+					"ownedbiz-inventory-finalgoal-hidden",
 					$"{visit.building.Id.id}:{finalGoalDriver.peepId.id}:{finalGoalDriver.VehicleID.id}:{finalGoalNodeId}:{source}",
-					$"ownedbiz-inventory-finalgoal-allowed building={visit.building.Id.id} crew={finalGoalDriver.peepId.id} vehicle={finalGoalDriver.VehicleID.id} node={finalGoalNodeId} matchedNode={finalGoalMatchedNodeId} accessSource={finalGoalSource} source={source}",
-					dedupe: false);
+					$"ownedbiz-inventory-finalgoal-hidden building={visit.building.Id.id} crew={finalGoalDriver.peepId.id} vehicle={finalGoalDriver.VehicleID.id} node={finalGoalNodeId} matchedNode={finalGoalMatchedNodeId} accessSource={finalGoalSource} source={source} reason=vehicle-not-physical",
+					dedupe: true);
 				return true;
 			}
 
 			if (TryResolveOwnedBizViewOnlyVehicleContext(humanCrew, out CrewAssignment viewOnlyDriver, out string viewOnlySource))
 			{
-				visit.SetCrew(viewOnlyDriver);
+				visit.SetCrew(CrewAssignment.EMPTY);
 				MultiCrewVehicleHelper.LogVehicleAuthority(
-					"ownedbiz-inventory-viewonly-vehicle",
+					"ownedbiz-inventory-viewonly-vehicle-hidden",
 					$"{visit.building.Id.id}:{viewOnlyDriver.peepId.id}:{viewOnlyDriver.VehicleID.id}:{source}",
-					$"ownedbiz-inventory-viewonly-vehicle building={visit.building.Id.id} crew={viewOnlyDriver.peepId.id} vehicle={viewOnlyDriver.VehicleID.id} source={source} context={viewOnlySource} reason=no-live-vehicle-at-building",
+					$"ownedbiz-inventory-viewonly-vehicle-hidden building={visit.building.Id.id} crew={viewOnlyDriver.peepId.id} vehicle={viewOnlyDriver.VehicleID.id} source={source} context={viewOnlySource} reason=no-live-vehicle-at-building",
 					dedupe: false);
 				return true;
 			}
@@ -1154,7 +2262,7 @@ namespace GameplayTweaks
 				"ownedbiz-inventory-viewonly-allowed",
 				$"{visit.building.Id.id}:{source}",
 				$"ownedbiz-inventory-viewonly-allowed building={visit.building.Id.id} source={source} reason=no-live-vehicle-at-building",
-				dedupe: false);
+				dedupe: true);
 			return true;
 		}
 
@@ -1173,8 +2281,17 @@ namespace GameplayTweaks
 					return true;
 				}
 
-				return TryResolveOwnedBizPhysicalVehicleAccess(humanCrew, visit, out _, source)
-					|| TryResolveOwnedBizFinalGoalVehicleAccess(humanCrew, visit.building, out _, out _, out _, out _);
+				bool canTransfer = TryResolveOwnedBizPhysicalVehicleAccess(humanCrew, visit, out _, source);
+				if (!canTransfer
+					&& TryResolveOwnedBizFinalGoalVehicleAccess(humanCrew, visit.building, out CrewAssignment finalGoalDriver, out NodeID finalGoalNodeId, out _, out string finalGoalSource))
+				{
+					MultiCrewVehicleHelper.LogVehicleAuthority(
+						"ownedbiz-inventory-transfer-finalgoal-blocked",
+						$"{visit.building.Id.id}:{finalGoalDriver.VehicleID.id}:{finalGoalNodeId}:{source}",
+						$"ownedbiz-inventory-transfer-finalgoal-blocked building={visit.building.Id.id} crew={finalGoalDriver.peepId.id} vehicle={finalGoalDriver.VehicleID.id} node={finalGoalNodeId} accessSource={finalGoalSource} source={source} reason=vehicle-not-physical",
+						dedupe: true);
+				}
+				return canTransfer;
 			}
 			catch (Exception ex)
 			{
@@ -1214,6 +2331,14 @@ namespace GameplayTweaks
 				return false;
 			}
 
+			int frame = Time.frameCount;
+			ulong buildingId = visit.building.Id.id;
+			if (frame <= _ownedBizPhysicalAccessCacheUntilFrame && _ownedBizPhysicalAccessCacheBuildingId == buildingId)
+			{
+				driver = _ownedBizPhysicalAccessCacheDriver;
+				return _ownedBizPhysicalAccessCacheResult;
+			}
+
 			if (!OwnedBuildingInteractionSelectionPatch.TryResolveOwnedBuildingVehicleMatches(
 					humanCrew,
 					visit.building,
@@ -1223,12 +2348,79 @@ namespace GameplayTweaks
 				|| matches == null
 				|| matches.Count <= 0)
 			{
+				CacheOwnedBizPhysicalAccess(frame, buildingId, false, CrewAssignment.EMPTY);
 				return false;
 			}
 
 			EntityID driverPeepId = ResolveVisitVehicleDriverFirst(humanCrew, visit, matches);
 			driver = driverPeepId.IsValid ? humanCrew.GetCrewForPeep(driverPeepId) : CrewAssignment.EMPTY;
-			return driver.IsValid && driver.IsInVehicle && driver.VehicleID.IsValid;
+			if (!driver.IsValid || !driver.IsInVehicle || !driver.VehicleID.IsValid)
+			{
+				CacheOwnedBizPhysicalAccess(frame, buildingId, false, CrewAssignment.EMPTY);
+				return false;
+			}
+
+			List<NodeID> strictInventoryNodes = GetOwnedBizStrictInventoryNodeIds(visit);
+			if (strictInventoryNodes.Count <= 0)
+			{
+				CacheOwnedBizPhysicalAccess(frame, buildingId, false, CrewAssignment.EMPTY);
+				return false;
+			}
+
+			EntityID strictVehicleId = driver.VehicleID;
+			if (strictInventoryNodes.Any(nodeId => MultiCrewVehicleHelper.IsHumanVehicleSettledAtNodeForAction(strictVehicleId, nodeId)))
+			{
+				CacheOwnedBizPhysicalAccess(frame, buildingId, true, driver);
+				return true;
+			}
+
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"ownedbiz-inventory-physical-frontage-blocked",
+				$"{visit.building.Id.id}:{driver.peepId.id}:{driver.VehicleID.id}:{source}",
+				$"ownedbiz-inventory-physical-frontage-blocked building={visit.building.Id.id} crew={driver.peepId.id} vehicle={driver.VehicleID.id} strictNodes={string.Join(",", strictInventoryNodes.Select(nodeId => nodeId.ToString()))} source={source} reason=vehicle-not-at-business-node",
+				dedupe: false);
+			driver = CrewAssignment.EMPTY;
+			CacheOwnedBizPhysicalAccess(frame, buildingId, false, CrewAssignment.EMPTY);
+			return false;
+		}
+
+		private static void CacheOwnedBizPhysicalAccess(int frame, ulong buildingId, bool result, CrewAssignment driver)
+		{
+			_ownedBizPhysicalAccessCacheUntilFrame = frame + OwnedBizPhysicalAccessCacheFrameTtl;
+			_ownedBizPhysicalAccessCacheBuildingId = buildingId;
+			_ownedBizPhysicalAccessCacheResult = result;
+			_ownedBizPhysicalAccessCacheDriver = result ? driver : CrewAssignment.EMPTY;
+		}
+
+		private static List<NodeID> GetOwnedBizStrictInventoryNodeIds(VisitState visit)
+		{
+			List<NodeID> nodeIds = new List<NodeID>();
+			if (visit?.building == null)
+			{
+				return nodeIds;
+			}
+
+			try
+			{
+				NodeID visitNodeId = visit.GetBldgNodeID();
+				if (visitNodeId.IsValid)
+				{
+					nodeIds.Add(visitNodeId);
+				}
+			}
+			catch
+			{
+			}
+
+			if (MultiCrewVehicleHelper.TryGetEntityBoardNodeId(visit.building, out NodeID buildingNodeId) && buildingNodeId.IsValid)
+			{
+				nodeIds.Add(buildingNodeId);
+			}
+
+			return nodeIds
+				.Where(nodeId => nodeId.IsValid)
+				.Distinct()
+				.ToList();
 		}
 
 		private static bool TryResolveOwnedBizFinalGoalVehicleAccess(
@@ -1389,6 +2581,11 @@ namespace GameplayTweaks
 		{
 			try
 			{
+				if (IsInventoryRefreshSource(source))
+				{
+					return;
+				}
+
 				if (!(controllerInstance is OwnedBizController controller))
 				{
 					return;
@@ -1401,10 +2598,28 @@ namespace GameplayTweaks
 					return;
 				}
 
-				NormalizeOwnedBizVisitDriver(visit, source);
+				if (IsInventoryRefreshSource(source))
+				{
+					NormalizeOwnedBizInventoryVisitPhysicalOnly(controller, source + ".Footer");
+				}
+				else
+				{
+					NormalizeOwnedBizVisitDriver(visit, source);
+				}
 				OwnedBizDialog dialog = controller.View;
 				if (dialog == null)
 				{
+					return;
+				}
+				if (!visit.crew.IsValid
+					|| !visit.crew.IsInVehicle
+					|| !visit.crew.VehicleID.IsValid)
+				{
+					MultiCrewVehicleHelper.LogVehicleAuthority(
+						"ownedbiz-footer-refresh-skipped",
+						$"{visit.building.Id.id}:{source}:no-valid-visit-vehicle",
+						$"ownedbiz-footer-refresh-skipped building={visit.building.Id.id} source={source} reason=no-valid-visit-vehicle",
+						dedupe: true);
 					return;
 				}
 
@@ -1418,8 +2633,26 @@ namespace GameplayTweaks
 			}
 			catch (Exception ex)
 			{
-				Debug.LogWarning("[GameplayTweaks] OwnedBizVehicleVisitStatePatch.RefreshOwnedBizDialogFooter: " + ex.Message);
+				string message = ex is TargetInvocationException tie && tie.InnerException != null
+					? tie.InnerException.GetType().Name + ": " + tie.InnerException.Message
+					: ex.Message;
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"ownedbiz-footer-refresh-failed",
+					$"{source}:{message}",
+					$"ownedbiz-footer-refresh-failed source={source} exception={message}",
+					dedupe: true);
 			}
+		}
+
+		private static bool IsInventoryRefreshSource(string source)
+		{
+			if (string.IsNullOrWhiteSpace(source))
+			{
+				return false;
+			}
+			return source.IndexOf("ViewInventory", StringComparison.OrdinalIgnoreCase) >= 0
+				|| source.IndexOf("Inventory", StringComparison.OrdinalIgnoreCase) >= 0
+				|| source.IndexOf("OnModuleButtonClick", StringComparison.OrdinalIgnoreCase) >= 0;
 		}
 
 		internal static void ForceOwnedBizInventoryLoading(object controllerInstance, string source)
@@ -1447,19 +2680,16 @@ namespace GameplayTweaks
 
 				PlayerCrew humanCrew = G.GetHumanCrew();
 				if (humanCrew == null
-					|| (!TryResolveOwnedBizPhysicalVehicleAccess(humanCrew, visit, out CrewAssignment transferDriver, source)
-						&& !TryResolveOwnedBizFinalGoalVehicleAccess(humanCrew, visit.building, out transferDriver, out NodeID finalGoalNodeId, out NodeID finalGoalMatchedNodeId, out string finalGoalSource)))
+					|| !TryResolveOwnedBizPhysicalVehicleAccess(humanCrew, visit, out CrewAssignment transferDriver, source))
 				{
 					if (humanCrew != null && TryResolveOwnedBizViewOnlyVehicleContext(humanCrew, out CrewAssignment viewOnlyDriver, out string viewOnlySource))
 					{
-						visit.SetCrew(viewOnlyDriver);
-						controller.SetInventoryLoadingMode(loading: true, shutdown: false);
-						Traverse.Create(controller.View).Method("ControllerRequestsSubviewRefresh").GetValue();
-						RefreshOwnedBizDialogFooter(controller, source + ".ViewOnly");
+						visit.SetCrew(CrewAssignment.EMPTY);
+						controller.SetInventoryLoadingMode(loading: false, shutdown: false);
 						MultiCrewVehicleHelper.LogVehicleAuthority(
-							"ownedbiz-inventory-loading-viewonly-vehicle",
+							"ownedbiz-inventory-loading-viewonly-vehicle-hidden",
 							$"{visit.building.Id.id}:{viewOnlyDriver.peepId.id}:{viewOnlyDriver.VehicleID.id}:{source}",
-							$"ownedbiz-inventory-loading-viewonly-vehicle building={visit.building.Id.id} crew={viewOnlyDriver.peepId.id} vehicle={viewOnlyDriver.VehicleID.id} source={source} context={viewOnlySource} reason=transfer-blocked",
+							$"ownedbiz-inventory-loading-viewonly-vehicle-hidden building={visit.building.Id.id} crew={viewOnlyDriver.peepId.id} vehicle={viewOnlyDriver.VehicleID.id} source={source} context={viewOnlySource} reason=no-live-vehicle-at-building",
 							dedupe: false);
 						return;
 					}
@@ -1474,20 +2704,10 @@ namespace GameplayTweaks
 					return;
 				}
 				visit.SetCrew(transferDriver);
-				if (!MultiCrewVehicleHelper.IsHumanVehiclePhysicallyAtNode(transferDriver.VehicleID, visit.GetBldgNodeID()))
-				{
-					MultiCrewVehicleHelper.LogVehicleAuthority(
-						"ownedbiz-inventory-loading-finalgoal",
-						$"{visit.building.Id.id}:{transferDriver.peepId.id}:{transferDriver.VehicleID.id}:{source}",
-						$"ownedbiz-inventory-loading-finalgoal building={visit.building.Id.id} crew={transferDriver.peepId.id} vehicle={transferDriver.VehicleID.id} source={source}",
-						dedupe: false);
-				}
 
 				bool hadVehicle = Traverse.Create(model).Field("invstate").Field("vehicle").GetValue<InventoryModule>() != null;
 				bool hadBuilding = Traverse.Create(model).Field("invstate").Field("building").GetValue<InventoryModule>() != null;
 				controller.SetInventoryLoadingMode(loading: true, shutdown: false);
-				Traverse.Create(controller.View).Method("ControllerRequestsSubviewRefresh").GetValue();
-				RefreshOwnedBizDialogFooter(controller, source + ".ForceLoading");
 				bool hasVehicle = Traverse.Create(model).Field("invstate").Field("vehicle").GetValue<InventoryModule>() != null;
 				bool hasBuilding = Traverse.Create(model).Field("invstate").Field("building").GetValue<InventoryModule>() != null;
 
@@ -1531,16 +2751,461 @@ namespace GameplayTweaks
 					&& match.peepId == visitVehicleDriverId);
 				if (matchedVisitVehicleDriver.IsValid && matchedVisitVehicleDriver.peepId.IsValid)
 				{
-					MultiCrewVehicleHelper.LogVehicleAuthority(
-						"ownedbiz-passenger-visit-driver-priority",
-						$"{visit.building.Id.id}:{matchedVisitVehicleDriver.peepId.id}:{visitVehicleId.id}",
-						$"ownedbiz-passenger-visit-driver-priority building={visit.building.Id.id} crew={matchedVisitVehicleDriver.peepId.id} vehicle={visitVehicleId.id}",
-						dedupe: false);
-					return matchedVisitVehicleDriver.peepId;
-				}
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"ownedbiz-passenger-visit-driver-priority",
+					$"{visit.building.Id.id}:{matchedVisitVehicleDriver.peepId.id}:{visitVehicleId.id}",
+					$"ownedbiz-passenger-visit-driver-priority building={visit.building.Id.id} crew={matchedVisitVehicleDriver.peepId.id} vehicle={visitVehicleId.id}",
+					dedupe: true);
+				return matchedVisitVehicleDriver.peepId;
+			}
 			}
 
 			return OwnedBuildingInteractionSelectionPatch.ResolveDefaultInteractionCrew(humanCrew, matches);
+		}
+
+		internal static bool EnsureOwnedBizVisitRepresentative(VisitState visit, string source)
+		{
+			try
+			{
+				if (visit == null
+					|| visit.building == null
+					|| visit.npc != null
+					|| !OwnedBuildingInteractionSelectionPatch.IsOwnedInteractionBuilding(visit.building))
+				{
+					return false;
+				}
+
+				TryAssignMissingOwnedBizOwner(visit, source);
+				Entity representative = null;
+				try
+				{
+					representative = BuildingUtil.FindOwnerOrManagerForAnyBuilding(visit.building);
+				}
+				catch
+				{
+					representative = null;
+				}
+
+				representative = representative ?? visit.peep;
+				if (representative == null)
+				{
+					CrewAssignment bossCrew = G.GetHumanCrew()?.GetCrewForPlayerPeep() ?? CrewAssignment.EMPTY;
+					representative = bossCrew.GetPeep();
+				}
+				if (representative == null)
+				{
+					return false;
+				}
+
+				visit.npc = representative;
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"ownedbiz-visit-owner-fallback",
+					$"{visit.building.Id.id}:{representative.Id.id}:{source}",
+					$"ownedbiz-visit-owner-fallback building={visit.building.Id.id} npc={representative.Id.id} source={source}",
+					dedupe: false);
+				return true;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] OwnedBizVehicleVisitStatePatch.EnsureOwnedBizVisitRepresentative: " + ex.Message);
+				return false;
+			}
+		}
+
+		internal static bool TryBlockOwnedBizMissingOwnerConversation(VisitState visit, string source)
+		{
+			try
+			{
+				TryAssignMissingOwnedBizOwner(visit, source);
+				if (visit?.building == null
+					|| !IsOwnedBizVisitMissingRealOwner(visit))
+				{
+					return false;
+				}
+
+				EnsureOwnedBizVisitRepresentative(visit, source);
+				GameplayTweaksPlugin.VerificationLog(
+					"VehicleNodeAuthority",
+					$"ownedbiz-owner-conversation-blocked building={visit.building.Id.id} source={source} reason=no-owner");
+				try
+				{
+					object ownedBizDialog = global::Game.Game.ctx?.hud?.ownedBiz;
+					if (ownedBizDialog != null)
+					{
+						Traverse.Create(ownedBizDialog).Method("Show", visit).GetValue();
+					}
+				}
+				catch
+				{
+				}
+				return true;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] OwnedBizVehicleVisitStatePatch.TryBlockOwnedBizMissingOwnerConversation: " + ex.Message);
+				return false;
+			}
+		}
+
+		private static bool TryAssignMissingOwnedBizOwner(VisitState visit, string source)
+		{
+			try
+			{
+				if (visit?.building == null
+					|| visit.biz == null
+					|| !OwnedBuildingInteractionSelectionPatch.IsOwnedInteractionBuilding(visit.building))
+				{
+					return false;
+				}
+
+				Entity owner = null;
+				try
+				{
+					owner = BuildingUtil.FindOwnerOrManagerForAnyBuilding(visit.building);
+				}
+				catch
+				{
+					owner = null;
+				}
+
+				if (owner != null)
+				{
+					if (visit.npc == null)
+					{
+						visit.npc = owner;
+					}
+					EnsureOwnedBizOwnerSocialState(visit, owner, null, source);
+					return false;
+				}
+
+				BusinessTracker tracker = global::Game.Game.ctx?.simman?.businesses;
+				if (tracker == null)
+				{
+					return false;
+				}
+
+				Entity previousOwner = TryFindRealBusinessOwner(visit.biz);
+				bool assigned = false;
+				if (BusinessTrackerFindAndAssignRealOwnerMethod != null)
+				{
+					object result = BusinessTrackerFindAndAssignRealOwnerMethod.Invoke(tracker, new object[] { visit.biz, visit.building, previousOwner });
+					assigned = result is bool success && success;
+				}
+				if (!assigned && BusinessTrackerAssignOwnerToBusinessMethod != null)
+				{
+					object result = BusinessTrackerAssignOwnerToBusinessMethod.Invoke(tracker, new object[] { visit.biz, previousOwner });
+					assigned = result is bool success && success;
+				}
+				if (!assigned)
+				{
+					return false;
+				}
+
+				owner = BuildingUtil.FindOwnerOrManagerForAnyBuilding(visit.building);
+				if (owner == null)
+				{
+					return false;
+				}
+
+				visit.npc = owner;
+				EnsureOwnedBizOwnerSocialState(visit, owner, previousOwner, source);
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"ownedbiz-owner-assigned-on-demand",
+					$"{visit.building.Id.id}:{owner.Id.id}:{source}",
+					$"ownedbiz-owner-assigned-on-demand building={visit.building.Id.id} owner={owner.Id.id} source={source}",
+					dedupe: false);
+				return true;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] OwnedBizVehicleVisitStatePatch.TryAssignMissingOwnedBizOwner: " + ex.Message);
+				return false;
+			}
+		}
+
+		internal static void EnsureOwnedBizOwnerSocialState(VisitState visit, Entity owner, string source)
+		{
+			EnsureOwnedBizOwnerSocialState(visit, owner, null, source);
+		}
+
+		private static void EnsureOwnedBizOwnerSocialState(VisitState visit, Entity owner, Entity previousOwner, string source)
+		{
+			try
+			{
+				if (visit?.building == null || owner == null || !owner.Id.IsValid)
+				{
+					return;
+				}
+
+				EnsureOwnedBizOwnerSocialState(visit.building, owner, previousOwner, visit.crew, source);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] OwnedBizVehicleVisitStatePatch.EnsureOwnedBizOwnerSocialState: " + ex.Message);
+			}
+		}
+
+		internal static void EnsureOwnedBizOwnerSocialState(Entity building, Entity owner, CrewAssignment crew, string source)
+		{
+			EnsureOwnedBizOwnerSocialState(building, owner, null, crew, source);
+		}
+
+		internal static void EnsureOwnedBizOwnerSocialState(Entity building, Entity owner, Entity previousOwner, CrewAssignment crew, string source)
+		{
+			try
+			{
+				if (building == null || owner == null || !owner.Id.IsValid)
+				{
+					return;
+				}
+
+				PlayerInfo human = G.GetHumanPlayer();
+				if (human?.social == null)
+				{
+					return;
+				}
+
+				Relationship relationship = human.social.GetRelationshipFromSourceToPlayer(owner.Id);
+				bool hadScopeBuff = relationship?.HasBuff(BuffConstants.BUFF_ON_SCOPEOUT_NPC) == true;
+				bool hadManagerBuff = relationship?.HasBuff(BuffConstants.RELBUFF_OUTPOST_MANAGER) == true;
+				if (hadScopeBuff && hadManagerBuff && relationship.GetTicketsAvailable() > 0)
+				{
+					EnsureOwnedBizOwnerRelationshipGraph(building, owner, previousOwner, crew, source);
+					return;
+				}
+
+				EntityID crewPeepId = crew.peepId.IsValid
+					? crew.peepId
+					: human.social.PlayerPeepId;
+				if (human.territory != null)
+				{
+					human.territory.ScopeOutAndMeetOwner(building, procgen: false, crewPeepId, setControlled: false);
+				}
+				else
+				{
+					human.social.MeetBuildingOwner(owner.Id, oldfriends: false, crewPeepId);
+				}
+
+				relationship = human.social.GetRelationshipFromSourceToPlayer(owner.Id);
+				bool addedManagerBuff = false;
+				if (relationship?.HasBuff(BuffConstants.RELBUFF_OUTPOST_MANAGER) != true)
+				{
+					addedManagerBuff = human.social.AddBuffFrom(owner.Id, BuffConstants.RELBUFF_OUTPOST_MANAGER);
+				}
+
+				int tickets = human.social.GetSocialTicketsAvailable(owner.Id);
+				bool grantedFreebie = false;
+				if (tickets <= 0 && !hadManagerBuff)
+				{
+					human.social.GrantFreebieTickets(owner.Id, 1);
+					grantedFreebie = true;
+					tickets = human.social.GetSocialTicketsAvailable(owner.Id);
+				}
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"ownedbiz-owner-social-repaired",
+					$"{building.Id.id}:{owner.Id.id}:{source}",
+					$"ownedbiz-owner-social-repaired building={building.Id.id} owner={owner.Id.id} tickets={tickets} addedManagerBuff={addedManagerBuff} grantedFreebie={grantedFreebie} source={source}",
+					dedupe: false);
+				EnsureOwnedBizOwnerRelationshipGraph(building, owner, previousOwner, crew, source);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] OwnedBizVehicleVisitStatePatch.EnsureOwnedBizOwnerSocialState: " + ex.Message);
+			}
+		}
+
+		private static Entity TryFindRealBusinessOwner(Entity biz)
+		{
+			try
+			{
+				if (biz?.data?.biz == null || !biz.data.biz.owner.IsReal || !biz.data.biz.owner.id.IsValid)
+				{
+					return null;
+				}
+
+				return biz.data.biz.owner.id.FindEntity();
+			}
+			catch
+			{
+				return null;
+			}
+		}
+
+		private static void EnsureOwnedBizOwnerRelationshipGraph(Entity building, Entity owner, Entity previousOwner, CrewAssignment crew, string source)
+		{
+			try
+			{
+				if (building == null || owner?.Id.IsValid != true)
+				{
+					return;
+				}
+
+				RelationshipTracker rels = global::Game.Game.ctx?.simman?.rels;
+				PlayerInfo human = G.GetHumanPlayer();
+				if (rels == null || human?.social == null)
+				{
+					return;
+				}
+
+				EntityID crewPeepId = crew.peepId.IsValid ? crew.peepId : human.social.PlayerPeepId;
+				int familyLinks = 0;
+				int familyIntroduced = 0;
+				int acquaintancesBefore = CountOwnerRelationships(owner.Id, RelationshipType.Acquaintance, out familyLinks);
+				try
+				{
+					foreach (EntityID familyId in PlayerSocial.ProduceFamily(owner.Id, onlyclose: false).Distinct())
+					{
+						if (!familyId.IsValid || familyId == owner.Id || familyId == human.social.PlayerPeepId)
+						{
+							continue;
+						}
+
+						Entity family = familyId.FindEntity();
+						if (family?.data?.person == null)
+						{
+							continue;
+						}
+
+						if (human.social.GetRelationshipFromSourceToPlayer(familyId) == null)
+						{
+							human.social.MeetFamilyAtStartup(familyId, crewPeepId);
+							familyIntroduced++;
+						}
+					}
+				}
+				catch
+				{
+				}
+
+				bool addedReplacementAcquaintance = false;
+				if (previousOwner?.Id.IsValid == true && previousOwner.Id != owner.Id)
+				{
+					rels.GetOrMakeSymmetrical(owner.Id, previousOwner.Id, RelationshipType.Acquaintance, warnOnExisting: false);
+					addedReplacementAcquaintance = true;
+				}
+
+				bool addedBusinessAcquaintance = false;
+				if (!addedReplacementAcquaintance && acquaintancesBefore <= 0)
+				{
+					Entity peerOwner = FindPeerBusinessOwner(owner, building);
+					if (peerOwner?.Id.IsValid == true && peerOwner.Id != owner.Id)
+					{
+						rels.GetOrMakeSymmetrical(owner.Id, peerOwner.Id, RelationshipType.Acquaintance, warnOnExisting: false);
+						addedBusinessAcquaintance = true;
+					}
+				}
+
+				int familyAfter;
+				int acquaintancesAfter = CountOwnerRelationships(owner.Id, RelationshipType.Acquaintance, out familyAfter);
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"ownedbiz-owner-relationship-graph-repaired",
+					$"{building.Id.id}:{owner.Id.id}:{source}:{familyAfter}:{acquaintancesAfter}",
+					$"ownedbiz-owner-relationship-graph-repaired building={building.Id.id} owner={owner.Id.id} familyBefore={familyLinks} familyAfter={familyAfter} familyIntroduced={familyIntroduced} acquaintancesBefore={acquaintancesBefore} acquaintancesAfter={acquaintancesAfter} addedReplacementAcquaintance={addedReplacementAcquaintance} addedBusinessAcquaintance={addedBusinessAcquaintance} source={source}",
+					dedupe: false);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] OwnedBizVehicleVisitStatePatch.EnsureOwnedBizOwnerRelationshipGraph: " + ex.Message);
+			}
+		}
+
+		private static int CountOwnerRelationships(EntityID ownerId, RelationshipType type, out int familyLinks)
+		{
+			familyLinks = 0;
+			try
+			{
+				RelationshipList list = global::Game.Game.ctx?.simman?.rels?.GetListOrNull(ownerId);
+				if (list?.data == null)
+				{
+					return 0;
+				}
+
+				int count = 0;
+				foreach (Relationship rel in list.data)
+				{
+					if (rel == null || rel.IsSelf)
+					{
+						continue;
+					}
+					if (rel.IsAnyFamily)
+					{
+						familyLinks++;
+					}
+					if (rel.type == type)
+					{
+						count++;
+					}
+				}
+				return count;
+			}
+			catch
+			{
+				familyLinks = 0;
+				return 0;
+			}
+		}
+
+		private static Entity FindPeerBusinessOwner(Entity owner, Entity building)
+		{
+			try
+			{
+				BusinessTracker tracker = global::Game.Game.ctx?.simman?.businesses;
+				if (tracker == null)
+				{
+					return null;
+				}
+
+				foreach (Entity biz in tracker.GetAllBizWithOwnersUnsafe())
+				{
+					Entity peer = TryFindRealBusinessOwner(biz);
+					if (peer?.Id.IsValid == true && peer.Id != owner.Id)
+					{
+						return peer;
+					}
+				}
+			}
+			catch
+			{
+			}
+
+			return null;
+		}
+
+		private static bool IsOwnedBizVisitMissingRealOwner(VisitState visit)
+		{
+			if (visit?.building == null
+				|| visit.biz == null
+				|| !OwnedBuildingInteractionSelectionPatch.IsOwnedInteractionBuilding(visit.building))
+			{
+				return false;
+			}
+
+			try
+			{
+				Entity owner = BuildingUtil.FindOwnerOrManagerForAnyBuilding(visit.building);
+				if (owner != null)
+				{
+					return false;
+				}
+			}
+			catch
+			{
+			}
+
+			try
+			{
+				if (visit.biz.data?.biz == null)
+				{
+					return true;
+				}
+
+				EntityID ownerId = visit.biz.data.biz.owner.id;
+				return !ownerId.IsValid || ownerId.FindEntity() == null;
+			}
+			catch
+			{
+				return true;
+			}
 		}
 
 		internal static void NormalizeInventoryViewVisit(object viewInstance, string source)
@@ -1558,24 +3223,152 @@ namespace GameplayTweaks
 					return;
 				}
 
-				if (NormalizeOwnedBizVisitDriver(model.visit, source))
-				{
-					Traverse invstateTraverse = Traverse.Create(model).Field("invstate");
-					object invstate = invstateTraverse.GetValue();
-					if (invstate != null)
-					{
-						Traverse.Create(invstate).Method("RefreshOnCrewChange", model).GetValue();
-					}
-					MultiCrewVehicleHelper.LogVehicleAuthority(
-						"ownedbiz-inventory-driver-normalized",
-						$"{model.visit.building?.Id.id ?? 0UL}:{model.visit.crew.peepId.id}:{model.visit.crew.VehicleID.id}:{source}",
-						$"ownedbiz-inventory-driver-normalized building={model.visit.building?.Id.id ?? 0UL} crew={model.visit.crew.peepId.id} vehicle={model.visit.crew.VehicleID.id} source={source}",
-						dedupe: false);
-				}
+				NormalizeOwnedBizInventoryVisitPhysicalOnly(model, source);
 			}
 			catch (Exception ex)
 			{
 				Debug.LogWarning("[GameplayTweaks] OwnedBizVehicleVisitStatePatch.NormalizeInventoryViewVisit: " + ex.Message);
+			}
+		}
+
+		private static bool NormalizeOwnedBizInventoryVisitPhysicalOnly(OwnedBizController controller, string source)
+		{
+			return NormalizeOwnedBizInventoryVisitPhysicalOnly(controller?.Model, source);
+		}
+
+		private static bool NormalizeOwnedBizInventoryVisitPhysicalOnly(OwnedBizModel model, string source)
+		{
+			if (model?.visit == null)
+			{
+				return false;
+			}
+
+			PlayerCrew humanCrew = G.GetHumanCrew();
+			if (humanCrew == null
+				|| model.visit.building == null
+				|| !OwnedBuildingInteractionSelectionPatch.IsOwnedInteractionBuilding(model.visit.building))
+			{
+				return false;
+			}
+
+			Traverse invstateTraverse = Traverse.Create(model).Field("invstate");
+			object invstate = invstateTraverse.GetValue();
+			if (TryResolveOwnedBizPhysicalVehicleAccess(humanCrew, model.visit, out CrewAssignment physicalDriver, source))
+			{
+				bool changed = !model.visit.crew.IsValid
+					|| !model.visit.crew.IsInVehicle
+					|| model.visit.crew.VehicleID != physicalDriver.VehicleID
+					|| model.visit.crew.peepId != physicalDriver.peepId;
+				model.visit.SetCrew(physicalDriver);
+				if (changed && invstate != null)
+				{
+					Traverse.Create(invstate).Method("RefreshOnCrewChange", model).GetValue();
+				}
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"ownedbiz-inventory-driver-normalized",
+					$"{model.visit.building.Id.id}:{physicalDriver.peepId.id}:{physicalDriver.VehicleID.id}:{source}",
+					$"ownedbiz-inventory-driver-normalized building={model.visit.building.Id.id} crew={physicalDriver.peepId.id} vehicle={physicalDriver.VehicleID.id} source={source}",
+					dedupe: true);
+				return true;
+			}
+
+			model.visit.SetCrew(CrewAssignment.EMPTY);
+			if (invstate != null && invstateTraverse.Property("IsLoading").GetValue<bool>())
+			{
+				invstateTraverse.Method("StopLoading").GetValue();
+			}
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"ownedbiz-inventory-driver-hidden",
+				$"{model.visit.building.Id.id}:{source}",
+				$"ownedbiz-inventory-driver-hidden building={model.visit.building.Id.id} source={source} reason=no-strict-physical-vehicle",
+				dedupe: true);
+			return false;
+		}
+
+		internal static void StopInventoryViewLoadingIfNoVisitVehicle(object viewInstance, string source)
+		{
+			try
+			{
+				if (viewInstance == null)
+				{
+					return;
+				}
+
+				OwnedBizModel model = Traverse.Create(viewInstance).Field("Model").GetValue<OwnedBizModel>();
+				if (model?.visit == null || model.visit.vehicle != null)
+				{
+					return;
+				}
+
+				Traverse invstateTraverse = Traverse.Create(model).Field("invstate");
+				object invstate = invstateTraverse.GetValue();
+				if (invstate == null || !invstateTraverse.Property("IsLoading").GetValue<bool>())
+				{
+					return;
+				}
+
+				invstateTraverse.Method("StopLoading").GetValue();
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"ownedbiz-inventory-stale-vehicle-cleared",
+					$"{model.visit.building?.Id.id ?? 0UL}:{source}",
+					$"ownedbiz-inventory-stale-vehicle-cleared building={model.visit.building?.Id.id ?? 0UL} source={source} reason=no-physical-visit-vehicle",
+					dedupe: false);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] OwnedBizVehicleVisitStatePatch.StopInventoryViewLoadingIfNoVisitVehicle: " + ex.Message);
+			}
+		}
+
+		internal static bool IsOwnedBizInventoryLoadingReady(object controllerInstance)
+		{
+			try
+			{
+				if (!(controllerInstance is OwnedBizController controller) || controller.View == null)
+				{
+					return true;
+				}
+
+				bool isInventoryView = Traverse.Create(controller.View)
+					.Method("IsShowingSubview", new Type[] { typeof(ViewType) })
+					.GetValue<bool>(ViewType.ViewInventory);
+				if (!isInventoryView)
+				{
+					return true;
+				}
+
+				OwnedBizModel model = controller.Model;
+				if (model?.visit == null)
+				{
+					return true;
+				}
+
+				object currentSlot = Traverse.Create(model).Field("currentSlot").GetValue();
+				IModule module = currentSlot == null ? null : Traverse.Create(currentSlot).Field("module").GetValue<IModule>();
+				if (!(module is InventoryModule))
+				{
+					return true;
+				}
+
+				Traverse invstateTraverse = Traverse.Create(model).Field("invstate");
+				object invstate = invstateTraverse.GetValue();
+				if (invstate == null)
+				{
+					return false;
+				}
+
+				InventoryModule building = invstateTraverse.Field("building").GetValue<InventoryModule>();
+				InventoryModule vehicle = invstateTraverse.Field("vehicle").GetValue<InventoryModule>();
+				if (model.visit.vehicle == null)
+				{
+					return building == null && vehicle == null;
+				}
+
+				return building != null && vehicle != null;
+			}
+			catch
+			{
+				return false;
 			}
 		}
 
@@ -1591,6 +3384,14 @@ namespace GameplayTweaks
 				OwnedBizModel model = controller.Model;
 				if (model?.visit == null)
 				{
+					return;
+				}
+
+				object currentSlot = Traverse.Create(model).Field("currentSlot").GetValue();
+				IModule module = currentSlot == null ? null : Traverse.Create(currentSlot).Field("module").GetValue<IModule>();
+				if (module is InventoryModule)
+				{
+					NormalizeOwnedBizInventoryVisitPhysicalOnly(model, source);
 					return;
 				}
 
@@ -1630,13 +3431,127 @@ namespace GameplayTweaks
 				Debug.LogWarning("[GameplayTweaks] OwnedBizVehicleVisitStatePatch.NormalizeOwnedBizDialogVisit: " + ex.Message);
 			}
 		}
+
+		private static bool ShouldSkipOwnedBizFooterForInvalidInventoryVehicle(object dialogInstance, string source)
+		{
+			try
+			{
+				if (dialogInstance == null)
+				{
+					return false;
+				}
+
+				object controllerInstance = Traverse.Create(dialogInstance).Property("Controller").GetValue();
+				if (controllerInstance == null)
+				{
+					controllerInstance = Traverse.Create(dialogInstance).Field("_controller").GetValue();
+				}
+				if (!(controllerInstance is OwnedBizController controller))
+				{
+					return false;
+				}
+
+				OwnedBizModel model = controller.Model;
+				VisitState visit = model?.visit;
+				if (visit?.building == null)
+				{
+					return false;
+				}
+
+				object currentSlot = Traverse.Create(model).Field("currentSlot").GetValue();
+				IModule module = currentSlot == null ? null : Traverse.Create(currentSlot).Field("module").GetValue<IModule>();
+				if (!(module is InventoryModule))
+				{
+					return false;
+				}
+
+				if (visit.crew.IsValid && visit.crew.IsInVehicle && visit.crew.VehicleID.IsValid)
+				{
+					return false;
+				}
+
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"ownedbiz-footer-invalid-inventory-skipped",
+					$"{visit.building.Id.id}:{source}",
+					$"ownedbiz-footer-invalid-inventory-skipped building={visit.building.Id.id} source={source} reason=no-valid-inventory-vehicle",
+					dedupe: true);
+				return true;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] OwnedBizVehicleVisitStatePatch.ShouldSkipOwnedBizFooterForInvalidInventoryVehicle: " + ex.Message);
+				return false;
+			}
+		}
+	}
+
+	internal static class OwnedBizModuleToggleOwnerGuardPatch
+	{
+		[HarmonyPrefix]
+		internal static bool Prefix(object __instance, VisitState visit)
+		{
+			try
+			{
+				if (visit?.npc != null)
+				{
+					return true;
+				}
+
+				OwnedBizVehicleVisitStatePatch.EnsureOwnedBizVisitRepresentative(visit, "ModuleToggleContext.SetOwner");
+				if (visit?.npc != null)
+				{
+					return true;
+				}
+
+				if (__instance != null)
+				{
+					Traverse context = Traverse.Create(__instance);
+					context.Method("Reset").GetValue();
+					context.Field("mouseover").SetValue(Loc.Get("ui.crewinfo.nomanager.desc"));
+				}
+				GameplayTweaksPlugin.VerificationLog(
+					"VehicleNodeAuthority",
+					$"ownedbiz-owner-toggle-null-guard building={visit?.building?.Id.id ?? 0UL}");
+				return false;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] OwnedBizModuleToggleOwnerGuardPatch: " + ex.Message);
+				return true;
+			}
+		}
+	}
+
+	internal static class BuildingPickMouseoverGuardPatch
+	{
+		[HarmonyFinalizer]
+		internal static Exception Finalizer(Exception __exception, Entity building, ref string __result)
+		{
+			MultiCrewVehicleHelper.PopPendingBuildingInteractionScope();
+			if (__exception == null)
+			{
+				return null;
+			}
+
+			try
+			{
+				__result = building != null ? BuildingUtil.GenerateBuildingPickMouseover(building, brief: true) : string.Empty;
+			}
+			catch
+			{
+				__result = string.Empty;
+			}
+			GameplayTweaksPlugin.VerificationLog(
+				"VehicleNodeAuthority",
+				$"building-pick-mouseover-null-guard building={building?.Id.id ?? 0UL} exception={__exception.GetType().Name}");
+			return null;
+		}
 	}
 
 	internal static class PassengerCommandAuthorityPatch
 	{
 		private static readonly HashSet<CommandType> PassengerAllowedCommands = new HashSet<CommandType>
 		{
-			CommandType.Cancel
 		};
 
 		[HarmonyPostfix]
@@ -1649,19 +3564,9 @@ namespace GameplayTweaks
 					return;
 				}
 
-				int before = __result.Count;
 				__result = __result
 					.Where(state => state?.handler != null && PassengerAllowedCommands.Contains(state.handler.Type))
 					.ToList();
-				int removed = before - __result.Count;
-				if (removed > 0)
-				{
-					MultiCrewVehicleHelper.LogVehicleAuthority(
-						"passenger-command-filter",
-						$"{latestCrew.VehicleID.id}:{latestCrew.peepId.id}:{removed}",
-						$"passenger-command-filter vehicle={latestCrew.VehicleID.id} crew={latestCrew.peepId.id} removed={removed}",
-						dedupe: false);
-				}
 			}
 			catch (Exception ex)
 			{
@@ -1704,6 +3609,7 @@ namespace GameplayTweaks
 				return false;
 			}
 
+			OwnedBizVehicleVisitStatePatch.StopInventoryViewLoadingIfNoVisitVehicle(__instance, "ViewInventory.OnActivated");
 			OwnedBizVehicleVisitStatePatch.NormalizeInventoryViewVisit(__instance, "ViewInventory.OnActivated");
 			OwnedBizVehicleVisitStatePatch.RefreshOwnedBizDialogFooter(
 				OwnedBizVehicleVisitStatePatch.TryGetInventoryViewController(__instance),
@@ -1721,6 +3627,7 @@ namespace GameplayTweaks
 				return false;
 			}
 
+			OwnedBizVehicleVisitStatePatch.StopInventoryViewLoadingIfNoVisitVehicle(__instance, "ViewInventory.RefreshAllPanels");
 			OwnedBizVehicleVisitStatePatch.NormalizeInventoryViewVisit(__instance, "ViewInventory.RefreshAllPanels");
 			OwnedBizVehicleVisitStatePatch.RefreshOwnedBizDialogFooter(
 				OwnedBizVehicleVisitStatePatch.TryGetInventoryViewController(__instance),
@@ -1797,7 +3704,1304 @@ namespace GameplayTweaks
 				return;
 			}
 
+			if (OwnedBizVehicleVisitStatePatch.IsOwnedBizInventoryLoadingReady(__instance))
+			{
+				return;
+			}
+
 			OwnedBizVehicleVisitStatePatch.ForceOwnedBizInventoryLoading(__instance, "OwnedBizController.OnModuleButtonClick.Postfix");
+		}
+	}
+
+	internal static class OwnedBizTakeoverOwnerSocialPatch
+	{
+		[HarmonyPostfix]
+		internal static void PerformTakeoverPostfix(PlayerTerritory __instance, CrewAssignment crew, PlayerTerritory.TakeoverData td, Entity __result)
+		{
+			try
+			{
+				PlayerInfo human = G.GetHumanPlayer();
+				if (__instance == null || human?.territory != __instance)
+				{
+					return;
+				}
+
+				Entity building = __result ?? td.FindBuilding();
+				if (building == null || !building.Id.IsValid)
+				{
+					return;
+				}
+
+				Entity owner = null;
+				try
+				{
+					owner = BuildingUtil.FindOwnerOrManagerForAnyBuilding(building);
+				}
+				catch
+				{
+					owner = null;
+				}
+				if (owner == null && td.candidateId.IsValid)
+				{
+					owner = td.FindCandidate();
+				}
+				if (owner == null || !owner.Id.IsValid)
+				{
+					return;
+				}
+
+				OwnedBizVehicleVisitStatePatch.EnsureOwnedBizOwnerSocialState(building, owner, crew, "PlayerTerritory.PerformTakeover");
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] OwnedBizTakeoverOwnerSocialPatch.PerformTakeoverPostfix: " + ex.Message);
+			}
+		}
+	}
+
+	internal static class HumanBuySellVehiclePhysicalGatePatch
+	{
+		private static readonly MethodInfo JumpToConvoStateMethod = typeof(ConversationController).GetMethod(
+			"JumpToConvoState",
+			BindingFlags.Instance | BindingFlags.NonPublic,
+			null,
+			new[] { typeof(Label), typeof(ConvoData) },
+			null);
+
+		private static int _routeShopCommitExecutionDepth;
+
+		internal static void PushRouteShopCommitExecutionScope()
+		{
+			_routeShopCommitExecutionDepth++;
+		}
+
+		internal static void PopRouteShopCommitExecutionScope()
+		{
+			if (_routeShopCommitExecutionDepth > 0)
+			{
+				_routeShopCommitExecutionDepth--;
+			}
+		}
+
+		[HarmonyPrefix]
+		internal static bool ShowBuySellPopupPrefix(object __instance, ConvoButton button, ref OnClickResult __result)
+		{
+			try
+			{
+				VisitState visit = __instance == null
+					? null
+					: Traverse.Create(__instance).Property("Visit").GetValue<VisitState>();
+				PlayerInfo player = visit?.GetPlayer();
+				if (TryBlockHumanBuySellTradeLock(player, visit?.building, "ConvoCallbacks.ShowBuySellPopup"))
+				{
+					__result = OnClickResult.CONTINUE;
+					return false;
+				}
+				if (TryResolveRouteInShopDestination(visit?.crew ?? CrewAssignment.EMPTY, visit?.building, out NodeID routeInNodeId, out string routeInSource))
+				{
+					if (TryShowRouteInShopStagingPicker(__instance, button, player, visit, routeInNodeId, routeInSource))
+					{
+						__result = OnClickResult.PAUSE_CONVERSATION;
+						return false;
+					}
+				}
+				if (!ShouldBlockHumanBuySell(player, visit?.crew ?? CrewAssignment.EMPTY, visit?.building, "ConvoCallbacks.ShowBuySellPopup"))
+				{
+					return true;
+				}
+
+				__result = OnClickResult.CONTINUE;
+				return false;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] HumanBuySellVehiclePhysicalGatePatch.ShowBuySellPopup: " + ex.Message);
+				return true;
+			}
+		}
+
+		private static bool TryShowRouteInShopStagingPicker(object callbacksInstance, ConvoButton button, PlayerInfo player, VisitState visit, NodeID destinationNodeId, string routeInSource)
+		{
+			if (callbacksInstance == null
+				|| button == null
+				|| player == null
+				|| visit == null
+				|| visit.building == null
+				|| !destinationNodeId.IsValid)
+			{
+				return false;
+			}
+
+			ConvoDataBuySell data = button.GetData<ConvoDataBuySell>();
+			if (data == null)
+			{
+				return false;
+			}
+
+			ConversationController controller = Traverse.Create(callbacksInstance).Field("_ctrl").GetValue<ConversationController>();
+			if (controller?.View == null || controller.Model == null)
+			{
+				return false;
+			}
+
+			controller.View.ShowItemPicker(
+				controller.Model.state,
+				qtyAndDir =>
+				{
+					Entity biz = visit.biz ?? BuildingUtil.FindBizForBuilding(visit.building);
+					if (RouteShopStagingState.StageOrder(player, visit.crew, visit.building, biz, destinationNodeId, data, qtyAndDir, "route-in-picker-" + routeInSource, out bool orderStillPending))
+					{
+						string message = orderStillPending ? "Order staged until the vehicle arrives." : "Staged shop order resolved.";
+						MultiCrewVehicleHelper.ShowHudMessage(message);
+						Traverse.Create(controller.View).Method("AddPlayerBlurb", message).GetValue();
+					}
+					else
+					{
+						MultiCrewVehicleHelper.ShowHudMessage("No order staged.");
+						Traverse.Create(controller.View).Method("AddPlayerBlurb", "No order staged.").GetValue();
+					}
+					controller.Model.SetForced(null);
+					ReturnToTopLevelConversation(controller);
+				},
+				() =>
+				{
+					RouteShopStagingState.CancelOpenPicker(visit.crew.VehicleID, "route-in-picker-cancel");
+					controller.Model.SetForced(null);
+					Traverse.Create(controller).Method("OnBackButtonPress").GetValue();
+				});
+
+			RouteShopStagingState.MarkPickerOpened(visit.crew.VehicleID, visit.building.Id, destinationNodeId, "route-in-picker-" + routeInSource);
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"route-shop-stage-opened",
+				$"{visit.building.Id.id}:{visit.crew.VehicleID.id}:{destinationNodeId}:{routeInSource}",
+				$"route-shop-stage-opened building={visit.building.Id.id} crew={visit.crew.peepId.id} vehicle={visit.crew.VehicleID.id} node={destinationNodeId} source={routeInSource}",
+				dedupe: false);
+			return true;
+		}
+
+		private static void ReturnToTopLevelConversation(ConversationController controller)
+		{
+			if (controller == null)
+			{
+				return;
+			}
+
+			try
+			{
+				if (JumpToConvoStateMethod != null)
+				{
+					JumpToConvoStateMethod.Invoke(controller, new object[] { ConversationConstants.TOPLEVEL_CONVO, null });
+					return;
+				}
+
+				Traverse.Create(controller).Method("OnBackButtonPress").GetValue();
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Route shop staging top-level return failed: " + ex.Message);
+			}
+		}
+
+		[HarmonyPrefix]
+		internal static bool ExecuteVisitPrefix(PlayerInfo player, VisitState visit, ConvoDataBuySell data, QtyAndDir qtyAndDir, bool scheduled, ref ValueTuple<bool, SomaSim.Util.Fixnum> __result)
+		{
+			try
+			{
+				if (TryBlockHumanBuySellTradeLock(player, visit?.building, "BuySellUtils.ExecuteHumanBuySell.Visit"))
+				{
+					__result = new ValueTuple<bool, SomaSim.Util.Fixnum>(false, 0);
+					return false;
+				}
+				if (scheduled || !ShouldBlockHumanBuySell(player, visit?.crew ?? CrewAssignment.EMPTY, visit?.building, "BuySellUtils.ExecuteHumanBuySell.Visit"))
+				{
+					return true;
+				}
+
+				__result = new ValueTuple<bool, SomaSim.Util.Fixnum>(false, 0);
+				return false;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] HumanBuySellVehiclePhysicalGatePatch.ExecuteVisit: " + ex.Message);
+				return true;
+			}
+		}
+
+		[HarmonyPrefix]
+		internal static bool ExecuteCrewPrefix(PlayerInfo player, CrewAssignment crew, Entity building, Resource res, QtyAndDir qtyAndDir, bool recurring, ref ValueTuple<bool, SomaSim.Util.Fixnum> __result)
+		{
+			try
+			{
+				if (TryBlockHumanBuySellTradeLock(player, building, "BuySellUtils.ExecuteHumanBuySell.Crew"))
+				{
+					__result = new ValueTuple<bool, SomaSim.Util.Fixnum>(false, 0);
+					return false;
+				}
+				if (recurring || !ShouldBlockHumanBuySell(player, crew, building, "BuySellUtils.ExecuteHumanBuySell.Crew"))
+				{
+					return true;
+				}
+
+				__result = new ValueTuple<bool, SomaSim.Util.Fixnum>(false, 0);
+				return false;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] HumanBuySellVehiclePhysicalGatePatch.ExecuteCrew: " + ex.Message);
+				return true;
+			}
+		}
+
+		private static bool TryBlockHumanBuySellTradeLock(PlayerInfo player, Entity building, string source)
+		{
+			try
+			{
+				if (player == null || !player.IsHuman || building == null)
+				{
+					return false;
+				}
+
+				Entity biz = BuildingUtil.FindBizForBuilding(building);
+				BizComponent bizComponent = biz?.components?.biz;
+				if (bizComponent == null)
+				{
+					return false;
+				}
+
+				BizComponent.TradeRestrictions restrictions = bizComponent.FindTradeRestrictions(player.PID);
+				if (!restrictions.IsLocked)
+				{
+					return false;
+				}
+
+				string reason = restrictions.IsForcedClosed
+					? "forced-closed"
+					: restrictions.IsTerritoryLocked
+						? "territory-locked"
+						: restrictions.IsTiedHouseLocked
+							? "tied-house-locked"
+							: "trade-locked";
+				MultiCrewVehicleHelper.ShowHudMessage(restrictions.IsForcedClosed ? "That shop is closed." : "That shop is not available.");
+				GameplayTweaksPlugin.VerificationLog(
+					"CanBuySellCache",
+					$"buy-sell-trade-locked-blocked building={building.Id.id} biz={biz.Id.id} pid={player.PID.id} source={source} reason={reason} tied={restrictions.tiedHouseLock.id} territory={restrictions.territoryLock.id} forcedClosedBy={restrictions.forcedClosedBy.id}");
+				TurnPerformanceDiagnosticsPatch.InvalidateCanBuySellAvailabilityCache(building, player.PID, source + "-" + reason);
+				return true;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] HumanBuySellVehiclePhysicalGatePatch.TradeLock: " + ex.Message);
+				return false;
+			}
+		}
+
+		private static bool ShouldBlockHumanBuySell(PlayerInfo player, CrewAssignment crew, Entity building, string source)
+		{
+			if (_routeShopCommitExecutionDepth > 0)
+			{
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-shop-commit-gate-bypassed",
+					$"{crew.VehicleID.id}:{building?.Id.id ?? 0UL}:{source}:{_routeShopCommitExecutionDepth}",
+					$"route-shop-commit-gate-bypassed building={building?.Id.id ?? 0UL} crew={crew.peepId.id} vehicle={crew.VehicleID.id} source={source} depth={_routeShopCommitExecutionDepth}",
+					dedupe: true);
+				return false;
+			}
+			if (player == null
+				|| !player.IsHuman
+				|| building == null
+				|| !crew.IsValid
+				|| !crew.IsInVehicle
+				|| !crew.VehicleID.IsValid)
+			{
+				return false;
+			}
+
+			List<NodeID> accessNodeIds = FindShopAccessNodeIds(building);
+			if (accessNodeIds.Count <= 0)
+			{
+				return false;
+			}
+
+			if (accessNodeIds.Any(nodeId => MultiCrewVehicleHelper.IsHumanVehicleSettledAtNodeForAction(crew.VehicleID, nodeId)))
+			{
+				return false;
+			}
+
+			if (MultiCrewVehicleHelper.TryGetActualHumanVehicleInteractionNodeId(crew.VehicleID, out NodeID actualNodeId, out string actualSource, source)
+				&& actualNodeId.IsValid
+				&& accessNodeIds.Contains(actualNodeId))
+			{
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"buy-sell-vehicle-physical-allowed",
+					$"{building.Id.id}:{crew.VehicleID.id}:{actualNodeId}:{source}:{actualSource}",
+					$"buy-sell-vehicle-physical-allowed building={building.Id.id} crew={crew.peepId.id} vehicle={crew.VehicleID.id} node={actualNodeId} source={source} actualSource={actualSource}",
+					dedupe: true);
+				return false;
+			}
+
+			bool routeInShopCandidate = TryLogRouteInShopStageBlocked(crew, building, accessNodeIds, source);
+			string blockReason = routeInShopCandidate ? "route-in-await-arrival" : ResolveShopPhysicalBlockReason(crew.VehicleID, accessNodeIds);
+			MultiCrewVehicleHelper.ShowHudMessage(routeInShopCandidate ? "Vehicle must arrive before buying or selling." : "Vehicle must be at that shop.");
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"buy-sell-vehicle-physical-blocked",
+				$"{building.Id.id}:{crew.VehicleID.id}:{source}:{blockReason}",
+				$"buy-sell-vehicle-physical-blocked building={building.Id.id} crew={crew.peepId.id} vehicle={crew.VehicleID.id} nodes={string.Join(",", accessNodeIds.Select(nodeId => nodeId.ToString()))} source={source} reason={blockReason}",
+				dedupe: true);
+			return true;
+		}
+
+		private static string ResolveShopPhysicalBlockReason(EntityID vehicleId, List<NodeID> accessNodeIds)
+		{
+			if (!vehicleId.IsValid)
+			{
+				return "vehicle-not-physical";
+			}
+
+			if (MultiCrewVehicleHelper.TryGetPendingHumanVehicleTravel(vehicleId, out _, out NodeID expectedNodeId, out NodeID goalNodeId)
+				&& (expectedNodeId.IsValid || goalNodeId.IsValid))
+			{
+				if ((expectedNodeId.IsValid && accessNodeIds.Contains(expectedNodeId))
+					|| (goalNodeId.IsValid && accessNodeIds.Contains(goalNodeId)))
+				{
+					return "route-in-await-arrival";
+				}
+
+				return "route-target-mismatch";
+			}
+
+			if (MultiCrewVehicleHelper.TryGetAuthoritativeVehicleNodeId(vehicleId, out NodeID currentNodeId, out _)
+				&& currentNodeId.IsValid
+				&& !accessNodeIds.Contains(currentNodeId))
+			{
+				return "route-out-wrong-shop";
+			}
+
+			return "vehicle-not-physical";
+		}
+
+		private static bool TryResolveRouteInShopDestination(CrewAssignment crew, Entity building, out NodeID destinationNodeId, out string source)
+		{
+			destinationNodeId = NodeID.INVALID;
+			source = "none";
+			if (!crew.IsValid
+				|| !crew.IsInVehicle
+				|| !crew.VehicleID.IsValid
+				|| building == null)
+			{
+				return false;
+			}
+
+			List<NodeID> accessNodeIds = FindShopAccessNodeIds(building);
+			if (accessNodeIds.Any(nodeId => MultiCrewVehicleHelper.IsHumanVehicleSettledAtNodeForAction(crew.VehicleID, nodeId)))
+			{
+				return false;
+			}
+
+			foreach (NodeID nodeId in accessNodeIds.Where(nodeId => nodeId.IsValid).Distinct())
+			{
+				if (MultiCrewVehicleHelper.IsHumanVehicleRouteSimAccessNode(crew.VehicleID, nodeId, "shop-stage-open", out string routeSource))
+				{
+					destinationNodeId = nodeId;
+					source = routeSource;
+					return true;
+				}
+			}
+
+			if (RouteShopStagingState.TryGetRememberedRouteInNode(crew.VehicleID, accessNodeIds, out destinationNodeId, out source))
+			{
+				return true;
+			}
+
+			LogRouteShopStageMiss(crew, building, accessNodeIds, source: "ConvoCallbacks.ShowBuySellPopup");
+			return false;
+		}
+
+		private static void LogRouteShopStageMiss(CrewAssignment crew, Entity building, List<NodeID> accessNodeIds, string source)
+		{
+			if (!crew.IsValid
+				|| !crew.IsInVehicle
+				|| !crew.VehicleID.IsValid
+				|| building == null
+				|| accessNodeIds == null)
+			{
+				return;
+			}
+
+			MultiCrewVehicleHelper.TryGetPendingHumanVehicleTravel(crew.VehicleID, out _, out NodeID expectedNodeId, out NodeID goalNodeId);
+			MultiCrewVehicleHelper.TryGetAuthoritativeVehicleNodeId(crew.VehicleID, out NodeID currentNodeId, out string currentNodeSource);
+			bool active = MultiCrewVehicleHelper.IsHumanVehicleTravelActive(crew.VehicleID);
+			bool queued = MultiCrewVehicleHelper.HasQueuedHumanVehiclePendingResume(crew.VehicleID);
+			string reason;
+			if (!expectedNodeId.IsValid && !goalNodeId.IsValid && !active && !queued)
+			{
+				reason = currentNodeId.IsValid && !accessNodeIds.Contains(currentNodeId) ? "route-out-wrong-shop" : "no-route-in-state";
+			}
+			else if (!accessNodeIds.Contains(expectedNodeId) && !accessNodeIds.Contains(goalNodeId))
+			{
+				reason = "route-target-mismatch";
+			}
+			else
+			{
+				reason = "route-in-unresolved";
+			}
+
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"route-shop-stage-miss",
+				$"{building.Id.id}:{crew.VehicleID.id}:{expectedNodeId}:{goalNodeId}:{reason}:{source}",
+				$"route-shop-stage-miss building={building.Id.id} crew={crew.peepId.id} vehicle={crew.VehicleID.id} accessNodes={string.Join(",", accessNodeIds.Select(nodeId => nodeId.ToString()))} expectedNode={expectedNodeId} finalGoal={goalNodeId} currentNode={currentNodeId} currentSource={currentNodeSource} active={active} queued={queued} source={source} reason={reason}",
+				dedupe: true);
+		}
+
+		private static bool TryLogRouteInShopStageBlocked(CrewAssignment crew, Entity building, List<NodeID> accessNodeIds, string source)
+		{
+			if (!crew.IsValid
+				|| !crew.IsInVehicle
+				|| !crew.VehicleID.IsValid
+				|| building == null
+				|| accessNodeIds == null)
+			{
+				return false;
+			}
+
+			foreach (NodeID nodeId in accessNodeIds.Where(nodeId => nodeId.IsValid).Distinct())
+			{
+				if (!MultiCrewVehicleHelper.IsHumanVehicleRouteSimAccessNode(crew.VehicleID, nodeId, "shop-stage", out string routeSource))
+				{
+					continue;
+				}
+
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-shop-stage-blocked",
+					$"{building.Id.id}:{crew.VehicleID.id}:{nodeId}:{source}",
+					$"route-shop-stage-blocked building={building.Id.id} crew={crew.peepId.id} vehicle={crew.VehicleID.id} node={nodeId} routeSource={routeSource} source={source} reason=stage-picker-unavailable",
+					dedupe: true);
+				return true;
+			}
+
+			if (RouteShopStagingState.TryGetRememberedRouteInNode(crew.VehicleID, accessNodeIds, out NodeID rememberedNodeId, out string rememberedSource))
+			{
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-shop-stage-blocked",
+					$"{building.Id.id}:{crew.VehicleID.id}:{rememberedNodeId}:{source}:remembered",
+					$"route-shop-stage-blocked building={building.Id.id} crew={crew.peepId.id} vehicle={crew.VehicleID.id} node={rememberedNodeId} routeSource={rememberedSource} source={source} reason=stage-picker-unavailable",
+					dedupe: true);
+				return true;
+			}
+
+			return false;
+		}
+
+		internal static List<NodeID> FindShopAccessNodeIds(Entity building)
+		{
+			List<NodeID> nodeIds = new List<NodeID>();
+			if (building == null)
+			{
+				return nodeIds;
+			}
+
+			if (CommandButtonScopeOutPatch.TryGetScopeInteractionNodeIds(building, out _, out List<NodeID> comparisonNodeIds, out _)
+				&& comparisonNodeIds != null)
+			{
+				nodeIds.AddRange(comparisonNodeIds.Where(nodeId => nodeId.IsValid));
+			}
+
+			if (MultiCrewVehicleHelper.TryGetEntityBoardNodeId(building, out NodeID buildingNodeId) && buildingNodeId.IsValid)
+			{
+				nodeIds.Add(buildingNodeId);
+			}
+
+			OwnedBuildingInteractionSelectionPatch.AddOwnedBuildingFrontageComparisonNodes(building, nodeIds);
+			return nodeIds
+				.Where(nodeId => nodeId.IsValid)
+				.Distinct()
+				.ToList();
+		}
+	}
+
+	internal static class RouteShopStagingState
+	{
+		private struct StagedShopOrder
+		{
+			internal EntityID VehicleID;
+			internal EntityID DriverPeepID;
+			internal EntityID BuildingID;
+			internal EntityID BizID;
+			internal NodeID DestinationNodeID;
+			internal Label ResourceLabel;
+			internal string ResourceID;
+			internal QtyAndDir QtyAndDir;
+			internal Price UnitPriceSnapshot;
+			internal Price MoneyDeltaSnapshot;
+			internal int CreatedTurn;
+		}
+
+		private struct RecentRouteInConversation
+		{
+			internal NodeID NodeID;
+			internal string Context;
+			internal int Frame;
+		}
+
+		private struct OpenShopStagePicker
+		{
+			internal EntityID BuildingID;
+			internal NodeID DestinationNodeID;
+			internal string Source;
+			internal int Frame;
+		}
+
+		private static readonly Dictionary<long, List<StagedShopOrder>> _ordersByVehicleId = new Dictionary<long, List<StagedShopOrder>>();
+		private static readonly Dictionary<long, RecentRouteInConversation> _recentRouteInConversationByVehicleId = new Dictionary<long, RecentRouteInConversation>();
+		private static readonly Dictionary<long, OpenShopStagePicker> _openPickerByVehicleId = new Dictionary<long, OpenShopStagePicker>();
+		private const int RouteInConversationMemoryFrames = 1800;
+
+		internal static bool HasStagedOrder(EntityID vehicleId)
+		{
+			return TryGetOrders(vehicleId, out List<StagedShopOrder> orders) && orders.Count > 0;
+		}
+
+		internal static void ClearAll(string reason, string source)
+		{
+			int orderCount = _ordersByVehicleId.Values.Sum(orders => orders?.Count ?? 0);
+			int rememberedCount = _recentRouteInConversationByVehicleId.Count;
+			int pickerCount = _openPickerByVehicleId.Count;
+			if (orderCount == 0 && rememberedCount == 0 && pickerCount == 0)
+			{
+				return;
+			}
+
+			_ordersByVehicleId.Clear();
+			_recentRouteInConversationByVehicleId.Clear();
+			_openPickerByVehicleId.Clear();
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"route-shop-state-cleared",
+				$"{reason}:{source}:{orderCount}:{rememberedCount}:{pickerCount}",
+				$"route-shop-state-cleared reason={reason} source={source} orders={orderCount} routeIn={rememberedCount} pickers={pickerCount}",
+				dedupe: false);
+		}
+
+		internal static void RememberRouteInConversation(EntityID vehicleId, NodeID nodeId, string context, string source)
+		{
+			if (!vehicleId.IsValid
+				|| !nodeId.IsValid
+				|| !string.Equals(context, "biz", StringComparison.Ordinal))
+			{
+				return;
+			}
+
+			_recentRouteInConversationByVehicleId[(long)vehicleId.id] = new RecentRouteInConversation
+			{
+				NodeID = nodeId,
+				Context = context,
+				Frame = Time.frameCount
+			};
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"route-shop-routein-remembered",
+				$"{vehicleId.id}:{nodeId}:{context}:{source}",
+				$"route-shop-routein-remembered vehicle={vehicleId.id} node={nodeId} context={context} source={source}",
+				dedupe: true);
+		}
+
+		internal static bool TryGetRememberedRouteInNode(EntityID vehicleId, List<NodeID> accessNodeIds, out NodeID nodeId, out string source)
+		{
+			nodeId = NodeID.INVALID;
+			source = "none";
+			if (!vehicleId.IsValid
+				|| accessNodeIds == null
+				|| !_recentRouteInConversationByVehicleId.TryGetValue((long)vehicleId.id, out RecentRouteInConversation remembered)
+				|| !remembered.NodeID.IsValid)
+			{
+				return false;
+			}
+			if (remembered.Frame < Time.frameCount - RouteInConversationMemoryFrames)
+			{
+				_recentRouteInConversationByVehicleId.Remove((long)vehicleId.id);
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-shop-routein-cleared",
+					$"{vehicleId.id}:{remembered.NodeID}:expired",
+					$"route-shop-routein-cleared vehicle={vehicleId.id} node={remembered.NodeID} reason=expired frame={remembered.Frame} now={Time.frameCount}",
+					dedupe: false);
+				return false;
+			}
+
+			nodeId = remembered.NodeID;
+			bool matchedAccessNode = accessNodeIds.Contains(remembered.NodeID);
+			source = matchedAccessNode ? "remembered-route-in-" + remembered.Context : "remembered-route-in-" + remembered.Context + "-bridged";
+			if (!matchedAccessNode)
+			{
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-shop-routein-bridged",
+					$"{vehicleId.id}:{remembered.NodeID}:{string.Join(",", accessNodeIds.Select(accessNodeId => accessNodeId.ToString()))}",
+					$"route-shop-routein-bridged vehicle={vehicleId.id} node={remembered.NodeID} accessNodes={string.Join(",", accessNodeIds.Select(accessNodeId => accessNodeId.ToString()))} context={remembered.Context} reason=conversation-node-not-shop-frontage",
+					dedupe: true);
+			}
+			return true;
+		}
+
+		internal static void MarkPickerOpened(EntityID vehicleId, EntityID buildingId, NodeID destinationNodeId, string source)
+		{
+			if (!vehicleId.IsValid || !buildingId.IsValid || !destinationNodeId.IsValid)
+			{
+				return;
+			}
+
+			_openPickerByVehicleId[(long)vehicleId.id] = new OpenShopStagePicker
+			{
+				BuildingID = buildingId,
+				DestinationNodeID = destinationNodeId,
+				Source = source,
+				Frame = Time.frameCount
+			};
+		}
+
+		internal static void CancelOpenPicker(EntityID vehicleId, string source)
+		{
+			if (!vehicleId.IsValid || !_openPickerByVehicleId.TryGetValue((long)vehicleId.id, out OpenShopStagePicker picker))
+			{
+				return;
+			}
+
+			_openPickerByVehicleId.Remove((long)vehicleId.id);
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"route-shop-stage-cancelled",
+				$"{vehicleId.id}:{picker.BuildingID.id}:{picker.DestinationNodeID}:{source}",
+				$"route-shop-stage-cancelled vehicle={vehicleId.id} building={picker.BuildingID.id} node={picker.DestinationNodeID} source={source} openedSource={picker.Source}",
+				dedupe: false);
+		}
+
+		internal static bool StageOrder(PlayerInfo player, CrewAssignment crew, Entity building, Entity biz, NodeID destinationNodeId, ConvoDataBuySell data, QtyAndDir qtyAndDir, string source, out bool orderStillPending)
+		{
+			orderStillPending = false;
+			Resource resource = data?.FindResource();
+			Label resourceLabel = data?.elt.item.id ?? Label.NULL;
+			if (player == null
+				|| !player.IsHuman
+				|| !crew.IsValid
+				|| !crew.IsInVehicle
+				|| !crew.VehicleID.IsValid
+				|| building == null
+				|| !destinationNodeId.IsValid
+				|| data == null
+				|| resource == null
+				|| resourceLabel.IsNotSet)
+			{
+				LogStageRejected(crew, building, destinationNodeId, resource, qtyAndDir, source, "invalid-context");
+				return false;
+			}
+			if (!qtyAndDir.qty.IsPositive)
+			{
+				LogStageRejected(crew, building, destinationNodeId, resource, qtyAndDir, source, "empty-quantity");
+				return false;
+			}
+
+			long vehicleKey = (long)crew.VehicleID.id;
+			_openPickerByVehicleId.Remove(vehicleKey);
+			Price unitPriceSnapshot = ResolveOrderUnitPriceSnapshot(player, biz, resource, qtyAndDir);
+			Price moneyDeltaSnapshot = unitPriceSnapshot * qtyAndDir.ToBuilding;
+			StagedShopOrder order = new StagedShopOrder
+			{
+				VehicleID = crew.VehicleID,
+				DriverPeepID = crew.peepId,
+				BuildingID = building.Id,
+				BizID = biz?.Id ?? EntityID.INVALID,
+				DestinationNodeID = destinationNodeId,
+				ResourceLabel = resourceLabel,
+				ResourceID = resourceLabel.ToString(),
+				QtyAndDir = qtyAndDir,
+				UnitPriceSnapshot = unitPriceSnapshot,
+				MoneyDeltaSnapshot = moneyDeltaSnapshot,
+				CreatedTurn = global::Game.Game.ctx?.clock?.Now.days ?? 0
+			};
+			if (!_ordersByVehicleId.TryGetValue(vehicleKey, out List<StagedShopOrder> orders))
+			{
+				orders = new List<StagedShopOrder>();
+				_ordersByVehicleId[vehicleKey] = orders;
+			}
+
+			int replaceIndex = FindMatchingOrderIndex(orders, order);
+			bool replacedExisting = replaceIndex >= 0;
+			StagedShopOrder previousOrder = replacedExisting ? orders[replaceIndex] : default;
+			if (replacedExisting)
+			{
+				orders[replaceIndex] = order;
+			}
+			else
+			{
+				orders.Add(order);
+			}
+			if (replacedExisting)
+			{
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-shop-replaced",
+					$"{order.VehicleID.id}:{previousOrder.BuildingID.id}:{previousOrder.ResourceID}:{order.BuildingID.id}:{order.ResourceID}:{source}",
+					$"route-shop-replaced vehicle={order.VehicleID.id} priorBuilding={previousOrder.BuildingID.id} priorNode={previousOrder.DestinationNodeID} priorResource={previousOrder.ResourceID} priorQty={previousOrder.QtyAndDir.qty} building={order.BuildingID.id} node={order.DestinationNodeID} resource={order.ResourceID} qty={order.QtyAndDir.qty} source={source}",
+					dedupe: false);
+			}
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"route-shop-staged",
+				$"{order.VehicleID.id}:{order.BuildingID.id}:{order.DestinationNodeID}:{order.ResourceID}:{source}",
+				$"route-shop-staged vehicle={order.VehicleID.id} crew={order.DriverPeepID.id} building={order.BuildingID.id} biz={order.BizID.id} node={order.DestinationNodeID} resource={order.ResourceID} qty={order.QtyAndDir.qty} pendingOrders={orders.Count} unitPriceSnapshot={order.UnitPriceSnapshot} moneyDeltaSnapshot={order.MoneyDeltaSnapshot.cash} pricePolicy=repriced-on-arrival createdTurn={order.CreatedTurn} source={source}",
+				dedupe: false);
+			TryCommitOrderIfAlreadyPhysical(order, "stage-order-" + source);
+			orderStillPending = HasStagedOrder(order.VehicleID);
+			return true;
+		}
+
+		private static Price ResolveOrderUnitPriceSnapshot(PlayerInfo player, Entity biz, Resource resource, QtyAndDir qtyAndDir)
+		{
+			try
+			{
+				if (player == null || biz == null || resource == null)
+				{
+					return Price.ZERO;
+				}
+
+				return BuySellUtils.FindPriceNegotiatedAbs(player, biz, resource, qtyAndDir.IsToPlayer);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] RouteShopStagingState.ResolveOrderUnitPriceSnapshot: " + ex.Message);
+				return Price.ZERO;
+			}
+		}
+
+		private static int FindMatchingOrderIndex(List<StagedShopOrder> orders, StagedShopOrder order)
+		{
+			if (orders == null)
+			{
+				return -1;
+			}
+
+			for (int i = 0; i < orders.Count; i++)
+			{
+				if (IsSameOrderSlot(orders[i], order))
+				{
+					return i;
+				}
+			}
+			return -1;
+		}
+
+		private static bool IsSameOrderSlot(StagedShopOrder left, StagedShopOrder right)
+		{
+			return left.VehicleID == right.VehicleID
+				&& left.BuildingID == right.BuildingID
+				&& left.DestinationNodeID == right.DestinationNodeID
+				&& left.ResourceLabel == right.ResourceLabel
+				&& left.QtyAndDir.IsToPlayer == right.QtyAndDir.IsToPlayer;
+		}
+
+		private static void TryCommitOrderIfAlreadyPhysical(StagedShopOrder order, string source)
+		{
+			if (!order.VehicleID.IsValid || !order.DestinationNodeID.IsValid || !order.BuildingID.IsValid)
+			{
+				return;
+			}
+
+			Entity building = order.BuildingID.FindEntity();
+			if (building == null || !TryResolveShopCommitPhysicalNode(order.VehicleID, building, order.DestinationNodeID, out NodeID physicalNodeId, out string physicalSource))
+			{
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-shop-commit-deferred",
+					$"{order.VehicleID.id}:{order.BuildingID.id}:{order.DestinationNodeID}:{source}",
+					$"route-shop-commit-deferred vehicle={order.VehicleID.id} building={order.BuildingID.id} node={order.DestinationNodeID} source={source} reason=vehicle-not-physical-yet",
+					dedupe: true);
+				return;
+			}
+
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"route-shop-commit-immediate",
+				$"{order.VehicleID.id}:{order.BuildingID.id}:{order.DestinationNodeID}:{physicalNodeId}:{source}",
+				$"route-shop-commit-immediate vehicle={order.VehicleID.id} building={order.BuildingID.id} node={order.DestinationNodeID} physicalNode={physicalNodeId} physicalSource={physicalSource} source={source}",
+				dedupe: false);
+			OnVehicleArrived(order.VehicleID, order.DestinationNodeID, source + "-" + physicalSource);
+		}
+
+		private static void LogStageRejected(CrewAssignment crew, Entity building, NodeID destinationNodeId, Resource resource, QtyAndDir qtyAndDir, string source, string reason)
+		{
+			EntityID vehicleId = crew.IsValid ? crew.VehicleID : EntityID.INVALID;
+			if (vehicleId.IsValid)
+			{
+				_openPickerByVehicleId.Remove((long)vehicleId.id);
+			}
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"route-shop-stage-rejected",
+				$"{vehicleId.id}:{building?.Id.id ?? 0UL}:{destinationNodeId}:{reason}:{source}",
+				$"route-shop-stage-rejected vehicle={vehicleId.id} crew={crew.peepId.id} building={building?.Id.id ?? 0UL} node={destinationNodeId} resource={resource?.ToString() ?? "none"} qty={qtyAndDir.qty} source={source} reason={reason}",
+				dedupe: false);
+		}
+
+		internal static void OnVehicleRouteChanged(EntityID vehicleId, NodeID expectedNodeId, NodeID goalNodeId, string source)
+		{
+			bool hasOrder = TryGetOrders(vehicleId, out List<StagedShopOrder> orders) && orders.Count > 0;
+			bool routeStillTargetsStagedShop = hasOrder && orders.Any(order => DoesRouteStillTargetStagedShop(order, expectedNodeId, goalNodeId));
+			if (vehicleId.IsValid
+				&& _recentRouteInConversationByVehicleId.TryGetValue((long)vehicleId.id, out RecentRouteInConversation remembered)
+				&& remembered.NodeID.IsValid
+				&& remembered.NodeID != expectedNodeId
+				&& remembered.NodeID != goalNodeId
+				&& !routeStillTargetsStagedShop)
+			{
+				_recentRouteInConversationByVehicleId.Remove((long)vehicleId.id);
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-shop-routein-cleared",
+					$"{vehicleId.id}:{remembered.NodeID}:{source}:destination-changed",
+					$"route-shop-routein-cleared vehicle={vehicleId.id} node={remembered.NodeID} source={source} reason=destination-changed expectedNode={expectedNodeId} goalNode={goalNodeId}",
+					dedupe: false);
+			}
+			if (vehicleId.IsValid
+				&& _openPickerByVehicleId.TryGetValue((long)vehicleId.id, out OpenShopStagePicker picker)
+				&& picker.DestinationNodeID.IsValid
+				&& picker.DestinationNodeID != expectedNodeId
+				&& picker.DestinationNodeID != goalNodeId
+				&& !routeStillTargetsStagedShop)
+			{
+				_openPickerByVehicleId.Remove((long)vehicleId.id);
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-shop-stage-abandoned",
+					$"{vehicleId.id}:{picker.BuildingID.id}:{picker.DestinationNodeID}:{source}:destination-changed",
+					$"route-shop-stage-abandoned vehicle={vehicleId.id} building={picker.BuildingID.id} node={picker.DestinationNodeID} openedSource={picker.Source} source={source} reason=destination-changed expectedNode={expectedNodeId} goalNode={goalNodeId}",
+					dedupe: false);
+			}
+
+			if (!hasOrder)
+			{
+				return;
+			}
+
+			foreach (StagedShopOrder order in orders.ToList())
+			{
+				if (order.DestinationNodeID == expectedNodeId || order.DestinationNodeID == goalNodeId)
+				{
+					continue;
+				}
+
+				if (DoesRouteStillTargetStagedShop(order, expectedNodeId, goalNodeId))
+				{
+					MultiCrewVehicleHelper.LogVehicleAuthority(
+						"route-shop-order-preserved",
+						$"{vehicleId.id}:{order.BuildingID.id}:{order.DestinationNodeID}:{expectedNodeId}:{goalNodeId}:{source}:{order.ResourceID}",
+						$"route-shop-order-preserved vehicle={vehicleId.id} building={order.BuildingID.id} node={order.DestinationNodeID} expectedNode={expectedNodeId} goalNode={goalNodeId} resource={order.ResourceID} source={source} reason=shop-access-route-node",
+						dedupe: false);
+					continue;
+				}
+
+				ClearOrder(order, "destination-changed", source, expectedNodeId, goalNodeId);
+			}
+
+			if (!HasStagedOrder(vehicleId))
+			{
+				_recentRouteInConversationByVehicleId.Remove((long)vehicleId.id);
+			}
+		}
+
+		internal static void OnVehicleArrived(EntityID vehicleId, NodeID arrivedNodeId, string source)
+		{
+			if (!TryGetOrders(vehicleId, out List<StagedShopOrder> orders) || orders.Count <= 0)
+			{
+				return;
+			}
+
+			foreach (StagedShopOrder order in orders.ToList())
+			{
+				if (arrivedNodeId != order.DestinationNodeID && !DoesRouteStillTargetStagedShop(order, arrivedNodeId, arrivedNodeId))
+				{
+					ClearOrder(order, "arrival-mismatch", source, arrivedNodeId, order.DestinationNodeID);
+					continue;
+				}
+
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-shop-commit-start",
+					$"{order.VehicleID.id}:{order.BuildingID.id}:{arrivedNodeId}:{source}:{order.ResourceID}",
+					$"route-shop-commit-start vehicle={order.VehicleID.id} crew={order.DriverPeepID.id} building={order.BuildingID.id} node={arrivedNodeId} resource={order.ResourceID} qty={order.QtyAndDir.qty} source={source}",
+					dedupe: false);
+
+				if (TryCommitOrder(order, arrivedNodeId, source, out string blockReason, out Fixnum moneyDelta))
+				{
+					MultiCrewVehicleHelper.LogVehicleAuthority(
+						"route-shop-committed",
+						$"{order.VehicleID.id}:{order.BuildingID.id}:{arrivedNodeId}:{order.ResourceID}:{order.QtyAndDir.qty}",
+						$"route-shop-committed vehicle={order.VehicleID.id} crew={order.DriverPeepID.id} building={order.BuildingID.id} node={arrivedNodeId} resource={order.ResourceID} qty={order.QtyAndDir.qty} playerMoneyDelta={moneyDelta} source={source}",
+						dedupe: false);
+					MultiCrewVehicleHelper.ShowHudMessage("Staged shop order completed.");
+					ClearOrder(order, "committed", source, arrivedNodeId, order.DestinationNodeID);
+					continue;
+				}
+
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-shop-commit-blocked",
+					$"{order.VehicleID.id}:{order.BuildingID.id}:{arrivedNodeId}:{blockReason}:{order.ResourceID}",
+					$"route-shop-commit-blocked vehicle={order.VehicleID.id} crew={order.DriverPeepID.id} building={order.BuildingID.id} node={arrivedNodeId} resource={order.ResourceID} qty={order.QtyAndDir.qty} source={source} reason={blockReason}",
+					dedupe: false);
+				if (string.Equals(blockReason, "vehicle-not-physical", StringComparison.Ordinal)
+					&& string.Equals(source, "segment-arrived", StringComparison.Ordinal))
+				{
+					MultiCrewVehicleHelper.LogVehicleAuthority(
+						"route-shop-commit-deferred",
+						$"{order.VehicleID.id}:{order.BuildingID.id}:{arrivedNodeId}:{source}:await-physical-authority:{order.ResourceID}",
+						$"route-shop-commit-deferred vehicle={order.VehicleID.id} building={order.BuildingID.id} node={arrivedNodeId} resource={order.ResourceID} source={source} reason=await-physical-authority",
+						dedupe: false);
+					continue;
+				}
+				MultiCrewVehicleHelper.ShowHudMessage("Staged shop order could not complete.");
+				ClearOrder(order, blockReason, source, arrivedNodeId, order.DestinationNodeID);
+			}
+		}
+
+		private static bool DoesRouteStillTargetStagedShop(StagedShopOrder order, NodeID expectedNodeId, NodeID goalNodeId)
+		{
+			if (!order.VehicleID.IsValid || !order.BuildingID.IsValid)
+			{
+				return false;
+			}
+			if ((expectedNodeId.IsValid && expectedNodeId == order.DestinationNodeID)
+				|| (goalNodeId.IsValid && goalNodeId == order.DestinationNodeID))
+			{
+				return true;
+			}
+
+			Entity building = order.BuildingID.FindEntity();
+			if (building == null)
+			{
+				return false;
+			}
+
+			List<NodeID> accessNodeIds = HumanBuySellVehiclePhysicalGatePatch.FindShopAccessNodeIds(building);
+			return (expectedNodeId.IsValid && accessNodeIds.Contains(expectedNodeId))
+				|| (goalNodeId.IsValid && accessNodeIds.Contains(goalNodeId));
+		}
+
+		private static bool TryCommitOrder(StagedShopOrder order, NodeID arrivedNodeId, string source, out string blockReason, out Fixnum moneyDelta)
+		{
+			blockReason = "unknown";
+			moneyDelta = 0;
+			if (!order.VehicleID.IsValid || !order.DriverPeepID.IsValid || !order.BuildingID.IsValid || !arrivedNodeId.IsValid)
+			{
+				blockReason = "invalid-order";
+				return false;
+			}
+			if (!order.ResourceLabel.IsSet)
+			{
+				blockReason = "invalid-resource";
+				return false;
+			}
+			if (!order.QtyAndDir.qty.IsPositive)
+			{
+				blockReason = "empty-quantity";
+				return false;
+			}
+
+			PlayerInfo player = G.GetHumanPlayer();
+			if (player?.crew == null || !player.IsHuman)
+			{
+				blockReason = "missing-human-player";
+				return false;
+			}
+
+			CrewAssignment crew = player.crew.GetCrewForPeep(order.DriverPeepID);
+			if (!crew.IsValid || !crew.IsInVehicle || crew.VehicleID != order.VehicleID)
+			{
+				blockReason = "driver-mismatch";
+				return false;
+			}
+
+			Entity building = order.BuildingID.FindEntity();
+			if (building == null)
+			{
+				blockReason = "missing-building";
+				return false;
+			}
+
+			Entity biz = BuildingUtil.FindBizForBuilding(building);
+			if (biz == null || order.BizID.IsValid && biz.Id != order.BizID)
+			{
+				blockReason = "business-mismatch";
+				return false;
+			}
+
+			Resource resource = Resource.Find(order.ResourceLabel);
+			if (resource == null)
+			{
+				blockReason = "missing-resource";
+				return false;
+			}
+			LogOrderPriceDrift(order, player, biz, resource, source);
+
+			if (!TryResolveShopCommitPhysicalNode(order.VehicleID, building, arrivedNodeId, out NodeID physicalNodeId, out string physicalSource))
+			{
+				blockReason = "vehicle-not-physical";
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-shop-commit-physical-miss",
+					$"{order.VehicleID.id}:{arrivedNodeId}:{source}",
+					$"route-shop-commit-physical-miss vehicle={order.VehicleID.id} node={arrivedNodeId} physicalSource={physicalSource} source={source}",
+					dedupe: false);
+				return false;
+			}
+			if (physicalNodeId != arrivedNodeId)
+			{
+				MultiCrewVehicleHelper.LogVehicleAuthority(
+					"route-shop-commit-node-bridged",
+					$"{order.VehicleID.id}:{arrivedNodeId}:{physicalNodeId}:{source}",
+					$"route-shop-commit-node-bridged vehicle={order.VehicleID.id} arrivedNode={arrivedNodeId} physicalNode={physicalNodeId} physicalSource={physicalSource} source={source} reason=shop-frontage-physical",
+					dedupe: true);
+			}
+
+			if (!TryValidateCurrentOrderInventory(player, crew, building, biz, resource, order.ResourceLabel, order.QtyAndDir, out blockReason))
+			{
+				return false;
+			}
+
+			try
+			{
+				HumanBuySellVehiclePhysicalGatePatch.PushRouteShopCommitExecutionScope();
+				(bool success, Fixnum playerMoneyDelta) = BuySellUtils.ExecuteHumanBuySell(player, crew, building, resource, order.QtyAndDir, recurring: false);
+				if (!success)
+				{
+					blockReason = "vanilla-execute-failed";
+					return false;
+				}
+
+				moneyDelta = playerMoneyDelta;
+				blockReason = "committed";
+				return true;
+			}
+			catch (Exception ex)
+			{
+				blockReason = "exception-" + ex.GetType().Name;
+				Debug.LogWarning("[GameplayTweaks] RouteShopStagingState.TryCommitOrder: " + ex.Message);
+				return false;
+			}
+			finally
+			{
+				HumanBuySellVehiclePhysicalGatePatch.PopRouteShopCommitExecutionScope();
+			}
+		}
+
+		private static void LogOrderPriceDrift(StagedShopOrder order, PlayerInfo player, Entity biz, Resource resource, string source)
+		{
+			Price currentUnitPrice = ResolveOrderUnitPriceSnapshot(player, biz, resource, order.QtyAndDir);
+			Price currentMoneyDelta = currentUnitPrice * order.QtyAndDir.ToBuilding;
+			if (currentUnitPrice == order.UnitPriceSnapshot && currentMoneyDelta == order.MoneyDeltaSnapshot)
+			{
+				return;
+			}
+
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"route-shop-price-drift",
+				$"{order.VehicleID.id}:{order.BuildingID.id}:{order.DestinationNodeID}:{order.ResourceID}:{source}:{order.UnitPriceSnapshot.cash}:{currentUnitPrice.cash}",
+				$"route-shop-price-drift vehicle={order.VehicleID.id} building={order.BuildingID.id} node={order.DestinationNodeID} resource={order.ResourceID} qty={order.QtyAndDir.qty} stagedUnit={order.UnitPriceSnapshot} currentUnit={currentUnitPrice} stagedMoneyDelta={order.MoneyDeltaSnapshot.cash} currentMoneyDelta={currentMoneyDelta.cash} policy=repriced-on-arrival source={source}",
+				dedupe: false);
+		}
+
+		private static bool TryResolveShopCommitPhysicalNode(EntityID vehicleId, Entity building, NodeID arrivedNodeId, out NodeID physicalNodeId, out string physicalSource)
+		{
+			physicalNodeId = NodeID.INVALID;
+			physicalSource = "none";
+			if (!vehicleId.IsValid || building == null || !arrivedNodeId.IsValid)
+			{
+				return false;
+			}
+
+			if (MultiCrewVehicleHelper.IsHumanVehicleStrictlyPhysicalAtNode(vehicleId, arrivedNodeId, out physicalSource))
+			{
+				physicalNodeId = arrivedNodeId;
+				return true;
+			}
+
+			foreach (NodeID accessNodeId in HumanBuySellVehiclePhysicalGatePatch.FindShopAccessNodeIds(building).Where(nodeId => nodeId.IsValid && nodeId != arrivedNodeId).Distinct())
+			{
+				if (!MultiCrewVehicleHelper.IsHumanVehicleStrictlyPhysicalAtNode(vehicleId, accessNodeId, out string accessPhysicalSource))
+				{
+					continue;
+				}
+
+				physicalNodeId = accessNodeId;
+				physicalSource = "shop-access-" + accessPhysicalSource;
+				return true;
+			}
+
+			if (MultiCrewVehicleHelper.TryGetRecentFinalizedNodeId(vehicleId, out NodeID recentFinalizedNodeId)
+				&& recentFinalizedNodeId.IsValid)
+			{
+				List<NodeID> accessNodeIds = HumanBuySellVehiclePhysicalGatePatch.FindShopAccessNodeIds(building);
+				if (recentFinalizedNodeId == arrivedNodeId || accessNodeIds.Contains(recentFinalizedNodeId))
+				{
+					physicalNodeId = recentFinalizedNodeId;
+					physicalSource = "recent-finalize-arrival";
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		private static bool TryValidateCurrentOrderInventory(PlayerInfo player, CrewAssignment crew, Entity building, Entity biz, Resource resource, Label resourceId, QtyAndDir qtyAndDir, out string blockReason)
+		{
+			blockReason = "unknown";
+			InventoryModule vehicleInventory = ModulesUtil.GetInventory(crew);
+			InventoryModule buildingInventory = ModulesUtil.GetInventory(building);
+			if (vehicleInventory?.data == null || buildingInventory?.data == null)
+			{
+				blockReason = "missing-inventory";
+				return false;
+			}
+
+			if (resourceId.IsNotSet)
+			{
+				blockReason = "invalid-resource";
+				return false;
+			}
+
+			if (qtyAndDir.IsToPlayer)
+			{
+				if (buildingInventory.data.Get(resourceId).qty < qtyAndDir.qty)
+				{
+					blockReason = "shop-stock-changed";
+					return false;
+				}
+
+				Price delta = BuySellUtils.FindPriceNegotiatedAbs(player, biz, resource, playerBuys: true) * qtyAndDir.ToBuilding;
+				if (!vehicleInventory.data.CanChangeMoney(delta))
+				{
+					blockReason = "vehicle-cash-changed";
+					return false;
+				}
+			}
+			else
+			{
+				if (vehicleInventory.data.Get(resourceId).qty < qtyAndDir.qty)
+				{
+					blockReason = "vehicle-cargo-changed";
+					return false;
+				}
+			}
+
+			blockReason = "ok";
+			return true;
+		}
+
+		internal static void ClearForVehicle(EntityID vehicleId, string reason, string source)
+		{
+			if (!TryGetOrders(vehicleId, out List<StagedShopOrder> orders) || orders.Count <= 0)
+			{
+				if (ShouldPreserveRouteInConversationOnTravelClear(reason))
+				{
+					if (vehicleId.IsValid
+						&& _recentRouteInConversationByVehicleId.TryGetValue((long)vehicleId.id, out RecentRouteInConversation remembered)
+						&& remembered.NodeID.IsValid)
+					{
+						MultiCrewVehicleHelper.LogVehicleAuthority(
+							"route-shop-routein-preserved",
+							$"{vehicleId.id}:{remembered.NodeID}:{reason}:{source}",
+							$"route-shop-routein-preserved vehicle={vehicleId.id} node={remembered.NodeID} reason={reason} source={source}",
+							dedupe: true);
+					}
+					return;
+				}
+
+				if (vehicleId.IsValid && _recentRouteInConversationByVehicleId.Remove((long)vehicleId.id))
+				{
+					MultiCrewVehicleHelper.LogVehicleAuthority(
+						"route-shop-routein-cleared",
+						$"{vehicleId.id}:{reason}:{source}",
+						$"route-shop-routein-cleared vehicle={vehicleId.id} reason={reason} source={source}",
+						dedupe: false);
+				}
+				return;
+			}
+
+			if (ShouldPreserveRouteInConversationOnTravelClear(reason)
+				&& TryCommitOrdersAfterTravelClear(vehicleId, orders.ToList(), reason, source))
+			{
+				return;
+			}
+
+			foreach (StagedShopOrder order in orders.ToList())
+			{
+				ClearOrder(order, reason, source, order.DestinationNodeID, NodeID.INVALID);
+			}
+		}
+
+		private static bool ShouldPreserveRouteInConversationOnTravelClear(string reason)
+		{
+			return string.Equals(reason, "segment-complete", StringComparison.OrdinalIgnoreCase)
+				|| string.Equals(reason, "arrived", StringComparison.OrdinalIgnoreCase);
+		}
+
+		private static bool TryGetOrders(EntityID vehicleId, out List<StagedShopOrder> orders)
+		{
+			orders = null;
+			if (!vehicleId.IsValid || !_ordersByVehicleId.TryGetValue((long)vehicleId.id, out orders) || orders == null || orders.Count <= 0)
+			{
+				return false;
+			}
+			return true;
+		}
+
+		private static bool TryCommitOrdersAfterTravelClear(EntityID vehicleId, List<StagedShopOrder> orders, string reason, string source)
+		{
+			if (orders == null || orders.Count <= 0)
+			{
+				return true;
+			}
+
+			foreach (StagedShopOrder order in orders)
+			{
+				if (!HasStagedOrder(vehicleId))
+				{
+					break;
+				}
+				TryCommitOrderAfterTravelClear(order, reason, source);
+			}
+			return !HasStagedOrder(vehicleId);
+		}
+
+		private static void TryCommitOrderAfterTravelClear(StagedShopOrder order, string reason, string source)
+		{
+			NodeID commitNodeId = order.DestinationNodeID;
+			if (MultiCrewVehicleHelper.TryGetRecentFinalizedNodeId(order.VehicleID, out NodeID recentFinalizedNodeId)
+				&& recentFinalizedNodeId.IsValid
+				&& DoesRouteStillTargetStagedShop(order, recentFinalizedNodeId, recentFinalizedNodeId))
+			{
+				commitNodeId = recentFinalizedNodeId;
+			}
+
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"route-shop-commit-retry",
+				$"{order.VehicleID.id}:{order.BuildingID.id}:{commitNodeId}:{reason}:{source}",
+				$"route-shop-commit-retry vehicle={order.VehicleID.id} building={order.BuildingID.id} node={commitNodeId} stagedNode={order.DestinationNodeID} reason={reason} source={source}",
+				dedupe: false);
+			OnVehicleArrived(order.VehicleID, commitNodeId, source + "-" + reason);
+		}
+
+		private static void ClearOrder(StagedShopOrder order, string reason, string source, NodeID currentNodeId, NodeID targetNodeId)
+		{
+			if (!order.VehicleID.IsValid || !_ordersByVehicleId.TryGetValue((long)order.VehicleID.id, out List<StagedShopOrder> orders) || orders == null)
+			{
+				return;
+			}
+
+			int removeIndex = FindMatchingOrderIndex(orders, order);
+			if (removeIndex >= 0)
+			{
+				orders.RemoveAt(removeIndex);
+			}
+			else
+			{
+				orders.RemoveAll(candidate => candidate.ResourceLabel == order.ResourceLabel && candidate.BuildingID == order.BuildingID);
+			}
+			bool hadRemainingOrders = orders.Count > 0;
+			if (!hadRemainingOrders)
+			{
+				_ordersByVehicleId.Remove((long)order.VehicleID.id);
+				_recentRouteInConversationByVehicleId.Remove((long)order.VehicleID.id);
+				_openPickerByVehicleId.Remove((long)order.VehicleID.id);
+			}
+			MultiCrewVehicleHelper.LogVehicleAuthority(
+				"route-shop-cleared",
+				$"{order.VehicleID.id}:{order.BuildingID.id}:{reason}:{source}",
+				$"route-shop-cleared vehicle={order.VehicleID.id} crew={order.DriverPeepID.id} building={order.BuildingID.id} node={order.DestinationNodeID} resource={order.ResourceID} qty={order.QtyAndDir.qty} reason={reason} source={source} currentNode={currentNodeId} targetNode={targetNodeId} remainingOrders={orders.Count}",
+				dedupe: false);
 		}
 	}
 
@@ -2026,23 +5230,15 @@ namespace GameplayTweaks
 					dedupe: false);
 				Node resolvedNode = null;
 				string resolvedSource = "none";
-				if (TryGetStrictAttackPreviewBeforeArrival(attacker, primaryTarget, out resolvedNode, out resolvedSource))
+				if (!MultiCrewVehicleHelper.TryGetActualHumanVehicleInteractionNode(attacker.VehicleID, out resolvedNode, out resolvedSource, "ConvoCallbacks.ExecuteCombat") || resolvedNode == null)
 				{
-					previewOnly = true;
-				}
-				else if (!MultiCrewVehicleHelper.TryGetActualHumanVehicleInteractionNode(attacker.VehicleID, out resolvedNode, out resolvedSource, "ConvoCallbacks.ExecuteCombat") || resolvedNode == null)
-				{
-					if (TryGetAttackPopupPreviewNode(attacker, primaryTarget, out resolvedNode, out resolvedSource))
-					{
-						previewOnly = true;
-					}
-					else if (MultiCrewVehicleHelper.TryGetPendingHumanVehicleTravel(attacker.VehicleID, out _, out NodeID pendingNodeId, out NodeID goalNodeId)
+					if (MultiCrewVehicleHelper.TryGetPendingHumanVehicleTravel(attacker.VehicleID, out _, out NodeID pendingNodeId, out NodeID goalNodeId)
 						&& (pendingNodeId.IsValid || goalNodeId.IsValid))
 					{
 						MultiCrewVehicleHelper.LogVehicleAuthority(
-							"actual-convo-preview-blocked",
+							"attack-popup-preview-blocked",
 							$"{attacker.VehicleID.id}:{pendingNodeId}:{goalNodeId}",
-							$"actual-convo-preview-blocked vehicle={attacker.VehicleID.id} pendingNode={pendingNodeId} finalGoal={goalNodeId} reason=no-committed-attack-node",
+							$"attack-popup-preview-blocked vehicle={attacker.VehicleID.id} pendingNode={pendingNodeId} finalGoal={goalNodeId} reason=no-physical-attack-node",
 							dedupe: false);
 						__result = OnClickResult.END_CONVERSATION;
 						return false;
@@ -2331,6 +5527,7 @@ namespace GameplayTweaks
 		private static readonly FieldInfo CrewPickPeepField = AccessTools.Field(AccessTools.TypeByName("Game.UI.Session.Picks.CrewPick"), "_peep");
 		private static readonly FieldInfo CrewPickCrewField = AccessTools.Field(AccessTools.TypeByName("Game.UI.Session.Picks.CrewPick"), "_crew");
 		private static readonly FieldInfo CrewPickVehicleField = AccessTools.Field(AccessTools.TypeByName("Game.UI.Session.Picks.CrewPick"), "_vehicle");
+		private static readonly FieldInfo CrewPickPeepSpriteField = AccessTools.Field(AccessTools.TypeByName("Game.UI.Session.Picks.CrewPick"), "_peepSprite");
 		private static readonly Vector2 HiddenScreenVector = new Vector2(-100000f, -100000f);
 		private static readonly Vector3 HiddenSceneVector = new Vector3(-100000f, -100000f, -100000f);
 
@@ -2419,21 +5616,9 @@ namespace GameplayTweaks
 				return false;
 			}
 
-			matchingCount = previewMatches.Count;
-			CrewAssignment bossCrew = humanCrew.GetCrewForPlayerPeep();
-			CrewAssignment bossMatch = previewMatches.FirstOrDefault(item => item.IsValid && bossCrew.IsValid && item.peepId == bossCrew.peepId);
-			matchingCrew = bossMatch.IsValid
-				? bossMatch
-				: previewMatches.FirstOrDefault(item => item.IsValid && item.peepId.IsValid);
-			if (!matchingCrew.IsValid)
-			{
-				sourceTag = previewSource;
-				return false;
-			}
-
-			sourceTag = "attack-preview-" + previewSource;
-			GameplayTweaksPlugin.VerificationLog("HostileMobileSelect", $"ai-vehicle-target-preview crew={matchingCrew.peepId.id} node={nodeId} matches={matchingCount} source={sourceTag}");
-			return true;
+			sourceTag = "attack-preview-blocked-" + previewSource;
+			GameplayTweaksPlugin.VerificationLog("HostileMobileSelect", $"ai-vehicle-target-preview-blocked node={nodeId} matches={previewMatches.Count} source={sourceTag} reason=vehicle-not-physical");
+			return false;
 		}
 
 		[HarmonyPrefix]
@@ -2722,6 +5907,25 @@ namespace GameplayTweaks
 			catch
 			{
 			}
+
+			try
+			{
+				basePick.Reset();
+			}
+			catch
+			{
+			}
+
+			try
+			{
+				if (basePick.go != null)
+				{
+					basePick.go.SetActive(false);
+				}
+			}
+			catch
+			{
+			}
 		}
 
 		private static bool TryBlockEmptyEnemyVehiclePick(object pickInstance, out Entity clickedPeep, out EntityID vehicleId)
@@ -2899,6 +6103,16 @@ namespace GameplayTweaks
 			{
 				CrewPickPeepField.SetValue(pickInstance, resolvedPeep);
 				changed = true;
+			}
+			if (resolvedPeep != null && CrewPickPeepSpriteField != null)
+			{
+				object desiredSprite = HUDUtil.GetCrewSprite(resolvedPeep);
+				object currentSprite = CrewPickPeepSpriteField.GetValue(pickInstance);
+				if (desiredSprite != null && !Equals(currentSprite, desiredSprite))
+				{
+					CrewPickPeepSpriteField.SetValue(pickInstance, desiredSprite);
+					changed = true;
+				}
 			}
 
 			if (ownerCrew != null && resolvedPeep != null && CrewPickCrewField != null)
@@ -3627,17 +6841,25 @@ namespace GameplayTweaks
 			return crew.IsValid && crew.peepId.IsValid;
 		}
 
+		internal static bool TryGetJailedCrewStatus(EntityID peepId, out string jailStatus)
+		{
+			jailStatus = null;
+			if (!peepId.IsValid)
+				return false;
+			if (!GameplayTweaksPlugin.IsCrewCurrentlyJailed(peepId))
+				return false;
+			jailStatus = GameplayTweaksPlugin.JailSystem.GetJailStatusString(peepId);
+			if (string.IsNullOrWhiteSpace(jailStatus))
+				jailStatus = "Arrested";
+			return true;
+		}
+
 		private static bool TryGetJailedCrewStatus(object entry, out string jailStatus)
 		{
 			jailStatus = null;
 			if (!TryGetCrewAssignment(entry, out CrewAssignment crew))
 				return false;
-			if (!GameplayTweaksPlugin.IsCrewCurrentlyJailed(crew.peepId))
-				return false;
-			jailStatus = GameplayTweaksPlugin.JailSystem.GetJailStatusString(crew.peepId);
-			if (string.IsNullOrWhiteSpace(jailStatus))
-				jailStatus = "Arrested";
-			return true;
+			return TryGetJailedCrewStatus(crew.peepId, out jailStatus);
 		}
 
 		private static void SetCardText(GameObject card, string childPath, string value)
@@ -3705,6 +6927,25 @@ namespace GameplayTweaks
 			SetCardButtonActive(__0, "Building Button", false);
 			SetCardButtonActive(__0, "Vehicle Remove", false);
 			SetCardButtonActive(__0, "Building Remove", false);
+		}
+
+		[HarmonyPostfix]
+		internal static void DescribeCrewPeepPostfix(CrewInfoGen __instance, ref string __result)
+		{
+			CrewAssignment crew = __instance?.data?.crew ?? CrewAssignment.EMPTY;
+			if (!crew.IsValid || !crew.peepId.IsValid)
+				return;
+			if (TryGetJailedCrewStatus(crew.peepId, out string jailStatus))
+				__result = jailStatus;
+		}
+
+		[HarmonyPrefix]
+		internal static bool GetArrestedDescPrefix(EntityID peepId, ref string __result)
+		{
+			if (!TryGetJailedCrewStatus(peepId, out string jailStatus))
+				return true;
+			__result = jailStatus;
+			return false;
 		}
 	}
 
@@ -4362,9 +7603,11 @@ namespace GameplayTweaks
 				NodeID candidateMatchedNodeId = candidate.Key;
 				if (safehouseBuilding && !exactNodeMatch)
 				{
-					GameplayTweaksPlugin.VerificationLog(
-						"VehicleNodeAuthority",
-						$"safehouse-live-frontage-blocked building={building.Id.id} vehicle={vehicleId.id} node={candidate.Key} source={candidate.Value} comparisonNodes={string.Join(",", normalizedComparisonNodeIds)}");
+					MultiCrewVehicleHelper.LogVehicleAuthority(
+						"safehouse-live-frontage-blocked",
+						$"{building.Id.id}:{vehicleId.id}:{candidate.Key}:{candidate.Value}:{string.Join(",", normalizedComparisonNodeIds)}",
+						$"safehouse-live-frontage-blocked building={building.Id.id} vehicle={vehicleId.id} node={candidate.Key} source={candidate.Value} comparisonNodes={string.Join(",", normalizedComparisonNodeIds)}",
+						dedupe: true);
 					continue;
 				}
 				if (!exactNodeMatch
@@ -5009,6 +8252,10 @@ namespace GameplayTweaks
 		[HarmonyPrefix]
 		internal static bool StartBizVisitConversationPrefix(VisitState visit, bool fromBizDialog)
 		{
+			if (OwnedBizVehicleVisitStatePatch.TryBlockOwnedBizMissingOwnerConversation(visit, "BizComponent.StartConversation.Visit"))
+			{
+				return false;
+			}
 			Entity selectionBuilding = visit?.building ?? visit?.biz;
 			Entity conversationBiz = visit?.biz;
 			return TryHandleOwnedConversationSelection(selectionBuilding, conversationBiz, "ui.crewinfo.pickone.biz", (selectedCrew, targetBiz) => TryStartBizConversation(selectedCrew, targetBiz, fromBizDialog));
@@ -5444,6 +8691,8 @@ namespace GameplayTweaks
 
 			return source.StartsWith("selected-", StringComparison.Ordinal)
 				|| source.StartsWith("selection-", StringComparison.Ordinal)
+				|| source.StartsWith("current-segment", StringComparison.Ordinal)
+				|| source.StartsWith("current-final-goal", StringComparison.Ordinal)
 				|| source.StartsWith("route-final-goal", StringComparison.Ordinal)
 				|| source.StartsWith("queued-final-goal", StringComparison.Ordinal)
 				|| string.Equals(source, "queued-resume-goal", StringComparison.Ordinal);
@@ -5523,6 +8772,11 @@ namespace GameplayTweaks
 			}
 
 			bool sourceIsPreviewAuthority = IsDirectPreviewScopeSource(sourceTag);
+			string routeExpectedStatusSource = "none";
+			bool routeExpectedStatusAccess = matchedNodeId.IsValid
+				&& crew.IsInVehicle
+				&& crew.VehicleID.IsValid
+				&& MultiCrewVehicleHelper.IsHumanVehicleRouteSimExpectedAccessNode(crew.VehicleID, matchedNodeId, "scope-status", out routeExpectedStatusSource);
 			if (!matchedNodeId.IsValid && sourceIsPreviewAuthority)
 			{
 				GameplayTweaksPlugin.VerificationLog(
@@ -5542,12 +8796,18 @@ namespace GameplayTweaks
 				&& crew.VehicleID.IsValid
 				&& matchedNodeId.IsValid
 				&& MultiCrewVehicleHelper.IsHumanVehiclePhysicallyAtNode(crew.VehicleID, matchedNodeId);
-			if (!sourceIsPreviewAuthority && !physicallyAtMatchedNode)
+			if (!sourceIsPreviewAuthority && !physicallyAtMatchedNode && !routeExpectedStatusAccess)
 			{
 				GameplayTweaksPlugin.VerificationLog(
 					"ScopeOut",
 					$"scope-status-preview-rejected vehicle={(crew.VehicleID.IsValid ? crew.VehicleID.id : 0UL)} crew={crew.peepId.id} building={building.Id.id} matchedNode={matchedNodeId} source={sourceTag} reason=not-preview-or-physical");
 				return false;
+			}
+			if (routeExpectedStatusAccess)
+			{
+				GameplayTweaksPlugin.VerificationLog(
+					"ScopeOut",
+					$"scope-status-route-access-allowed vehicle={(crew.VehicleID.IsValid ? crew.VehicleID.id : 0UL)} crew={crew.peepId.id} building={building.Id.id} node={matchedNodeId} source={sourceTag} routeSource={routeExpectedStatusSource} reason=active-route-expected");
 			}
 
 			node = matchedNodeId.FindNode();
@@ -5582,6 +8842,10 @@ namespace GameplayTweaks
 				CommandStatus commandStatus = BuildScopeStatus(PlayerID.HumanPlayer, crew, null, out Node node);
 				if (!commandStatus.IsEnabled || node == null)
 					return false;
+				if (TryExecuteScopeAll(crew, node))
+				{
+					return false;
+				}
 				HumanCommandValidator.PostCommandHelper(new CommandScopeOut(PlayerID.HumanPlayer, crew.peepId, node));
 				return false;
 			}
@@ -5625,6 +8889,9 @@ namespace GameplayTweaks
 			if (!TryResolveScopeNode(crew, building, out node) || node == null)
 				return commandStatus;
 			PlayerInfo playerInfo = G.FindPlayerById(pid.id);
+			List<EntityID> scopeAllCandidates = null;
+			string scopeAllSource = "none";
+			string scopeAllMouseover = null;
 			if (building != null)
 			{
 				if (TryResolveCrewLiveNode(crew, out Node crewNode) && crewNode != null)
@@ -5670,12 +8937,32 @@ namespace GameplayTweaks
 				{
 					List<EntityID> previewCandidates = previewNode.MakeListOfScopeOutCandidates(pid);
 					if (previewCandidates.Count > 1)
-						return commandStatus.Set(CommandEnabledStatus.DisabledOther, ChooseDestinationBusinessText);
+					{
+						if (TryGetRouteScopeAllCandidates(crew, previewNode, out List<EntityID> routeScopeCandidates, out string routeScopeSource)
+							&& routeScopeCandidates.Count > 1)
+						{
+							scopeAllCandidates = routeScopeCandidates;
+							scopeAllSource = routeScopeSource;
+							scopeAllMouseover = "Scope out all businesses at this route corner.";
+						}
+						else
+						{
+							return commandStatus.Set(CommandEnabledStatus.DisabledOther, ChooseDestinationBusinessText);
+						}
+					}
 				}
 				if (!node.CanBeScopedOut(pid))
 					return commandStatus;
 				if (playerInfo?.territory != null && playerInfo.territory.AreAllScoped(node))
 					return commandStatus.Set(CommandEnabledStatus.DisabledOther, AlreadyScopedText);
+				if (scopeAllCandidates == null
+					&& TryGetNormalScopeAllCandidates(crew, node, out List<EntityID> normalScopeCandidates, out string normalScopeSource)
+					&& normalScopeCandidates.Count > 1)
+				{
+					scopeAllCandidates = normalScopeCandidates;
+					scopeAllSource = normalScopeSource;
+					scopeAllMouseover = "Scope out all businesses at this corner.";
+				}
 			}
 			Entity peep = crew.GetPeep();
 			if (peep?.components?.agent == null)
@@ -5688,6 +8975,19 @@ namespace GameplayTweaks
 			}
 			if (!peep.components.agent.HasActionsRemaining)
 				return commandStatus.Set(CommandEnabledStatus.DisabledOther, Loc.Get("ui.command.fail.points"));
+			if (scopeAllCandidates != null && scopeAllCandidates.Count > 1)
+			{
+				CrewCost totalCost = MultiplyScopeCost(global::Game.Game.serv.globals.settings.people.social.costs.scopeOutCost, scopeAllCandidates.Count);
+				if (!peep.components.agent.CanPay(totalCost))
+				{
+					GameplayTweaksPlugin.VerificationLog(
+						"ScopeOut",
+						$"scope-all-points-blocked crew={crew.peepId.id} vehicle={(crew.VehicleID.IsValid ? crew.VehicleID.id : 0UL)} node={node.id} candidates={scopeAllCandidates.Count} source={scopeAllSource} costMoves={totalCost.moves} costActions={totalCost.actions}");
+					return commandStatus.Set(CommandEnabledStatus.DisabledOther, Loc.Get("ui.command.fail.points"));
+				}
+
+				return commandStatus.Set(CommandEnabledStatus.Enabled, scopeAllMouseover ?? Loc.Get("ui.command.scope.mo"));
+			}
 			return commandStatus.Set(CommandEnabledStatus.Enabled, Loc.Get("ui.command.scope.mo"));
 		}
 
@@ -5719,6 +9019,181 @@ namespace GameplayTweaks
 			if (territory == null || building == null)
 				return false;
 			return territory.IsScoped(building) || territory.ScopeOutReserved(building.Id);
+		}
+
+		private static bool TryGetRouteScopeAllCandidates(CrewAssignment crew, Node node, out List<EntityID> candidates, out string routeSource)
+		{
+			candidates = new List<EntityID>();
+			routeSource = "none";
+			if (!crew.IsValid
+				|| !crew.IsInVehicle
+				|| !crew.VehicleID.IsValid
+				|| node == null
+				|| !node.id.IsValid
+				|| !MultiCrewVehicleHelper.IsHumanVehicleRouteSimExpectedAccessNode(crew.VehicleID, node.id, "route-scope-all", out routeSource))
+			{
+				return false;
+			}
+
+			PlayerTerritory territory = G.GetHumanPlayer()?.territory;
+			if (territory == null)
+			{
+				return false;
+			}
+
+			candidates = node.MakeListOfScopeOutCandidates(PlayerID.HumanPlayer)
+				.Where(candidateId =>
+				{
+					Entity candidate = candidateId.FindEntity();
+					return candidateId.IsValid
+						&& candidate != null
+						&& !territory.IsScoped(candidate)
+						&& !territory.ScopeOutReserved(candidateId)
+						&& TryMatchScopePreviewNodeToBuilding(candidate, node.id, out _, out _, out _, out _);
+				})
+				.Distinct()
+				.ToList();
+			return candidates.Count > 1;
+		}
+
+		private static bool TryGetNormalScopeAllCandidates(CrewAssignment crew, Node node, out List<EntityID> candidates, out string source)
+		{
+			candidates = new List<EntityID>();
+			source = "none";
+			if (!crew.IsValid || !crew.peepId.IsValid || node == null || !node.id.IsValid)
+			{
+				return false;
+			}
+
+			if (crew.IsInVehicle)
+			{
+				if (!crew.VehicleID.IsValid
+					|| MultiCrewVehicleHelper.IsHumanVehicleTravelActive(crew.VehicleID)
+					|| MultiCrewVehicleHelper.HasQueuedHumanVehiclePendingResume(crew.VehicleID)
+					|| MultiCrewVehicleHelper.TryGetPendingHumanVehicleTravel(crew.VehicleID, out _, out NodeID pendingExpectedNodeId, out NodeID pendingGoalNodeId)
+						&& (pendingExpectedNodeId.IsValid || pendingGoalNodeId.IsValid))
+				{
+					return false;
+				}
+
+				if (!MultiCrewVehicleHelper.IsHumanVehiclePhysicallyAtNode(crew.VehicleID, node.id)
+					&& !MultiCrewVehicleHelper.IsHumanVehicleSettledAtNodeForAction(crew.VehicleID, node.id, out source))
+				{
+					return false;
+				}
+
+				if (string.IsNullOrWhiteSpace(source) || string.Equals(source, "none", StringComparison.Ordinal))
+				{
+					source = "physical-vehicle";
+				}
+			}
+			else
+			{
+				Entity peep = crew.GetPeep();
+				Node crewNode = peep != null ? HumanCommandValidator.GetNode(peep) : null;
+				if (crewNode == null || crewNode.id != node.id)
+				{
+					return false;
+				}
+
+				source = "crew-node";
+			}
+
+			PlayerTerritory territory = G.GetHumanPlayer()?.territory;
+			if (territory == null)
+			{
+				return false;
+			}
+
+			candidates = node.MakeListOfScopeOutCandidates(PlayerID.HumanPlayer)
+				.Where(candidateId =>
+				{
+					Entity candidate = candidateId.FindEntity();
+					return candidateId.IsValid
+						&& candidate != null
+						&& !territory.IsScoped(candidate)
+						&& !territory.ScopeOutReserved(candidateId);
+				})
+				.Distinct()
+				.ToList();
+			return candidates.Count > 1;
+		}
+
+		private static bool TryExecuteScopeAll(CrewAssignment crew, Node node)
+		{
+			try
+			{
+				if (!TryGetRouteScopeAllCandidates(crew, node, out List<EntityID> candidates, out string routeSource))
+				{
+					if (!TryGetNormalScopeAllCandidates(crew, node, out candidates, out routeSource))
+					{
+						return false;
+					}
+
+					return ExecuteScopeAllCandidates(crew, node, candidates, routeSource, "normal-scope-all", "NormalScopeAll");
+				}
+
+				return ExecuteScopeAllCandidates(crew, node, candidates, routeSource, "route-scope-all", "RouteScopeAll");
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] TryExecuteScopeAll: " + ex.Message);
+				return false;
+			}
+		}
+
+		private static bool ExecuteScopeAllCandidates(CrewAssignment crew, Node node, List<EntityID> candidates, string source, string logTag, string payReason)
+		{
+			if (!crew.IsValid || !crew.peepId.IsValid || node == null || candidates == null || candidates.Count <= 1)
+			{
+				return false;
+			}
+
+			Entity peep = crew.GetPeep();
+			AgentComponent agent = peep?.components?.agent;
+			if (agent == null)
+			{
+				return false;
+			}
+
+			CrewCost cost = MultiplyScopeCost(global::Game.Game.serv.globals.settings.people.social.costs.scopeOutCost, candidates.Count);
+			if (!agent.CanPay(cost) || !agent.DoPay(cost, payReason))
+			{
+				GameplayTweaksPlugin.VerificationLog(
+					"ScopeOut",
+					$"scope-all-pay-blocked tag={logTag} vehicle={(crew.VehicleID.IsValid ? crew.VehicleID.id : 0UL)} crew={crew.peepId.id} node={node.id} candidates={candidates.Count} source={source} costMoves={cost.moves} costActions={cost.actions}");
+				return false;
+			}
+
+			PlayerTerritory territory = G.GetHumanPlayer()?.territory;
+			if (territory == null)
+			{
+				return false;
+			}
+
+			int scoped = 0;
+			foreach (EntityID candidateId in candidates)
+			{
+				Entity candidate = candidateId.FindEntity();
+				if (candidate == null || territory.IsScoped(candidate) || territory.ScopeOutReserved(candidateId))
+				{
+					continue;
+				}
+
+				territory.ScopeOutBuildingWithFeedback(candidate, crew.peepId);
+				scoped++;
+			}
+
+			GameplayTweaksPlugin.VerificationLog(
+				"ScopeOut",
+				$"{logTag} vehicle={(crew.VehicleID.IsValid ? crew.VehicleID.id : 0UL)} crew={crew.peepId.id} node={node.id} scoped={scoped} candidates={candidates.Count} source={source} costMoves={cost.moves} costActions={cost.actions}");
+			return scoped > 0;
+		}
+
+		private static CrewCost MultiplyScopeCost(CrewCost baseCost, int count)
+		{
+			int multiplier = Math.Max(1, count);
+			return new CrewCost(baseCost.moves * multiplier, baseCost.actions * multiplier);
 		}
 
 		internal static List<CrewAssignment> FilterSelectedVehicleTransientScopeMatches(Entity building, IEnumerable<NodeID> comparisonNodeIds, List<CrewAssignment> matches, string sourceTag)
@@ -6184,6 +9659,19 @@ namespace GameplayTweaks
 					return false;
 				}
 
+				bool routeExpectedScopeAccess = MultiCrewVehicleHelper.IsHumanVehicleRouteSimExpectedAccessNode(crew.VehicleID, resolvedNodeId, "preview-scope-direct", out string routeExpectedSource);
+				if (MultiCrewVehicleHelper.IsHumanVehicleFinalGoalPreviewOnlySource(resolvedSource)
+					&& !MultiCrewVehicleHelper.IsHumanVehiclePhysicallyAtNode(crew.VehicleID, resolvedNodeId)
+					&& !routeExpectedScopeAccess)
+				{
+					GameplayTweaksPlugin.VerificationLog("ScopeOut", $"preview-scope-direct-blocked vehicle={crew.VehicleID.id} crew={crew.peepId.id} building={building.Id.id} node={resolvedNodeId} source={resolvedSource} reason=final-goal-not-arrived");
+					return false;
+				}
+				if (routeExpectedScopeAccess)
+				{
+					GameplayTweaksPlugin.VerificationLog("ScopeOut", $"preview-scope-route-access-allowed vehicle={crew.VehicleID.id} crew={crew.peepId.id} building={building.Id.id} node={resolvedNodeId} source={resolvedSource} routeSource={routeExpectedSource} reason=active-route-expected");
+				}
+
 				if (!MultiCrewVehicleHelper.IsHumanVehiclePreviewNodeKnownOrReached(crew.VehicleID, resolvedNodeId)
 					&& !MultiCrewVehicleHelper.IsHumanVehicleFinalGoalScopePreviewAllowed(crew.VehicleID, resolvedNodeId, resolvedSource))
 				{
@@ -6210,7 +9698,6 @@ namespace GameplayTweaks
 				}
 
 				G.GetHumanPlayer()?.territory?.ScopeOutBuildingWithFeedback(building, crew.peepId);
-				RefreshScopedBuildingPicks(building, crew.VehicleID, "preview-scope-direct");
 				GameplayTweaksPlugin.VerificationLog("ScopeOut", $"preview-scope-direct vehicle={crew.VehicleID.id} crew={crew.peepId.id} building={building.Id.id} node={resolvedNodeId} source={resolvedSource}");
 				return true;
 			}
@@ -6648,6 +10135,101 @@ namespace GameplayTweaks
 
 	internal static class ScopeOutFeedbackSelectionPatch
 	{
+		private static readonly Dictionary<Type, MethodInfo> BoardGetNodeIdMethodByType = new Dictionary<Type, MethodInfo>();
+
+		[HarmonyPrefix]
+		internal static bool Prefix(PlayerTerritory __instance, Entity building, EntityID crew)
+		{
+			try
+			{
+				if (__instance == null || building == null)
+				{
+					return true;
+				}
+
+				PlayerInfo humanPlayer = G.GetHumanPlayer();
+				if (humanPlayer == null || humanPlayer.territory != __instance)
+				{
+					return true;
+				}
+
+				long totalStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+				long phaseStartTicks = totalStartTicks;
+				bool deferOwnerMeet = ShouldDeferOwnerMeet(humanPlayer, crew);
+				long scopeMs;
+				long ownerQueueMs = 0L;
+				if (deferOwnerMeet)
+				{
+					__instance.ScopeOutBuilding(building, procgen: false, setControlled: false);
+					scopeMs = GetElapsedMs(phaseStartTicks);
+					phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+					GameplayTweaksPlugin.QueueDeferredScopeOwnerMeet(building.Id, crew, "scopeout-feedback");
+					ownerQueueMs = GetElapsedMs(phaseStartTicks);
+				}
+				else
+				{
+					__instance.ScopeOutAndMeetOwner(building, procgen: false, crew, setControlled: false);
+					scopeMs = GetElapsedMs(phaseStartTicks);
+				}
+				phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+				global::Game.Game.ctx?.vfx?.PlayOneShotPFX(global::Game.Session.Assets.PFXType.ScopeOutFX, building.data.board.worldpos, PlayerID.HumanPlayer, 2f);
+				long vfxMs = GetElapsedMs(phaseStartTicks);
+				phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+				crew.FindEntity()?.components.agent.IncrementStat(CrewStats.BizScouted, 1);
+				long statMs = GetElapsedMs(phaseStartTicks);
+				phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+				if (BuildingUtil.FindBizForBuilding(building) != null || building.components.building.IsSafehouse)
+				{
+					GameplayTweaksPlugin.QueueDeferredScopeOutTicker(building.Id, "scopeout-feedback");
+				}
+				long tickerQueueMs = GetElapsedMs(phaseStartTicks);
+				phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+				global::Game.Game.ctx?.sfx?.PlayScopeOutBiz();
+				long sfxMs = GetElapsedMs(phaseStartTicks);
+				long totalMs = GetElapsedMs(totalStartTicks);
+				if (totalMs >= 12L || scopeMs >= 8L || vfxMs >= 8L || statMs >= 8L || tickerQueueMs >= 8L || sfxMs >= 8L)
+				{
+					int logDay = global::Game.Game.ctx?.clock?.Now.days ?? -1;
+					int logTurn = global::Game.Game.ctx?.clock?.CurrentTurn ?? -1;
+					Debug.Log($"[PERF][ScopeOutFeedbackSplit] ms={totalMs} scopeMs={scopeMs} ownerQueueMs={ownerQueueMs} deferOwner={deferOwnerMeet} vfxMs={vfxMs} statMs={statMs} tickerQueueMs={tickerQueueMs} sfxMs={sfxMs} building={building.Id.id} crew={crew.id} day={logDay} turn={logTurn}");
+				}
+				return false;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] ScopeOutFeedbackSelectionPatch.Prefix: " + ex.Message);
+				return true;
+			}
+		}
+
+		private static bool ShouldDeferOwnerMeet(PlayerInfo humanPlayer, EntityID crew)
+		{
+			try
+			{
+				if (humanPlayer?.crew == null || !crew.IsValid)
+				{
+					return false;
+				}
+
+				CrewAssignment assignment = humanPlayer.crew.GetCrewForPeep(crew);
+				return assignment.IsValid && assignment.IsInVehicle && assignment.VehicleID.IsValid;
+			}
+			catch
+			{
+				return false;
+			}
+		}
+
+		private static long GetElapsedMs(long startTicks)
+		{
+			if (startTicks <= 0L)
+			{
+				return 0L;
+			}
+
+			return (System.Diagnostics.Stopwatch.GetTimestamp() - startTicks) * 1000L / System.Diagnostics.Stopwatch.Frequency;
+		}
+
 		private static bool IsTransientVehicleScopeFeedbackSource(EntityID vehicleId, string source)
 		{
 			if (!string.IsNullOrEmpty(source)
@@ -6715,7 +10297,6 @@ namespace GameplayTweaks
 				if (currentActive == null)
 					return;
 				Node scopedNode = TryGetBoardNode(building);
-				Node activeNode = TryGetBoardNode(currentActive);
 				bool hasSelectedVehicle = MultiCrewVehicleHelper.TryGetSelectedHumanVehicleForMapScope(G.GetHumanCrew(), out EntityID selectedVehicleId, out _)
 					&& selectedVehicleId.IsValid;
 				bool preserveSameNodeSelection = false;
@@ -6744,22 +10325,26 @@ namespace GameplayTweaks
 					{
 						GameplayTweaksPlugin.VerificationLog("ScopeOut", $"scope-feedback-selection-skipped vehicle={selectedVehicleId.id} node={selectedNodeId} source={selectedSource} building={building?.Id.id ?? 0UL}");
 					}
-					if (transientSelectionSource)
+					if (!transientSelectionSource)
 					{
-						CommandButtonScopeOutPatch.RefreshScopedBuildingPicks(building, selectedVehicleId, refreshSourceTag);
+						GameplayTweaksPlugin.VerificationLog("ScopeOut", $"scope-feedback-refresh-skipped vehicle={selectedVehicleId.id} node={selectedNodeId} source={refreshSourceTag} building={building?.Id.id ?? 0UL}");
 					}
 					else
 					{
-						GameplayTweaksPlugin.VerificationLog("ScopeOut", $"scope-feedback-refresh-skipped vehicle={selectedVehicleId.id} node={selectedNodeId} source={refreshSourceTag} building={building?.Id.id ?? 0UL}");
+						GameplayTweaksPlugin.VerificationLog("ScopeOut", $"scope-feedback-transient-refresh-skipped vehicle={selectedVehicleId.id} node={selectedNodeId} source={selectedSource} building={building?.Id.id ?? 0UL}");
 					}
 				}
 				if (!preserveSameNodeSelection && currentActive == building)
 				{
 					selection.HandleDeselect();
 				}
-				if (!preserveSameNodeSelection && scopedNode != null && activeNode != null && scopedNode.id == activeNode.id)
+				if (!preserveSameNodeSelection && scopedNode != null)
 				{
-					selection.HandleDeselect();
+					Node activeNode = TryGetBoardNode(currentActive);
+					if (activeNode != null && scopedNode.id == activeNode.id)
+					{
+						selection.HandleDeselect();
+					}
 				}
 				if (!preserveSameNodeSelection)
 				{
@@ -6778,7 +10363,12 @@ namespace GameplayTweaks
 				return null;
 			try
 			{
-				MethodInfo getNodeId = entity.components.board.GetType().GetMethod("GetNodeID", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+				Type boardType = entity.components.board.GetType();
+				if (!BoardGetNodeIdMethodByType.TryGetValue(boardType, out MethodInfo getNodeId))
+				{
+					getNodeId = boardType.GetMethod("GetNodeID", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+					BoardGetNodeIdMethodByType[boardType] = getNodeId;
+				}
 				if (getNodeId == null)
 					return null;
 				return ((NodeID)getNodeId.Invoke(entity.components.board, null)).FindNode();

@@ -1,5 +1,0 @@
-﻿{
- description "This is another map mod by me. The map is made for the After Prohibtion Mod so it will not work properly on a unmodded game. You can find the mod in the link below.\r\nhttps://www.moddb.com/mods/the-after-prohibition-mod/downloads/the-after-prohibition-mod-v1394-days-of-prohibition"
- name "New Orleans"
- modid {id "20251003-2030240910"}
- workshopid "3596783801"}

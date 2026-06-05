@@ -1,0 +1,290 @@
+﻿CURRENT AFTER PROHIBITION MOD CHANGELOG
+=======================================
+
+This public build continues from the older Beta/Stable public packages and the Old Beta StreamingAssets baseline. It is a work-in-progress release for people who want to play the expanding After Prohibition systems while they are still being tuned. Expect this to be a journey over the next few months: crew life, pacts, gang wars, route automation, heat, family, and business ownership are all active systems now, and the next passes will keep tightening balance, UI clarity, and edge-case behavior.
+
+2026-05-12 FAMILY SYSTEM SPLIT
+------------------------------
+
+- Added the standalone AfterProhibitionFamily.dll plugin so family and relationship behavior can move out of GameplayTweaks in controlled phases.
+- Moved spouse safety, spouse search, pregnancy scheduling bridge, startup parent/generated-person fallback, and dead relationship cleanup into AfterProhibitionFamily.
+- Kept UI prompts, crew relationship buttons, safehouse/business startup repair, hiring menus, route logic, economy behavior, and politics behavior outside the Family plugin.
+- Added startup relationship audits that wait for pending dead-relationship cleanup before reporting counts; latest validation showed cleanup reduced dead relationship references to deadRefs=0.
+- Updated AfterProhibitionFamily to 0.7.3 so startup family/relationship audits wait until the session is interactive before scanning generated people and relationships.
+- Updated AfterProhibitionFamily to 0.7.4 so full startup family diagnostics are opt-in through EnableStartupFamilyDiagnostics. Family behavior patches remain active.
+- Added a GameplayTweaks delegation summary log showing Family ownership for spouse safety, spouse search, pregnancy bridge, startup generation, and dead cleanup.
+- Staged AfterProhibitionFamily.dll with the current Personal and Public release plugin folders.
+
+2026-05-11 RECENT STABILITY FIXES
+---------------------------------
+
+- Fixed shop purchase access so shops should no longer only allow selling when buy options should be available.
+- Restored the New York starter political quest trigger on new games.
+- Fixed residential event visibility so available residential events post tickers and assigned events are scheduled instead of staying hidden.
+- Tightened delivery-route travel so manually moving a delivery-route driver to a corner does not immediately auto-start the next route leg on arrival.
+- Improved long-distance vehicle route continuation and route authority logging around queued route resumes.
+- Fixed dirty-cash route UI compatibility so default delivery selections and dirty-cash related choices are not removed by broad external-DLL unpatching.
+- Added spouse candidate safety checks so family members, parents, children, siblings, and same-family-tree people are rejected as spouse matches.
+- Cleaned up person-info connections so broken relationship targets no longer show as blank portrait/name cards.
+- Fixed starter boss vehicle capacity for vanilla alias vehicles such as vehicle-car-preorder so boss cars use the intended multi-crew slots instead of falling back to one slot.
+- Staged updated GameplayTweaks.dll builds to the Personal and Public release plugin folders after validation builds.
+
+2026-05-11 UI AND ASSET SEPARATION
+----------------------------------
+
+- Added the standalone AfterProhibitionAssets plugin for custom image loading and main-menu background priority.
+- Added the standalone AfterProhibitionUI plugin scaffold so popup, retheme, portrait, crew button, menu, and sidebar patches can move out of GameplayTweaks in controlled phases.
+- Added the AfterProhibitionUI migration inventory under docs\ai, including current GameplayTweaks UI log tags, owner classes, migration risk, and first-safe move order.
+- Updated AfterProhibitionUI to log delayed compatibility detection after BepInEx finishes loading external UI plugins such as PIA UI Enhancer, CoGCustomAssets, CustomPortraits, safebox launcher support, and menu/sidebar overlap.
+- Moved the TMP replacement-character sanitizer into AfterProhibitionUI and made GameplayTweaks skip its old sanitizer patch when the UI plugin is installed.
+- Moved the crew sidebar jail-bars visual patch into AfterProhibitionUI with a soft custody-state bridge and made GameplayTweaks skip its old sidebar jail-bars patch when the UI plugin is installed.
+- Added the AfterProhibitionUI popup docking foundation so base popups and HUD dialogs are kept inside their parent viewport after activation without moving gameplay-coupled combat popup logic out of GameplayTweaks.
+- Revised the popup docking foundation to modal base popups only after the broad HUD dialog hook moved the crew side panel; crew/person-info HUD dialogs now stay under vanilla placement.
+- Added AfterProhibitionUI runtime config switches for text sanitizer, sidebar jail bars, and popup docking, and expanded compatibility logs to report active UI feature states and current retheme ownership.
+- Added the AfterProhibitionUI menu retheme bridge. GameplayTweaks now delegates generic menu/popup button and panel theming to AfterProhibitionUI first, while pact colors and gameplay-coupled UI remain in GameplayTweaks.
+- Tightened GameplayTweaks retheme compatibility logs so `uiRetheme=delegated` only reports when the AfterProhibitionUI retheme bridge method is actually present.
+- Added the AfterProhibitionUI crew-info action bridge for future crew button migration without adding a compile-time dependency on GameplayTweaks.
+- Moved crew inspect footer button rendering into AfterProhibitionUI with GameplayTweaks action delegation, so crew relations, pacts, grapevine, and safebox buttons are now UI-owned while gameplay behavior stays in GameplayTweaks.
+- Hardened crew-info button ownership detection so GameplayTweaks can skip its old footer button patch only when the AfterProhibitionUI crew button feature is enabled.
+- Added AfterProhibitionUI stale portrait guards for reused crew picks, person info headers, conversation portraits, crew inspect mugshots, and portrait popups.
+- Moved the connections-tab blank-card render guard into AfterProhibitionUI so invalid relationship cards are suppressed visually without mutating relationship or family data.
+- Moved crew-management jail status text visuals into AfterProhibitionUI while leaving jailed crew assignment blocking and command safety in GameplayTweaks.
+- Added AFTER_PROHIBITION_UI_GUIDE.txt with plugin ownership, config switches, expected logs, and a live test checklist.
+- Hardened GameplayTweaks fallback checks so text sanitizer and sidebar jail-bars only skip when the matching AfterProhibitionUI feature is enabled.
+- Staged AfterProhibitionUI.dll to the Personal and Public release plugin folders.
+- Added the standalone AfterProhibitionCompatibility plugin scaffold so external DLL detection and broad-unpatch safety can move out of GameplayTweaks in controlled phases.
+- AfterProhibitionCompatibility currently logs a read-only startup baseline only; it does not patch gameplay, economy, routes, family, politics, inventory, shop behavior, or UI rendering.
+- Added AfterProhibitionCompatibility to ClassLibrary1.sln and staged AfterProhibitionCompatibility.dll to the Personal and Public release plugin folders.
+- Updated AfterProhibitionCompatibility to version 0.2.0 with a read-only external DLL detection matrix for Dirty Cash, 10K Button/Input, safebox UI, launchers, PIA UI/menu overlap, asset/portrait DLLs, GangWars/Territory, ticker, optimizer, cheat, crew-hire, remote-interaction, and natural-death style mods.
+- The compatibility matrix logs detection only; GameplayTweaks behavior gates remain unchanged until the bridge phase.
+- Updated AfterProhibitionCompatibility to version 0.3.0 with public read-only bridge methods so GameplayTweaks and AfterProhibitionUI can query external Dirty Cash, 10K input, safebox UI, menu/sidebar, custom asset, portrait, GangWars/Territory, ticker, and cheat/menu ownership without compile-time dependencies.
+- Staged the refreshed AfterProhibitionCompatibility.dll to the Personal and Public release plugin folders; GameplayTweaks behavior gates still use their existing local fallback until the delegation phase.
+- Updated AfterProhibitionCompatibility to version 0.4.0 with read-only broad-unpatch owner classification logs for Dirty Cash Economy, 10K Button/Input, safebox launcher UI, custom assets/portraits, territory, ticker, and cheat/menu DLL owners. This phase exposes decisions only; GameplayTweaks unpatch behavior was not changed yet.
+- Started the compatibility delegation phase by making GameplayTweaks query the AfterProhibitionCompatibility bridge for external safebox UI ownership while preserving its old local safebox detection as fallback.
+- Continued compatibility delegation by making GameplayTweaks query the AfterProhibitionCompatibility bridge for Dirty Cash Economy and Dirty Cash Volume Fix detection while preserving its old local Dirty Cash DLL checks as fallback.
+- Corrected the AfterProhibitionCompatibility broad-unpatch guard so external cheat/menu owners classify as protected menu owners instead of unknown owners.
+- Continued compatibility delegation by making GameplayTweaks query the AfterProhibitionCompatibility bridge for 10K Button/Input and UI Enhancer detection while preserving its old local UI/input DLL checks as fallback.
+- Continued compatibility delegation by logging external menu/sidebar ownership through the AfterProhibitionCompatibility bridge and querying the bridge for ticker and cheat/menu detection while preserving GameplayTweaks local fallback checks.
+- Completed the current compatibility delegation pass by adding bridge-backed GangWars, TerritoryExpansion, and MafiaHierarchy detection with GameplayTweaks local fallback checks preserved.
+- Started the Dirty Cash compatibility classification phase in AfterProhibitionCompatibility 0.5.0 with read-only route-input protection, original-method override protection, money-routing protection, and key Harmony owner summary logs. GameplayTweaks money, shop, route, economy, and broad-unpatch behavior were not changed in this phase.
+- Started the 10K Button/Input compatibility classification phase in AfterProhibitionCompatibility 0.6.0 with read-only route-input protection, button-input protection, menu/sidebar protection, and owner summary bridge methods. GameplayTweaks route UI, input cleanup, menu, and broad-unpatch behavior were not changed in this phase.
+- Added AFTER_PROHIBITION_COMPATIBILITY_GUIDE.txt with compatibility plugin ownership, non-ownership boundaries, config switches, expected logs, bridge methods, and live validation steps.
+- Started compatibility cleanup and fallback hardening: GameplayTweaks now caches the AfterProhibitionCompatibility bridge type/version once per compatibility scan and logs the bridge version while keeping all local fallback detection paths intact.
+- Added the standalone AfterProhibitionEconomy plugin scaffold so shop buy/sell fixes, banks/warehouse purchasing, dirty-cash routing, front/business resources, stock refreshes, and later route shop orders can move out of GameplayTweaks in controlled phases.
+- AfterProhibitionEconomy currently logs a read-only startup baseline only; it does not patch shops, banks, warehouses, routes, UI, family, politics, combat, or external-DLL detection.
+- Added AfterProhibitionEconomy to ClassLibrary1.sln and staged AfterProhibitionEconomy.dll to the Personal and Public release plugin folders.
+- Added the AfterProhibitionEconomy migration inventory under docs\ai. The inventory separates purchase stock refresh, empty business module repair, bank/civic purchase behavior, Dirty Cash routing, front/business setup, owned-business module choices, and staged route shop orders into a safer move order.
+- Updated AfterProhibitionEconomy to version 0.2.0 with a read-only startup economy audit for shop, bank, warehouse, front, dirty-cash backroom, empty-module, buy-stock, sell-stock, missing-buy-stock, and sell-only counts. This phase does not repair stock or modules.
+- Updated AfterProhibitionEconomy to version 0.3.0 with a read-only shop buy/sell access classifier bridge. It exposes buy access, sell access, and summary methods for later GameplayTweaks delegation, and logs limited shop-access samples without changing shop behavior.
+- Updated AfterProhibitionEconomy to version 0.3.1 so startup economy diagnostics defer until the game entity manager exists instead of stopping after an early missing-entity-manager audit.
+- Updated AfterProhibitionEconomy to version 0.4.0 with a read-only bank and wholesale warehouse purchase-access classifier bridge. Banks are classified separately from generic shop stock, warehouses report explicit stock/module access reasons, and GameplayTweaks behavior remains unchanged.
+- Updated AfterProhibitionEconomy to version 0.4.1 with a longer, quieter startup diagnostic retry window so economy audit logs can wait through main-menu and new-game loading before the session entity manager exists.
+- Updated AfterProhibitionEconomy to version 0.5.0 with NPC business purchase-stock refresh. It refreshes businesses that have installed purchase-producing modules but no positive player-buy offers, logs candidate/refreshed/failed/skipped counts, and leaves GameplayTweaks fallback in place for live validation.
+- Updated AfterProhibitionEconomy through version 0.8.3 with empty business module repair migration, GameplayTweaks delegation for stock/module repair, Dirty Cash routing classification, front/resource audits, and safer map-startup logging. The latest pass keeps the repair summary, disables thousands of individual repair detail lines by default, and keeps full post-business diagnostics off by default so new-game loading is not blocked by inline full-map audits.
+- Updated AfterProhibitionEconomy to version 0.8.4 with read-only shop access and bank/warehouse purchase-access ownership bridge methods. GameplayTweaks now logs whether those Economy bridges are available while keeping shop/civic behavior fallback active until live validation is complete.
+- Updated AfterProhibitionEconomy to version 0.8.5 with read-only Dirty Cash routing and front/resource ownership bridge methods. GameplayTweaks now logs whether those classifier bridges are available while keeping money routing, front resource mutation, shop/civic UI, and route behavior on existing fallback paths.
+- Updated AfterProhibitionEconomy to version 0.9.0 with read-only staged route shop-order classification. The new bridge checks resource, quantity, stock/demand, price, and optional available-cash constraints, while GameplayTweaks still owns route travel, route UI, staged order storage, arrival commit, and buy/sell execution.
+- Added AFTER_PROHIBITION_ECONOMY_GUIDE.txt with economy plugin ownership, non-ownership boundaries, config switches, expected logs, bridge methods, and live validation steps. Staged the refreshed AfterProhibitionEconomy.dll and guide to the Personal and Public release folders.
+
+2026-04-30 PUBLIC BUILD
+-----------------------
+
+Live Log Check
+~~~~~~~~~~~~~~
+
+- Latest live logs did not show the old delivery-route movement interruption loop.
+- Final-goal route commands now defer while a vehicle is actively arriving instead of cancelling the current travel step.
+- Scopeout, wrong-corner rejection, safehouse access filtering, odd-job pay, loyalty turns, pact/gang operations, WarHeat, and CopKilling safety passes are all writing verification logs.
+- Known non-blocking runtime note: CopKilling AttackAdvisor.OnTurnUpdate swallowed exception during cop-war stabilization can still appear, but it is caught by the safety wrapper instead of crashing the game.
+- Current route expansion logs can show expanded=0 skippedNoCorner=... when the enabled fronts have no valid next expansion corner. That means the route system ran, but there was nowhere legal to expand from that set of fronts.
+
+StreamingAssets Changes Since Old Beta
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The current package keeps the same main StreamingAssets layout as Old Beta, with content changes in these areas:
+
+- Entities\Buildings.sim
+- Entities\Businesses.sim
+- Entities\Modules.sim
+- Loc\en.txt
+- Loc\ko.txt
+- Maps\Atlantic-City.sim
+- Maps\Chicago.sim
+- Maps\Cincinnati.sim
+- Maps\Detroit.sim
+- Maps\New-York.sim
+- Maps\Philadelphia.sim
+- Maps\Pittsburgh.sim
+- Settings\AI.sim
+- Settings\Buffs.sim
+- Settings\Gambling.sim
+- Settings\People.sim
+- Settings\Quests.sim
+- Settings\ResEvents.sim
+- Settings\Schemes.sim
+- Settings\Skills.sim
+- UI\ConvoBiz.sim
+- UI\ConvoCrew.sim
+- UI\ConvoGangs.sim
+- UI\ConvoGoons.sim
+
+The practical content changes inside those files are:
+
+- Buildings and businesses:
+- bank fronts were moved toward the new bank-counter setup and the Philadelphia-style medium bank building;
+- bank building placement is now handled through controlled civic-style map buckets instead of generic commercial lot spam;
+- funeral-home starter businesses can now appear outside New York at a lower population gate;
+- several businesses now seed legal-front modules such as grocery, florist, funeral, and bank counter instead of generic placeholder storage;
+- deli/home-booze style businesses now seed bootlegger home-booze source modules;
+- some player takeover blockers and extreme population gates were reduced so legal fronts and ownership paths can show up earlier;
+- tobacco/front configuration was retargeted toward the newer tobacconist setup.
+- Modules:
+- added/retargeted flavor-bank-counter for bank-style fronts and permit/account sourcing;
+- added/retargeted employment-agency style content for labor, talent, and staffing resources;
+- expanded legal-front module references under the player-legal-* naming path, including grocery, restaurant, barber, florist, funeral, cafe, hardware, laundry, car dealership, real estate, wholesale, contractor, gas station, jewelry, hotel, liquor, pub, movie theater, pawnshop, law office, record, film, gym, talent, and money-laundering legal fronts;
+- updated production and selloff tables for legal goods, building materials, permits, accounts, labor contracts, talent agents, cooking staff, managers, and film/music support resources;
+- adjusted home-booze and improved home-booze module links so more bootlegging paths tie into the current quest and skill structure.
+- Quests and jobs:
+- added a connected-connector fake-account scheme that uses funeral homes or churches as paperwork sources and rewards existing account resources;
+- added bulk rail shipment quest chains for home brew, cider, brick wine, moonshine, bathtub gin, sparkling cider, fake beer, and fake wine;
+- each rail shipment has short, full-car, and long-order tiers where appropriate, paying out through safehouse delivery;
+- expanded dirty-cash payouts and laundering-style rewards for gang/backroom job chains;
+- updated school support quests so school backing, school payout, and local recruit windows can be reached from school conversations;
+- updated church support quests, including church support, church loans, and church loan repayment;
+- updated Canada, leader, Gatsby/recruiting, drugs, liquor, and related access checks so more quest starts use the current conversation gating.
+- Conversations and localization:
+- added rail-shipment conversation text, buttons, tooltips, and quest names;
+- added school and church support conversation text;
+- added gang war mediation text;
+- corrected at least one dirty-cash/laundering line to match the actual $550 amount;
+- added the route Expand fronts tooltip text;
+- changed some gang/goon conversation checks from relationship tickets toward direct owner relationship checks.
+- Buffs, heat, and relationships:
+- added pact relationship buffs for joining a pact, killing a pact boss, and killing a pact leader;
+- added cop-killing relationship pressure buffs for precinct and citywide retaliation;
+- added political protection and gang-loot heat/buff hooks;
+- shortened or retuned several older relationship buff durations and deltas so new systems can cycle more often.
+- People, economy, and upkeep:
+- reduced some legal/professional monthly costs;
+- retargeted lawyer effects to the newer player-legal-lawoffice module;
+- added upkeep/property-tax style pressure for legal fronts, homes, rentals, backrooms, drug rooms, brothels, parking, taxis, and related owned modules;
+- reduced some protection/backroom cost pressure from earlier values so the new front economy is less punishing.
+- AI, skills, schemes, and gambling:
+- increased an AI cap from 4 to 7 while reducing carried cash ranges;
+- reduced some AI accept costs and made one start score more restrictive;
+- retargeted scheme, skill, and gambling checks to the current legal-front module names;
+- expanded gambling tags and legal/illegal business checks so newer fronts can participate in the right content.
+- Maps:
+- Atlantic City, Chicago, Cincinnati, Detroit, New York, Philadelphia, and Pittsburgh now use school-large in the civic generation list instead of the older civic-school-large reference;
+- those standard maps now give banks dedicated neighborhood and downtown/bizcenter special-building entries with district caps;
+- most updated maps lower initialFamiliesRatio to 0.75, creating more room for real businesses and the expanded front/business pool.
+
+Major Runtime Systems
+~~~~~~~~~~~~~~~~~~~~~
+
+- Added and hardened multi-crew vehicle support:
+- vehicles can track a driver and passengers;
+- final-goal travel remembers the intended destination;
+- vehicle node authority distinguishes physical position, pending target, final-goal preview, and recent arrival;
+- crew conversations, enemy attacks, business visits, scopeout, and inventory access use stricter node checks.
+- Fixed storage access around safehouses and owned buildings:
+- safehouse resources require physical safehouse presence;
+- owned-building storage can remain visible for context, but loading/unloading is disabled after the vehicle leaves;
+- transfer remains allowed while a selected vehicle is actively traveling to that exact owned storage destination;
+- wrong-corner preview does not count as physical presence.
+- Fixed map glow and building pick cleanup during travel:
+- departure-corner businesses no longer stay glowing after the player drives away;
+- wrong-corner scopeout preview is rejected;
+- normal business sprites are preserved while movement UI refreshes.
+- Added delivery-route front expansion support:
+- Collect front route steps can show a compact + toggle;
+- enabled route steps are saved in GameplayTweaks save data without changing vanilla route-step serialization;
+- successful paid front collection can trigger native front expansion when the route front, vehicle cash, and destination are valid;
+- logs include FrontRouteExpand arming, cleanup, skip, and success details.
+- Added business-owner and worker guardrails:
+- gangs and troublemakers are blocked from invalid business owner/worker assignment paths;
+- restricted/family-style tags are treated more carefully so AI hiring does not use people who should be reserved for gang, troublemaker, owner, or family roles.
+- Added pact and gang operations systems:
+- AI pacts can form, score protection needs, build WarHeat, retaliate, and coordinate attacks;
+- independent gangs now have their own lighter-weight automation channel;
+- pact colors, pact membership, pact reactions, and compatibility fallback options are logged at startup.
+- Added crew relationship systems:
+- loyalty, happiness, vacation, gang meeting, snitch exposure, odd-job, spouse search, and street-credit state are saved per crew member;
+- high happiness can protect against loyalty decay;
+- low morale and dangerous activity can create long-term crew risk.
+- Added personal and safehouse street credit progression:
+- fights, kills, deals, pact work, goon work, robbery, laundering, and smuggling-style activity can add progress;
+- each full personal level awards safehouse streetcredit resources;
+- boss street credit starts above zero so the player has early reputation footing.
+- Added and tuned heat/snitch/cop-killing support:
+- local illegal sales can raise corner heat;
+- gang hostility builds WarHeat separately from police heat;
+- cop assault/killing paths can create national heat, witness/snitch pressure, and retaliation pressure when enabled;
+- residual cop aggro cleanup prevents stuck combat states after incidents.
+
+Content and Conversation Additions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Expanded crew conversation hooks for relationship, work, spouse, snitch, and street-credit systems.
+- Expanded gang conversation hooks for pact membership, pact work, retaliation, territory pressure, and gang deals.
+- Expanded goon/business conversation hooks for illegal jobs, backroom-style interactions, business ownership, and reward flows.
+- Updated quest, residential event, gambling, people, skill, scheme, buff, AI, building, module, and business data to support the newer runtime systems.
+- Updated maps for Atlantic City, Chicago, Cincinnati, Detroit, New York, Philadelphia, and Pittsburgh.
+- Preserved the previous public additions around illegal backrooms, banks, schools, churches, civic buildings, train station rail shipments, political influence, loans, founder traits, born-leader style starts, and broader After Prohibition content.
+
+Current Beta Notes
+~~~~~~~~~~~~~~~~~~
+
+- This is still a systems-heavy public beta. The goal is to make the city feel more alive, but balance will keep changing.
+- Pacts and gang operations are active, but the exact aggression, revenge timing, and expansion pressure will continue to be tuned.
+- Snitch and heat systems are intentionally visible in logs while they are being stabilized.
+- Delivery-route expansion uses vanilla-style expansion rules. If a front has no valid next corner, it will skip instead of forcing an expansion.
+- Storage and scopeout rules are intentionally strict now. A preview can authorize the intended destination action, but it must not pretend the vehicle is physically present at the wrong corner.
+
+Recent Economy Split Notes
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Added AfterProhibitionEconomy 0.6.0 as the economy-only plugin owner for staged diagnostics and business repair work.
+- Moved NPC purchase-stock refresh into AfterProhibitionEconomy with purchase-stock-refresh and purchase-stock-refreshed logs.
+- Moved NPC empty business module repair into AfterProhibitionEconomy with empty-business-module-repair and empty-business-module-repaired logs.
+- Added a GameplayTweaks delegation gate so the older repair/refresh fallback skips when AfterProhibitionEconomy is loaded and owns both passes.
+- GameplayTweaks still keeps its older fallback repair/refresh code for installs that do not include AfterProhibitionEconomy or have those Economy features disabled.
+- Added AfterProhibitionEconomy 0.7.0 read-only Dirty Cash routing classification. It asks AfterProhibitionCompatibility about external Dirty Cash ownership and logs dirty-cash-routing summaries without moving money or changing routes.
+- Added AfterProhibitionEconomy 0.8.0 read-only front/resource audit. Startup economy diagnostics now wait for a populated building cache before logging, and the new front-resource audit classifies legal fronts, safehouses, banks, warehouses, dirty-cash backrooms, stock state, and missing inventory without repairing resources yet.
+- Updated AfterProhibitionEconomy to 0.8.1 so Dirty Cash routing and front/resource audits also run after the first business update, avoiding partial startup-cache audit results.
+- Updated AfterProhibitionEconomy to 0.9.1 so startup economy diagnostics wait for procgen readiness and at least one real business building before running full-map classifiers. This avoids scanning half-built new-game map/entity caches where businessBuildings and shops are still zero.
+- Updated AfterProhibitionEconomy to 0.9.2 so startup economy diagnostics wait until the session is interactive before running full-map classifiers. This prevents audits from running during pre-interactive AI/player setup after the procgen date has advanced.
+- Updated AfterProhibitionEconomy to 0.9.3 so full startup economy diagnostics are opt-in through EnableStartupEconomyDiagnostics. Shop/bank/warehouse bridge methods, purchase-stock refresh, and empty-business-module repair remain active.
+
+Recent Politics Split Notes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Added AfterProhibitionPolitics 0.1.0 as a standalone scaffold plugin for future political starter quest, bribe, judge, law-office, campaign, and election migration work.
+- The first politics phase is read-only. It logs a delayed baseline and exposes a small bridge-version check, but does not move or change any GameplayTweaks politics behavior yet.
+- Added the Phase 2 politics migration inventory. It confirms the starter quest, bribe state, judge bribe, lawyer retainer, save/load fields, civic politics dialog, law-office detection, and election compatibility owners before any behavior is moved.
+- Updated AfterProhibitionPolitics to 0.2.0 with a read-only startup politics audit. It logs ward/politician counts, election state, New York starter quest status, safehouse ward politician validity, fallback starter politician validity, and law-office template/module counts without changing gameplay.
+- Updated AfterProhibitionPolitics to 0.3.0 with the guarded New York political starter quest bridge. The audit now waits for non-empty politics wards, and the bridge starts the starter quest only when New York/procgen/known-quest/politician checks pass. Bribes, judge/law-office systems, campaigns, elections, UI, vehicle politics scope, and save data remain unmoved.
+- Updated AfterProhibitionPolitics to 0.4.0 with read-only bribe-state classification. It logs existing GameplayTweaks global human political bribe state, AI mayor bribe counts, per-crew mayor/judge bribe counts, and expired-state counts without moving payments, cleanup, UI, or save data. Politics startup audit now waits for procgen readiness before logging ward counts.
+- Updated AfterProhibitionPolitics to 0.5.0 with read-only judge/law-office/retainer classification. It logs judge bribe counts, legal-risk counts, retainers, law-office templates/modules, and player-owned law-office counts while GameplayTweaks keeps payments, retainer upkeep, trial outcomes, UI, and save ownership.
+- Updated AfterProhibitionPolitics to 0.6.0 with read-only campaign/election classification. It logs active election wards, stage counts, candidate/stat counts, human-sponsored candidate counts, vote totals, pending action entries, election events, and campaign action definition counts while vanilla politics systems, GameplayTweaks, and compatibility plugins keep campaign actions, votes, politician control, election timing, UI, external election-cheat detection, and save ownership.
+- Updated AfterProhibitionPolitics to 0.6.1 so startup politics audits wait for populated politician data instead of logging early against empty new-game ward shells during start-location setup.
+- Updated AfterProhibitionPolitics to 0.6.2 so startup politics audits wait until the session is interactive before scanning politics, bribe, judge/law-office, and campaign/election state.
+- Updated AfterProhibitionPolitics to 0.6.3 so full startup politics diagnostics are opt-in through EnableStartupPoliticsDiagnostics. The New York starter quest bridge remains active.
+- Added the first GameplayTweaks politics delegation pass. GameplayTweaks now skips its New York starter quest fallback when AfterProhibitionPolitics reports that it owns the starter quest, while keeping the fallback active if the politics plugin is missing or disabled. Bribes, judge/law-office systems, campaign/election behavior, payments, UI, and save data remain with their current owners.
+- Updated install/use guide notes to include AfterProhibitionPolitics, clarify that GameplayTweaks is still required, and document the politics delegation/audit log markers.
+
+Recent Routes Split Notes
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Added AfterProhibitionRoutes 0.1.0 as a standalone scaffold plugin for future travel continuation, vehicle node authority, route simulation, and delivery-route pump migration work.
+- The first routes phase is read-only. It logs a delayed baseline and exposes bridge-version helpers, but does not move or change GameplayTweaks route, travel, delivery, shop, storage, UI, or save behavior yet.
+- Added the Phase 2 route migration inventory covering vehicle physical node authority, active and pending route state, queued resumes, travel command guards, StartDriving/path guards, travel-end finalization, turn-start finalization, delivery-route automation pump, route-simulated conversations, route-shop staging, route labels, scope-out guards, storage guards, ambient traffic, and fake traffic.
+- Updated AfterProhibitionRoutes to 0.2.0 with read-only startup and human-turn route-state audits. These audits count pending vehicles, active route vehicles, queued resumes, delivery pump guards, staged shop orders, remembered route-in conversations, and route-mode label candidates without mutating route state.
+- Updated AfterProhibitionRoutes to 0.3.0 with read-only route authority classification. It can classify physical presence, pending target, final goal, queued resume, active delivery route, and route-sim destination context while leaving all behavior in GameplayTweaks.
+- Updated AfterProhibitionRoutes to 0.4.0 with read-only travel-continuation decisions. GameplayTweaks logs the delegated decision and keeps the existing finalization/resume fallback.
+- Updated AfterProhibitionRoutes to 0.5.0 with read-only vehicle-node authority decisions for physical, expected-arrival, final-goal-preview, route-simulated, and fallback access modes.
+- Updated AfterProhibitionRoutes to 0.6.0 with read-only delivery-route pump decisions. It classifies queued resume, pump-safe, one-step budget, manual stop, no-driver, no-route, and other pump guard states without advancing automation itself.
+- Updated AfterProhibitionRoutes to 0.7.0 with read-only route-simulated destination access decisions. It classifies committed-destination access, wrong-shop blocks, physical-only action blocks, and shop-staging context while GameplayTweaks still owns conversation opening, order staging, order commit, cash/goods movement, and UI mutation.
+- Updated AfterProhibitionRoutes to 0.8.0 with GameplayTweaks delegation gates. GameplayTweaks now asks AfterProhibitionRoutes whether it owns route behavior slices before travel continuation, vehicle node authority, delivery-route pump, and route-simulated access fallback code runs.
+- Current route ownership state: AfterProhibitionRoutes fully owns read-only audits and decision/classification bridges; GameplayTweaks delegates decision logging to AfterProhibitionRoutes; GameplayTweaks still fully owns mutating route behavior because AfterProhibitionRoutes full-behavior ownership returns false for every route slice.
+- Staged AfterProhibitionRoutes.dll alongside GameplayTweaks.dll in the Personal and Public release plugin folders. GameplayTweaks remains required for route behavior until a later phase moves mutating route ownership.

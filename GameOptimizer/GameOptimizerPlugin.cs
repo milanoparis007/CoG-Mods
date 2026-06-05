@@ -61,6 +61,7 @@ namespace GameOptimizer
         internal static ConfigEntry<int> HeatPropagationInterval;
         internal static ConfigEntry<bool> EnableAICrewLevelups;
         internal static ConfigEntry<int> AILevelupMaxPerCrewPerTurn;
+        internal static ConfigEntry<int> AILevelupMaxCrewCheckedPerTurn;
         internal static ConfigEntry<bool> EnableLoadTimings;
         internal static ConfigEntry<bool> EnableLoadAcceleration;
         internal static ConfigEntry<int> LoadAccelerationBatchSize;
@@ -106,6 +107,8 @@ namespace GameOptimizer
         internal static ConfigEntry<int> AdaptiveLargeMapMapDisplayResolution;
         internal static ConfigEntry<float> AdaptiveRuntimeThrottleMultiplier;
         internal static ConfigEntry<bool> EnableVerboseLogs;
+        private const long BoardLoadSlowStepThresholdMs = 1000;
+        private const int AdaptiveLargeMapMinimumLoadBatchSize = 32;
 
         private void Awake()
         {
@@ -142,6 +145,8 @@ namespace GameOptimizer
                 "Allow AI crew members to automatically level up when they have enough XP.");
             AILevelupMaxPerCrewPerTurn = Config.Bind("AICrewLevelups", "MaxLevelupsPerCrewPerTurn", 3,
                 "Maximum levelups a single AI crew member can gain per turn.");
+            AILevelupMaxCrewCheckedPerTurn = Config.Bind("AICrewLevelups", "MaxCrewCheckedPerTurn", 24,
+                "Maximum AI crew members to scan for levelups on one gang turn. Large crews are spread across later turns.");
 
             EnableLoadTimings = Config.Bind("LoadTimings", "Enabled", false,
                 "Log stopwatch timings for each map loading step. DISABLED BY DEFAULT: Can cause TypeLoadException on some game versions.");
@@ -293,7 +298,7 @@ namespace GameOptimizer
             Logger.LogInfo($"  PickManagerNodeCache: {EnablePickManagerNodeCache.Value}");
             Logger.LogInfo($"  HeatRespectThrottle: {EnableHeatRespectThrottle.Value}");
             Logger.LogInfo($"  HeatPropagationThrottle: {EnableHeatPropagationThrottle.Value}");
-            Logger.LogInfo($"  AICrewLevelups: {EnableAICrewLevelups.Value}");
+            Logger.LogInfo($"  AICrewLevelups: {EnableAICrewLevelups.Value} (maxPerCrew={AILevelupMaxPerCrewPerTurn.Value}, checkedPerTurn={AILevelupMaxCrewCheckedPerTurn.Value})");
             Logger.LogInfo($"  LoadTimings: {EnableLoadTimings.Value}");
             Logger.LogInfo($"  LoadAcceleration: {EnableLoadAcceleration.Value} (batch={LoadAccelerationBatchSize.Value}, logSteps={LoadAccelerationLogSteps.Value})");
             Logger.LogInfo($"  HeightmapOptimization: {EnableHeightmapOptimization.Value} (res={HeightmapResolution.Value})");
@@ -331,6 +336,7 @@ namespace GameOptimizer
             HeatPropagationThrottlePatch.ResetRuntime();
             TerritoryRebuildDebouncePatch.ResetRuntime();
             IndirectRendererOptimizationPatch.ResetRuntime();
+            AICrewLevelupPatch.ResetRuntime();
         }
 
         private static int TryGetMapArea()
@@ -374,6 +380,14 @@ namespace GameOptimizer
             int mul = Math.Max(1, AdaptiveLargeMapBatchMultiplier.Value);
             long scaled = (long)value * mul;
             return scaled > int.MaxValue ? int.MaxValue : (int)scaled;
+        }
+
+        private static int GetAdaptiveLoadBatchSize(int baseValue)
+        {
+            int value = GetAdaptiveBatchSize(baseValue);
+            if (IsLargeMapTuningActive())
+                value = Math.Max(value, AdaptiveLargeMapMinimumLoadBatchSize);
+            return value;
         }
 
         private static int GetAdaptiveHeightmapResolution()
@@ -887,8 +901,8 @@ namespace GameOptimizer
             private static FieldInfo _pidField;
             private static FieldInfo _crewdataField;
             private static FieldInfo _rawcrewField;
-            private static MethodInfo _hasXPToGainLevelupMethod;
             private static System.Random _rng = new System.Random();
+            private static readonly Dictionary<int, int> _nextCrewScanIndexByPid = new Dictionary<int, int>();
             private static readonly Dictionary<string, int> _priorityLevelupOrder = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
             {
                 { "levelup-hoodsgang", 0 },
@@ -909,12 +923,28 @@ namespace GameOptimizer
                     _crewdataField = AccessTools.Field(typeof(PlayerCrew), "_crewdata");
                     if (_crewdataField != null)
                         _rawcrewField = AccessTools.Field(_crewdataField.FieldType, "rawcrew");
-                    _hasXPToGainLevelupMethod = AccessTools.Method(typeof(AgentComponent), "HasXPToGainLevelup");
                 }
                 catch (Exception e)
                 {
                     Debug.LogError($"[GameOptimizer] AICrewLevelupPatch reflection setup failed: {e}");
                 }
+            }
+
+            internal static void ResetRuntime()
+            {
+                _nextCrewScanIndexByPid.Clear();
+            }
+
+            private static bool HasXPToGainLevelupFast(AgentComponent agent)
+            {
+                if (agent == null)
+                    return false;
+
+                int xp = agent.GetXP();
+                if (xp == 0)
+                    return false;
+
+                return xp >= agent.FindXPForNextLevelup().Item1;
             }
 
             private static LevelupDescription PickPreferredLevelup(List<LevelupDescription> available)
@@ -943,8 +973,7 @@ namespace GameOptimizer
 
                 try
                 {
-                    if (_pidField == null || _crewdataField == null ||
-                        _rawcrewField == null || _hasXPToGainLevelupMethod == null)
+                    if (_pidField == null || _crewdataField == null || _rawcrewField == null)
                         return;
 
                     var pid = (PlayerID)_pidField.GetValue(__instance);
@@ -952,12 +981,26 @@ namespace GameOptimizer
 
                     var crewdata = _crewdataField.GetValue(__instance);
                     var rawcrew = (List<CrewAssignment>)_rawcrewField.GetValue(crewdata);
-                    if (rawcrew == null) return;
+                    if (rawcrew == null || rawcrew.Count == 0) return;
 
-                    int maxPerTurn = AILevelupMaxPerCrewPerTurn.Value;
+                    int maxPerCrew = Math.Max(0, AILevelupMaxPerCrewPerTurn.Value);
+                    if (maxPerCrew == 0) return;
 
-                    foreach (var crew in rawcrew)
+                    int maxChecked = Math.Min(rawcrew.Count, Math.Max(1, AILevelupMaxCrewCheckedPerTurn.Value));
+                    int cursor = 0;
+                    if (_nextCrewScanIndexByPid.TryGetValue(pid.id, out int savedCursor) && savedCursor >= 0)
+                        cursor = savedCursor % rawcrew.Count;
+
+                    int checkedCrew = 0;
+                    int totalLevelups = 0;
+                    while (checkedCrew < maxChecked)
                     {
+                        var crew = rawcrew[cursor];
+                        cursor++;
+                        if (cursor >= rawcrew.Count)
+                            cursor = 0;
+                        checkedCrew++;
+
                         if (crew.IsDead || crew.IsNotAssigned) continue;
 
                         Entity peep = crew.GetPeep();
@@ -967,8 +1010,7 @@ namespace GameOptimizer
                         if (agent == null) continue;
 
                         int levelsGained = 0;
-                        while (levelsGained < maxPerTurn &&
-                               (bool)_hasXPToGainLevelupMethod.Invoke(agent, null))
+                        while (levelsGained < maxPerCrew && HasXPToGainLevelupFast(agent))
                         {
                             var availableEnumerable = agent.GetAvailableLevelups(false);
                             List<LevelupDescription> available = availableEnumerable as List<LevelupDescription> ?? availableEnumerable.ToList();
@@ -981,9 +1023,13 @@ namespace GameOptimizer
                             xp.SetLevelupLevel(pick.levelup.id, pick.nextLevel);
 
                             levelsGained++;
+                            totalLevelups++;
                         }
-
                     }
+
+                    _nextCrewScanIndexByPid[pid.id] = cursor;
+                    if (totalLevelups > 0)
+                        LogVerbose($"[GameOptimizer] AI crew levelups pid={pid.id} checked={checkedCrew}/{rawcrew.Count} levelups={totalLevelups}");
                 }
                 catch (Exception e)
                 {
@@ -1084,7 +1130,7 @@ namespace GameOptimizer
                 int stepIndex = 0;
                 bool batching = accelerationEnabled && EnableYieldBatching.Value;
                 int configuredBatchSize = (LoadAccelerationBatchSize != null) ? LoadAccelerationBatchSize.Value : YieldBatchSize.Value;
-                int batchSize = Math.Max(1, configuredBatchSize);
+                int batchSize = Math.Max(1, GetAdaptiveLoadBatchSize(configuredBatchSize));
                 int nullCount = 0;
                 bool finished = false;
 
@@ -1118,7 +1164,8 @@ namespace GameOptimizer
                         nullCount = 0;
                         long ms = stepSw.ElapsedMilliseconds;
                         string label = null;
-                        if (logSteps)
+                        bool shouldDescribeYield = logSteps || (depth == 0 && current is IEnumerator);
+                        if (shouldDescribeYield)
                             label = DescribeYield(current);
 
                         if (logSteps && ms > 1)
@@ -1132,6 +1179,8 @@ namespace GameOptimizer
                             ms = stepSw.ElapsedMilliseconds;
                             if (logSteps && ms > 1)
                                 Debug.Log($"[LoadTiming] {indent}  Step {stepIndex} total: {label} = {ms}ms");
+                            else if (depth == 0 && ms >= BoardLoadSlowStepThresholdMs)
+                                Debug.Log($"[PERF][BoardStep] mode={mode} step={label} ms={ms}");
                         }
                         else
                         {
@@ -1626,7 +1675,7 @@ namespace GameOptimizer
 
             public static void ApplyManualPatch(Harmony harmony)
             {
-                if (!EnableTerrainMeshOptimization.Value || (PreserveWorldTerrainFidelity != null && PreserveWorldTerrainFidelity.Value))
+                if (!EnableTerrainMeshOptimization.Value)
                     return;
                 try
                 {
@@ -1643,6 +1692,13 @@ namespace GameOptimizer
                     {
                         var postfix = new HarmonyMethod(typeof(TerrainMeshOptimizationPatch), "CoroutinePostfix");
                         harmony.Patch(coroutineMethod, postfix: postfix);
+                    }
+
+                    bool preserveFidelity = PreserveWorldTerrainFidelity != null && PreserveWorldTerrainFidelity.Value;
+                    if (preserveFidelity)
+                    {
+                        Debug.Log("[GameOptimizer] TerrainMeshOptimizationPatch applied yield batching only (terrain fidelity preserved)");
+                        return;
                     }
 
                     // Cache fields for tileverts modification
@@ -1998,6 +2054,8 @@ namespace GameOptimizer
             {
                 int batchSize = GetAdaptiveBatchSize(TerrainMeshChunkBatch.Value);
                 int nullCount = 0;
+                int originalNullYields = 0;
+                int emittedNullYields = 0;
                 var sw = Stopwatch.StartNew();
 
                 while (true)
@@ -2018,9 +2076,11 @@ namespace GameOptimizer
                     if (original.Current == null)
                     {
                         nullCount++;
+                        originalNullYields++;
                         if (batchSize > 0 && nullCount >= batchSize)
                         {
                             nullCount = 0;
+                            emittedNullYields++;
                             yield return null;
                         }
                     }
@@ -2031,6 +2091,11 @@ namespace GameOptimizer
                 }
 
                 sw.Stop();
+                if (sw.ElapsedMilliseconds >= BoardLoadSlowStepThresholdMs)
+                {
+                    bool preserveFidelity = PreserveWorldTerrainFidelity != null && PreserveWorldTerrainFidelity.Value;
+                    Debug.Log($"[PERF][BoardStep] step=TerrainManager.MakeTerrainCoroutine ms={sw.ElapsedMilliseconds} batch={batchSize} originalNullYields={originalNullYields} emittedNullYields={emittedNullYields} preserveFidelity={preserveFidelity}");
+                }
                 LogVerbose($"[GameOptimizer] Terrain mesh generation completed in {sw.ElapsedMilliseconds}ms");
             }
         }
@@ -2202,192 +2267,11 @@ namespace GameOptimizer
         // =====================================================================
         private static class ManufactureModuleFixPatch
         {
-            private static FieldInfo _dataField;
-            private static FieldInfo _configField;
-            private static FieldInfo _recipeIndexField;
-            private static FieldInfo _lastUpdateField;
-            private static FieldInfo _lastStallField;
-            private static PropertyInfo _recipesProperty;
-            private static Type _recipeType;
-            private static FieldInfo _visreqsField;
-            private static MethodInfo _allPassMethod;
-            private static MethodInfo _generateMethod;
-
             public static void ApplyManualPatch(Harmony harmony)
             {
-                if (!EnableManufactureModuleFix.Value) return;
-
-                try
+                if (EnableManufactureModuleFix.Value)
                 {
-                    var manufactureModuleType = typeof(GameClock).Assembly.GetType("Game.Session.Sim.Modules.ManufactureModule");
-                    if (manufactureModuleType == null)
-                    {
-                        Debug.LogError("[GameOptimizer] ManufactureModuleFixPatch: ManufactureModule type not found");
-                        return;
-                    }
-
-                    var initMethod = AccessTools.Method(manufactureModuleType, "Initialize", new[] { typeof(ModuleInitData) });
-                    if (initMethod == null)
-                    {
-                        Debug.LogError("[GameOptimizer] ManufactureModuleFixPatch: Initialize method not found");
-                        return;
-                    }
-
-                    // Cache fields for performance
-                    _dataField = AccessTools.Field(manufactureModuleType, "data");
-                    _configField = AccessTools.Field(manufactureModuleType, "config");
-
-                    var dataType = typeof(GameClock).Assembly.GetType("Game.Session.Sim.Modules.ManufactureModuleData");
-                    _recipeIndexField = AccessTools.Field(dataType, "recipeIndex");
-                    _lastUpdateField = AccessTools.Field(dataType, "lastUpdate");
-                    _lastStallField = AccessTools.Field(dataType, "lastStall");
-
-                    var configType = typeof(GameClock).Assembly.GetType("Game.Session.Sim.Modules.ManufactureModuleConfig");
-                    _recipesProperty = AccessTools.Property(configType, "recipes");
-
-                    _recipeType = typeof(GameClock).Assembly.GetType("Game.Session.Sim.Modules.Recipe");
-                    _visreqsField = AccessTools.Field(_recipeType, "visreqs");
-
-                    var visreqsType = typeof(GameClock).Assembly.GetType("Game.Session.Data.VisReqList");
-                    if (visreqsType != null)
-                        _allPassMethod = AccessTools.Method(visreqsType, "AllPass");
-
-                    // Get IRandom.Generate(int, int) method via reflection
-                    var iRandomType = typeof(GameClock).Assembly.GetType("SomaSim.Util.IRandom");
-                    if (iRandomType == null)
-                    {
-                        // Try the UnityGameTools assembly
-                        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-                        {
-                            iRandomType = asm.GetType("SomaSim.Util.IRandom");
-                            if (iRandomType != null) break;
-                        }
-                    }
-                    if (iRandomType != null)
-                    {
-                        _generateMethod = iRandomType.GetMethod("Generate", new[] { typeof(int), typeof(int) });
-                    }
-
-                    var prefix = new HarmonyMethod(typeof(ManufactureModuleFixPatch), "Prefix");
-                    harmony.Patch(initMethod, prefix: prefix);
-
-                    Debug.Log("[GameOptimizer] ManufactureModuleFixPatch applied successfully");
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[GameOptimizer] ManufactureModuleFixPatch setup failed: {e}");
-                }
-            }
-
-            static bool Prefix(object __instance, ModuleInitData init)
-            {
-                if (!EnableManufactureModuleFix.Value) return true;
-
-                try
-                {
-                    // Get config from init
-                    var config = init.config;
-
-                    // Let base.Initialize handle setting config and creating data
-                    // We need to call it, but Module<>.Initialize is the base
-                    var baseType = __instance.GetType().BaseType;
-                    var baseInit = AccessTools.Method(baseType, "Initialize", new[] { typeof(ModuleInitData) });
-                    baseInit.Invoke(__instance, new object[] { init });
-
-                    // Only process if this is a new module being created (not loaded)
-                    if (!init.IsCreated) return false; // Skip original, we handled it
-
-                    // Get data and config after base init
-                    var data = _dataField.GetValue(__instance);
-                    var modConfig = _configField.GetValue(__instance);
-
-                    // Get the recipes list
-                    object recipes;
-                    if (_recipesProperty != null)
-                    {
-                        recipes = _recipesProperty.GetValue(modConfig);
-                    }
-                    else
-                    {
-                        var recipesField = AccessTools.Field(modConfig.GetType(), "recipes");
-                        recipes = recipesField.GetValue(modConfig);
-                    }
-
-                    var recipesList = recipes as System.Collections.IList;
-                    if (recipesList == null || recipesList.Count == 0)
-                    {
-                        Debug.LogWarning("[GameOptimizer] ManufactureModuleFixPatch: No recipes found");
-                        return false;
-                    }
-
-                    // Set lastUpdate
-                    var clockNow = G.ctx?.clock?.Now ?? default(SimTime);
-                    _lastUpdateField.SetValue(data, clockNow);
-
-                    // Create VisitState - but instead of using HumanPlayer, we'll try all recipes
-                    // and pick from those that have no visreqs (safe default)
-                    var validRecipes = new List<int>();
-
-                    for (int i = 0; i < recipesList.Count; i++)
-                    {
-                        var recipe = recipesList[i];
-                        var visreqs = _visreqsField?.GetValue(recipe);
-
-                        // If no visreqs, recipe is always valid
-                        if (visreqs == null)
-                        {
-                            validRecipes.Add(i);
-                        }
-                    }
-
-                    // If we found recipes without visreqs, pick from those
-                    // Otherwise, fall back to picking index 0 (first recipe)
-                    int recipeIndex;
-                    if (validRecipes.Count > 0)
-                    {
-                        // Pick random from valid recipes
-                        if (validRecipes.Count == 1)
-                        {
-                            recipeIndex = validRecipes[0];
-                        }
-                        else
-                        {
-                            // Use the init.rng to pick via reflection
-                            // Get rng field from init struct via reflection to avoid IRandom type dependency
-                            var initType = typeof(ModuleInitData);
-                            var rngField = initType.GetField("rng");
-                            object rng = rngField?.GetValue(init);
-
-                            int randomIdx;
-                            if (_generateMethod != null && rng != null)
-                            {
-                                randomIdx = (int)_generateMethod.Invoke(rng, new object[] { 0, validRecipes.Count });
-                            }
-                            else
-                            {
-                                // Fallback to System.Random if reflection fails
-                                randomIdx = new System.Random().Next(0, validRecipes.Count);
-                            }
-                            recipeIndex = validRecipes[randomIdx];
-                        }
-                    }
-                    else
-                    {
-                        // No recipes without visreqs - just pick first recipe as fallback
-                        // This prevents the crash, though the recipe may not be ideal
-                        recipeIndex = 0;
-                        Debug.LogWarning($"[GameOptimizer] ManufactureModuleFixPatch: All recipes have visreqs, using index 0 as fallback for {config?.Id}");
-                    }
-
-                    _recipeIndexField.SetValue(data, recipeIndex);
-                    _lastStallField.SetValue(data, clockNow);
-
-                    return false; // Skip original
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[GameOptimizer] ManufactureModuleFixPatch error, falling back to original: {e}");
-                    return true; // Run original on error
+                    Debug.LogWarning("[GameOptimizer] ManufactureModuleFixPatch disabled: the prefix can break ManufactureModule.Initialize and remove NPC shop purchase/source modules. GameplayTweaks handles repair on vanilla module flow.");
                 }
             }
         }

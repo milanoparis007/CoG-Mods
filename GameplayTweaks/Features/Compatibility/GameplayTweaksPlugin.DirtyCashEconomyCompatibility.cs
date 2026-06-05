@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Game.Core;
+using Game.Services;
 using Game.Session.Board;
 using Game.Session.Data;
 using Game.Session.Entities;
@@ -54,7 +55,12 @@ public partial class GameplayTweaksPlugin
 		private static readonly HashSet<EntityID> UpdatedIllegalBackroomBuildingsThisTick = new HashSet<EntityID>();
 		private static readonly HashSet<string> LoggedIllegalBackroomBusinessTickFallbacks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		private static readonly HashSet<string> LoggedIllegalBackroomSafetySweepSummaries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		private static readonly HashSet<string> LoggedEmptyBusinessModuleRepairs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		private static readonly HashSet<string> LoggedBusinessPurchaseStockRefreshes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		private static readonly HashSet<string> LoggedBusinessModuleRepairFailures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		private static readonly HashSet<string> LoggedIllegalBackroomDeferredVisualRefreshes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		private static readonly HashSet<string> LoggedOwnedBizModulePopupLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		private static readonly HashSet<string> LoggedLegalFrontUpgradeLists = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		private static readonly Dictionary<int, int> LastGangCollapseTerritoryAuditDayByPid = new Dictionary<int, int>();
 		private static readonly Dictionary<int, int> LastGangCollapseTerritoryDeferredDayByPid = new Dictionary<int, int>();
 		private static readonly Dictionary<int, int> LastObservedOutpostCountByPid = new Dictionary<int, int>();
@@ -70,23 +76,76 @@ public partial class GameplayTweaksPlugin
 		private static int _pendingDeferredHumanTerritoryRefreshEarliestFrame = -1;
 		private static int _pendingDeferredHumanTerritoryRefreshRemainingPasses;
 		private static string _pendingDeferredHumanTerritoryRefreshSource = string.Empty;
+		private static bool _pendingDeferredHumanTerritoryRefreshDidStatePass;
 		private static bool _pendingDeferredHumanTerritoryFullRebuild;
 		private static string _pendingDeferredHumanTerritoryFullRebuildSource = string.Empty;
+		private static bool _pendingDeferredHumanTerritoryVisualOnlyRefresh;
+		private static int _pendingDeferredHumanTerritoryVisualOnlyRefreshEarliestFrame = -1;
+		private static int _pendingDeferredHumanTerritoryVisualOnlyRefreshWaitAttempts;
+		private static string _pendingDeferredHumanTerritoryVisualOnlyRefreshSource = string.Empty;
+		private static bool _pendingDeferredHumanTerritoryVisualOnlyRefreshLightweight;
 		private static bool _loadedSessionTerritoryRefreshCompleted;
+		private static int _deferredHumanTerritoryVisualWaitAttemptCount;
 		private static string _lastDeferredHumanTerritoryRefreshWaitReason = string.Empty;
 		private static string _lastDeferredHumanTerritoryRefreshScheduleReason = string.Empty;
 		private static bool _loggedExternalManufactureBypass;
 		private static bool _loggedExternalConsumerBypass;
+		private static bool _loggedExternalManufactureBridgeSkipped;
 		private static bool _loggedExternalDirtyCashOriginalOverrideRemoval;
+		private static bool _loggedAfterProhibitionEconomyRepairDelegation;
 		private static bool _trackingIllegalBackroomBusinessTick;
 		private static bool _externalDirtyCashOriginalOverridesRemoved;
 		private static bool _gangOpsStackedTerritoryRespectRepairAttempted;
 		private static int _deferredHumanTerritoryRefreshDuplicateRequestCount;
 		private static int _gangCollapseTerritoryDeferredSuppressedCount;
+		private static int _lastEmptyBusinessModuleRepairDay = int.MinValue;
+		private static int _lastDirtyCashBackroomCandidateDay = int.MinValue;
+		private static List<Entity> _cachedDirtyCashBackroomCandidates;
+		private const int BulkTerritoryFullRebuildMinDelayFrames = 90;
+		private static MethodInfo _removeBuildingsAndTerritoryOnDefeatMethod;
+		private static MethodInfo _playerTerritoryUpdateNodeDataOnTerritoryChangeMethod;
+		private static FieldInfo _playerTerritoryCachedPotentialsField;
+		private static MethodInfo _playerTerritoryCachedPotentialsChangedMethod;
 		private static MethodInfo _getPickContainerMethod;
 		private static MethodInfo _pickContainerAddOrRefreshMethod;
+		private static MethodInfo _modulesComponentDoUpdateMethod;
+		private static Type _afterProhibitionEconomyPluginType;
+		private static bool _afterProhibitionEconomyPluginTypeLookupComplete;
+		private static MethodInfo _afterProhibitionEconomyOwnsPurchaseStockRefreshMethod;
+		private static MethodInfo _afterProhibitionEconomyOwnsEmptyBusinessModuleRepairMethod;
+		private static MethodInfo _afterProhibitionEconomyOwnsShopAccessClassificationMethod;
+		private static MethodInfo _afterProhibitionEconomyOwnsCivicPurchaseAccessClassificationMethod;
+		private static MethodInfo _afterProhibitionEconomyOwnsDirtyCashRoutingClassificationMethod;
+		private static MethodInfo _afterProhibitionEconomyOwnsDirtyCashRuntimeSweepClassificationMethod;
+		private static MethodInfo _afterProhibitionEconomyOwnsDirtyCashRuntimeSweepMutationMethod;
+		private static MethodInfo _afterProhibitionEconomyDirtyCashRuntimeSweepSummaryMethod;
+		private static MethodInfo _afterProhibitionEconomyOwnsPlayerLegalBusinessConsumerClassificationMethod;
+		private static MethodInfo _afterProhibitionEconomyOwnsPlayerLegalBusinessConsumerMutationMethod;
+		private static MethodInfo _afterProhibitionEconomyPlayerLegalBusinessConsumerRuntimeSummaryMethod;
+		private static MethodInfo _afterProhibitionEconomyOwnsFrontResourceClassificationMethod;
+		private static MethodInfo _afterProhibitionEconomyOwnsRouteShopOrderClassificationMethod;
+		private static MethodInfo _afterProhibitionEconomyOwnershipSummaryMethod;
+		private static bool _afterProhibitionEconomyOwnershipLookupComplete;
+		private static AfterProhibitionEconomyOwnershipSnapshot _afterProhibitionEconomyOwnershipSnapshot;
+		private static int _suppressedBrokenModuleSlotScans;
+		private static int _suppressedBrokenModuleInstalls;
 		[ThreadStatic]
 		private static Stack<EntityID> _illegalBackroomDirtyCashMoneyContextStack;
+
+		private struct AfterProhibitionEconomyOwnershipSnapshot
+		{
+			public bool Available;
+			public bool OwnsPurchaseStockRefresh;
+			public bool OwnsEmptyBusinessModuleRepair;
+			public bool OwnsShopAccessClassification;
+			public bool OwnsCivicPurchaseAccessClassification;
+			public bool OwnsDirtyCashRoutingClassification;
+			public bool OwnsDirtyCashRuntimeSweepClassification;
+			public bool OwnsPlayerLegalBusinessConsumerClassification;
+			public bool OwnsFrontResourceClassification;
+			public bool OwnsRouteShopOrderClassification;
+			public string Summary;
+		}
 
 		private sealed class LateForcedDirtyCashRespectSnapshot
 		{
@@ -122,13 +181,28 @@ public partial class GameplayTweaksPlugin
 				MethodInfo findModulesMethod = AccessTools.Method(typeof(OwnedBizController), "FindModulesToAddForSlot");
 				if (findModulesMethod != null)
 				{
-					harmony.Patch(findModulesMethod, postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(FindModulesToAddForSlotPostfix)));
+					harmony.Patch(findModulesMethod, postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(FindModulesToAddForSlotPostfix))
+					{
+						priority = Priority.Last
+					});
 				}
 
 				MethodInfo findUpgradesMethod = AccessTools.Method(typeof(ModulesUtil), "FindUpgradesOrNull");
 				if (findUpgradesMethod != null)
 				{
-					harmony.Patch(findUpgradesMethod, postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(FindUpgradesOrNullPostfix)));
+					harmony.Patch(findUpgradesMethod, postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(FindUpgradesOrNullPostfix))
+					{
+						priority = Priority.Last
+					});
+				}
+
+				MethodInfo addModulePopupInitializeMethod = AccessTools.Method(typeof(OwnedBizAddModulePopup), "InitializeOnPush");
+				if (addModulePopupInitializeMethod != null)
+				{
+					harmony.Patch(addModulePopupInitializeMethod, postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(OwnedBizAddModulePopupInitializeOnPushPostfix))
+					{
+						priority = Priority.Last
+					});
 				}
 
 				MethodInfo canInstallMethod = AccessTools.Method(typeof(OwnedBizController), "CanInstall");
@@ -194,6 +268,22 @@ public partial class GameplayTweaksPlugin
 						postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(ModulesComponentDoUpdatePostfix)));
 				}
 
+				MethodInfo findInstalledModuleIndexMethod = AccessTools.Method(typeof(ModulesComponent), "FindInstalledModuleIndex");
+				if (findInstalledModuleIndexMethod != null)
+				{
+					harmony.Patch(findInstalledModuleIndexMethod, prefix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(FindInstalledModuleIndexPrefix)));
+				}
+
+				MethodInfo installModuleIntoSlotMethod = AccessTools.Method(typeof(ModulesComponent), "InstallModule", new[]
+				{
+					typeof(int),
+					typeof(ModuleInitData)
+				});
+				if (installModuleIntoSlotMethod != null)
+				{
+					harmony.Patch(installModuleIntoSlotMethod, finalizer: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(InstallModuleFinalizer)));
+				}
+
 				MethodInfo updateBusinessModulesMethod = AccessTools.Method(typeof(global::Game.Session.Sim.BusinessUpdate), "UpdateBusinessModules");
 				if (updateBusinessModulesMethod != null)
 				{
@@ -213,6 +303,19 @@ public partial class GameplayTweaksPlugin
 				if (businessTickMethod != null)
 				{
 					harmony.Patch(businessTickMethod, postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(BusinessUpdateTickPostfix)));
+				}
+
+				MethodInfo executeAiPickUpDropOffMethod = AccessTools.Method(typeof(BuySellUtils), "ExecuteAIPickUpDropOff", new Type[]
+				{
+					typeof(PlayerInfo),
+					typeof(Entity),
+					typeof(Entity),
+					typeof(Label),
+					typeof(bool)
+				});
+				if (executeAiPickUpDropOffMethod != null)
+				{
+					harmony.Patch(executeAiPickUpDropOffMethod, prefix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(ExecuteAIPickUpDropOffPrefix)));
 				}
 
 				MethodInfo recalculateHeatAndRespectMethod = AccessTools.Method(typeof(global::Game.Session.Sim.BusinessUpdate), "RecalculateHeatAndRespectForNodes");
@@ -257,6 +360,175 @@ public partial class GameplayTweaksPlugin
 			}
 		}
 
+		private static bool FindInstalledModuleIndexPrefix(ModulesComponent __instance, Label id, ref int __result)
+		{
+			try
+			{
+				List<IModule> slots = __instance?.GetAllSlotsUnsafe();
+				if (slots == null || slots.Count == 0)
+				{
+					__result = -1;
+					return false;
+				}
+
+				for (int i = 0; i < slots.Count; i++)
+				{
+					IModule module = slots[i];
+					IModuleData moduleData = module?.ModuleData;
+					if (module != null && moduleData == null)
+					{
+						LogBrokenModuleSlotScan();
+						continue;
+					}
+
+					if (moduleData != null && moduleData.Id == id)
+					{
+						__result = i;
+						return false;
+					}
+				}
+
+				__result = -1;
+				return false;
+			}
+			catch (Exception ex)
+			{
+				__result = -1;
+				VerificationLog("DirtyCash", $"module-slot-safe-scan-failed error={ex.GetType().Name}:{ex.Message}");
+				return false;
+			}
+		}
+
+		private static Exception InstallModuleFinalizer(Exception __exception, ModulesComponent __instance, int index, ModuleInitData init, ref bool __result)
+		{
+			if (__exception == null)
+			{
+				return null;
+			}
+
+			Label moduleId = init.config?.Id ?? default(Label);
+			string moduleText = moduleId.IsSet ? moduleId.ToString() : "unknown";
+			string containerText = __instance?.entity?.Id.ToString() ?? "null";
+			string bizText = "null";
+			try
+			{
+				bizText = BuildingUtil.FindBizForBuilding(__instance?.entity)?.Id.ToString() ?? "null";
+				List<IModule> slots = __instance?.GetAllSlotsUnsafe();
+				if (slots != null && index >= 0 && index < slots.Count)
+				{
+					slots[index] = null;
+				}
+			}
+			catch
+			{
+			}
+
+			__result = false;
+			_suppressedBrokenModuleInstalls++;
+			if (_suppressedBrokenModuleInstalls <= 3)
+			{
+				VerificationLog("DirtyCash", $"module-install-exception-suppressed module={moduleText} building={containerText} biz={bizText} index={index} error={FormatModuleInstallException(__exception)}");
+			}
+			else if (_suppressedBrokenModuleInstalls == 4)
+			{
+				VerificationLog("DirtyCash", "module-install-exception-suppressed additional=true");
+			}
+
+			return null;
+		}
+
+		private static string FormatModuleInstallException(Exception exception)
+		{
+			if (exception == null)
+			{
+				return "none";
+			}
+
+			string typeName = string.Empty;
+			if (exception is TypeLoadException typeLoadException && !string.IsNullOrEmpty(typeLoadException.TypeName))
+			{
+				typeName = " typeName=" + typeLoadException.TypeName;
+			}
+
+			string inner = exception.InnerException == null
+				? string.Empty
+				: " inner=" + exception.InnerException.GetType().Name + ":" + exception.InnerException.Message;
+			string stackTop = string.Empty;
+			if (!string.IsNullOrEmpty(exception.StackTrace))
+			{
+				string[] stackLines = exception.StackTrace.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+				if (stackLines.Length > 0)
+				{
+					stackTop = " stackTop=" + stackLines[0].Trim();
+				}
+			}
+
+			return exception.GetType().Name + ":" + exception.Message + typeName + inner + stackTop;
+		}
+
+		private static void LogBrokenModuleSlotScan()
+		{
+			_suppressedBrokenModuleSlotScans++;
+			if (_suppressedBrokenModuleSlotScans <= 3)
+			{
+				VerificationLog("DirtyCash", $"module-slot-null-data-skipped count={_suppressedBrokenModuleSlotScans}");
+			}
+			else if (_suppressedBrokenModuleSlotScans == 4)
+			{
+				VerificationLog("DirtyCash", "module-slot-null-data-skipped additional=true");
+			}
+		}
+
+		private static bool ExecuteAIPickUpDropOffPrefix(PlayerInfo player, Entity peep, Entity building, Label resId, bool peepPicksUp)
+		{
+			try
+			{
+				if (player == null
+					|| peep?.components?.agent == null
+					|| building?.components?.building == null
+					|| !resId.IsSet)
+				{
+					VerificationLog(
+						"Compat",
+						$"ai-pickdrop-skipped reason=invalid-context player={(player == null ? 0 : player.PID.id)} peep={peep?.Id.id ?? 0UL} building={building?.Id.id ?? 0UL} item={resId}");
+					return false;
+				}
+
+				if ((building.data?.building?.controlled.Get() ?? PlayerID.INVALID) != player.PID)
+				{
+					return true;
+				}
+
+				CrewAssignment crew = player.crew?.GetCrewForPeep(peep.Id) ?? CrewAssignment.EMPTY;
+				if (!crew.IsValid || !crew.peepId.IsValid)
+				{
+					VerificationLog(
+						"Compat",
+						$"ai-pickdrop-skipped reason=invalid-crew player={player.PID.id} peep={peep.Id.id} building={building.Id.id} item={resId}");
+					return false;
+				}
+
+				InventoryModule buildingInventory = ModulesUtil.GetInventory(building);
+				InventoryModule crewInventory = ModulesUtil.GetInventory(crew);
+				InventoryModule source = peepPicksUp ? buildingInventory : crewInventory;
+				InventoryModule target = peepPicksUp ? crewInventory : buildingInventory;
+				if (source?.data == null || target?.data == null || Resource.Find(resId) == null)
+				{
+					VerificationLog(
+						"Compat",
+						$"ai-pickdrop-skipped reason=missing-inventory player={player.PID.id} peep={peep.Id.id} building={building.Id.id} item={resId} peepPicksUp={peepPicksUp} hasBuildingInv={buildingInventory != null} hasCrewInv={crewInventory != null}");
+					return false;
+				}
+
+				return true;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] ExecuteAIPickUpDropOff guard failed: " + ex.Message);
+				return true;
+			}
+		}
+
 		internal static void ResetRuntimeSessionState(string sourceTag)
 		{
 			ExternalConsumerBypassStack.Clear();
@@ -270,7 +542,12 @@ public partial class GameplayTweaksPlugin
 			UpdatedIllegalBackroomBuildingsThisTick.Clear();
 			LoggedIllegalBackroomBusinessTickFallbacks.Clear();
 			LoggedIllegalBackroomSafetySweepSummaries.Clear();
+			LoggedEmptyBusinessModuleRepairs.Clear();
+			LoggedBusinessPurchaseStockRefreshes.Clear();
+			LoggedBusinessModuleRepairFailures.Clear();
 			LoggedIllegalBackroomDeferredVisualRefreshes.Clear();
+			LoggedOwnedBizModulePopupLabels.Clear();
+			LoggedLegalFrontUpgradeLists.Clear();
 			RecordedDirtyCashAOEContributionsByBuilding.Clear();
 			PendingIllegalBackroomVisualRefreshes.Clear();
 			LateForcedDirtyCashRespectCurrentSnapshot.Clear();
@@ -279,14 +556,41 @@ public partial class GameplayTweaksPlugin
 			_pendingDeferredHumanTerritoryRefreshEarliestFrame = -1;
 			_pendingDeferredHumanTerritoryRefreshRemainingPasses = 0;
 			_pendingDeferredHumanTerritoryRefreshSource = string.Empty;
+			_pendingDeferredHumanTerritoryRefreshDidStatePass = false;
+			_pendingDeferredHumanTerritoryFullRebuild = false;
+			_pendingDeferredHumanTerritoryFullRebuildSource = string.Empty;
+			_pendingDeferredHumanTerritoryVisualOnlyRefresh = false;
+			_pendingDeferredHumanTerritoryVisualOnlyRefreshEarliestFrame = -1;
+			_pendingDeferredHumanTerritoryVisualOnlyRefreshWaitAttempts = 0;
+			_pendingDeferredHumanTerritoryVisualOnlyRefreshSource = string.Empty;
+			_pendingDeferredHumanTerritoryVisualOnlyRefreshLightweight = false;
 			_loadedSessionTerritoryRefreshCompleted = false;
+			_deferredHumanTerritoryVisualWaitAttemptCount = 0;
 			_lastDeferredHumanTerritoryRefreshWaitReason = string.Empty;
 			_lastDeferredHumanTerritoryRefreshScheduleReason = string.Empty;
+			_gangCollapseTerritoryDeferredSuppressedCount = 0;
+			_deferredHumanTerritoryRefreshDuplicateRequestCount = 0;
+			_lastEmptyBusinessModuleRepairDay = int.MinValue;
+			_lastDirtyCashBackroomCandidateDay = int.MinValue;
+			_cachedDirtyCashBackroomCandidates = null;
+			LastGangCollapseTerritoryAuditDayByPid.Clear();
+			LastGangCollapseTerritoryDeferredDayByPid.Clear();
+			LastObservedOutpostCountByPid.Clear();
+			PendingGangCollapseTerritoryRebuildPids.Clear();
 			_loggedExternalManufactureBypass = false;
 			_loggedExternalConsumerBypass = false;
+			_loggedExternalManufactureBridgeSkipped = false;
 			_trackingIllegalBackroomBusinessTick = false;
 			_getPickContainerMethod = null;
 			_pickContainerAddOrRefreshMethod = null;
+			_modulesComponentDoUpdateMethod = null;
+			_afterProhibitionEconomyPluginType = null;
+			_afterProhibitionEconomyPluginTypeLookupComplete = false;
+			_afterProhibitionEconomyOwnershipLookupComplete = false;
+			_afterProhibitionEconomyOwnershipSnapshot = default(AfterProhibitionEconomyOwnershipSnapshot);
+			_playerTerritoryUpdateNodeDataOnTerritoryChangeMethod = null;
+			_playerTerritoryCachedPotentialsField = null;
+			_playerTerritoryCachedPotentialsChangedMethod = null;
 			_illegalBackroomDirtyCashMoneyContextStack = null;
 			VerificationLog("Compat", $"dirtycash-runtime-reset source={sourceTag}");
 		}
@@ -342,35 +646,10 @@ public partial class GameplayTweaksPlugin
 				return;
 			}
 
-			try
+			if (!_loggedExternalManufactureBridgeSkipped)
 			{
-				Type type = AccessTools.TypeByName("DirtyCashEconomy.MultiThreadManufacturePatches");
-				if (type == null)
-				{
-					return;
-				}
-
-				MethodInfo method = AccessTools.Method(type, "DoConsumeAndProduce_Prefix", new Type[]
-				{
-					typeof(ManufactureModule),
-					typeof(ModuleQuery),
-					typeof(InventoryModule),
-					typeof(ModuleResult).MakeByRefType()
-				});
-				if (method == null)
-				{
-					method = AccessTools.Method(type, "DoConsumeAndProduce_Prefix");
-				}
-				if (method == null)
-				{
-					return;
-				}
-
-				harmony.Patch(method, prefix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(DirtyCashManufacturePrefixPrefix)));
-			}
-			catch (Exception ex)
-			{
-				Debug.LogWarning("[GameplayTweaks] Failed to patch DirtyCashEconomy manufacture prefix: " + ex.Message);
+				_loggedExternalManufactureBridgeSkipped = true;
+				Debug.Log("[GameplayTweaks] DirtyCashEconomy manufacture prefix bridge skipped; external manufacture hooks will be detached to preserve source/shop module installation.");
 			}
 		}
 
@@ -489,7 +768,11 @@ public partial class GameplayTweaksPlugin
 			try
 			{
 				EnsureExternalDirtyCashOriginalOverridesRemoved();
-				TryForceUpdateMissedIllegalBackroomBuildingsBeforeSystemTurn();
+				if (!DoesAfterProhibitionEconomyOwnDirtyCashRuntimeSweepMutation())
+				{
+					TryForceUpdateMissedIllegalBackroomBuildingsBeforeSystemTurn();
+				}
+
 				TryReconcileHumanBackgroundTerritoryOwnership("global-turn");
 			}
 			catch (Exception ex)
@@ -501,6 +784,11 @@ public partial class GameplayTweaksPlugin
 		private static bool UpdateBusinessModulesPrefix()
 		{
 			EnsureExternalDirtyCashOriginalOverridesRemoved();
+			if (DoesAfterProhibitionEconomyOwnDirtyCashRuntimeSweepMutation())
+			{
+				return true;
+			}
+
 			_trackingIllegalBackroomBusinessTick = true;
 			UpdatedIllegalBackroomBuildingsThisTick.Clear();
 			return true;
@@ -510,7 +798,11 @@ public partial class GameplayTweaksPlugin
 		{
 			try
 			{
-				TryFallbackUpdateMissingIllegalBackroomBuildings(initial);
+				TryRepairEmptyBusinessModulesFromConfig(initial ? "business-update-initial" : "business-update", force: initial);
+				if (!DoesAfterProhibitionEconomyOwnDirtyCashRuntimeSweepMutation())
+				{
+					TryFallbackUpdateMissingIllegalBackroomBuildings(initial);
+				}
 			}
 			catch (Exception ex)
 			{
@@ -531,6 +823,11 @@ public partial class GameplayTweaksPlugin
 		private static bool ModulesComponentDoUpdatePrefix(ModulesComponent __instance, SimTime time, bool initial)
 		{
 			EnsureExternalDirtyCashOriginalOverridesRemoved();
+			if (DoesAfterProhibitionEconomyOwnDirtyCashRuntimeSweepMutation())
+			{
+				return true;
+			}
+
 			Entity building = __instance?.entity;
 			if (building == null || !HasInstalledDirtyCashRuntimeBypassModule(__instance))
 			{
@@ -562,6 +859,11 @@ public partial class GameplayTweaksPlugin
 
 		private static void ModulesComponentDoUpdatePostfix(ModulesComponent __instance, SimTime time, bool initial)
 		{
+			if (DoesAfterProhibitionEconomyOwnDirtyCashRuntimeSweepMutation())
+			{
+				return;
+			}
+
 			Entity building = __instance?.entity;
 			if (building == null || !IsHumanOwnedBuilding(building) || !HasInstalledDirtyCashBackroomModule(__instance))
 			{
@@ -581,7 +883,10 @@ public partial class GameplayTweaksPlugin
 		{
 			try
 			{
-				TryForceUpdateMissedIllegalBackroomBuildings(initial);
+				if (!DoesAfterProhibitionEconomyOwnDirtyCashRuntimeSweepMutation())
+				{
+					TryForceUpdateMissedIllegalBackroomBuildings(initial);
+				}
 			}
 			catch (Exception ex)
 			{
@@ -593,7 +898,10 @@ public partial class GameplayTweaksPlugin
 		{
 			try
 			{
-				TryForceUpdateMissedIllegalBackroomBuildingsBeforeRespect(initial);
+				if (!DoesAfterProhibitionEconomyOwnDirtyCashRuntimeSweepMutation())
+				{
+					TryForceUpdateMissedIllegalBackroomBuildingsBeforeRespect(initial);
+				}
 			}
 			catch (Exception ex)
 			{
@@ -605,8 +913,11 @@ public partial class GameplayTweaksPlugin
 		{
 			try
 			{
-				TryForceUpdateMissedIllegalBackroomBuildingsBeforeRecalculate(initial);
-				CaptureLateForcedDirtyCashRespectSnapshot();
+				if (!DoesAfterProhibitionEconomyOwnDirtyCashRuntimeSweepMutation())
+				{
+					TryForceUpdateMissedIllegalBackroomBuildingsBeforeRecalculate(initial);
+					CaptureLateForcedDirtyCashRespectSnapshot();
+				}
 			}
 			catch (Exception ex)
 			{
@@ -633,25 +944,38 @@ public partial class GameplayTweaksPlugin
 				return;
 			}
 
+			long totalTicks = GameplayTweaksPlugin.StartPerfTimer();
 			try
 			{
-				TryForceUpdateMissedIllegalBackroomBuildingsOnHumanTurnStart();
+				long phaseTicks = GameplayTweaksPlugin.StartPerfTimer();
+				TryRepairEmptyBusinessModulesFromConfig("human-turn-start", force: false);
+				GameplayTweaksPlugin.LogHumanTurnStartPhase("dirtycash:repair-empty-business-modules", phaseTicks);
+				if (!DoesAfterProhibitionEconomyOwnDirtyCashRuntimeSweepMutation())
+				{
+					phaseTicks = GameplayTweaksPlugin.StartPerfTimer();
+					TryForceUpdateMissedIllegalBackroomBuildingsOnHumanTurnStart();
+					GameplayTweaksPlugin.LogHumanTurnStartPhase("dirtycash:force-missed-backrooms", phaseTicks);
+				}
+				phaseTicks = GameplayTweaksPlugin.StartPerfTimer();
 				TryRefreshHumanOutpostTargetRespect("human-turn-start");
+				GameplayTweaksPlugin.LogHumanTurnStartPhase("dirtycash:refresh-outpost-target-respect", phaseTicks);
+				phaseTicks = GameplayTweaksPlugin.StartPerfTimer();
 				TryReconcileHumanBackgroundTerritoryOwnership("human-turn-start");
+				GameplayTweaksPlugin.LogHumanTurnStartPhase("dirtycash:reconcile-background-territory", phaseTicks);
 			}
 			catch (Exception ex)
 			{
 				Debug.LogWarning("[GameplayTweaks] Illegal backroom human turn-start force failed: " + ex.Message);
 			}
+			finally
+			{
+				GameplayTweaksPlugin.LogHumanTurnStartPhase("dirtycash:total", totalTicks);
+			}
 		}
 
 		private static void TryForceUpdateMissedIllegalBackroomBuildingsBeforeSystemTurn()
 		{
-			MethodInfo doUpdateMethod = AccessTools.Method(typeof(ModulesComponent), "DoUpdate", new Type[]
-			{
-				typeof(SimTime),
-				typeof(bool)
-			});
+			MethodInfo doUpdateMethod = GetModulesComponentDoUpdateMethod();
 			if (doUpdateMethod == null)
 			{
 				return;
@@ -715,11 +1039,7 @@ public partial class GameplayTweaksPlugin
 
 		private static void TryFallbackUpdateMissingIllegalBackroomBuildings(bool initial)
 		{
-			MethodInfo doUpdateMethod = AccessTools.Method(typeof(ModulesComponent), "DoUpdate", new Type[]
-			{
-				typeof(SimTime),
-				typeof(bool)
-			});
+			MethodInfo doUpdateMethod = GetModulesComponentDoUpdateMethod();
 			if (doUpdateMethod == null)
 			{
 				return;
@@ -781,11 +1101,7 @@ public partial class GameplayTweaksPlugin
 
 		private static void TryForceUpdateMissedIllegalBackroomBuildings(bool initial)
 		{
-			MethodInfo doUpdateMethod = AccessTools.Method(typeof(ModulesComponent), "DoUpdate", new Type[]
-			{
-				typeof(SimTime),
-				typeof(bool)
-			});
+			MethodInfo doUpdateMethod = GetModulesComponentDoUpdateMethod();
 			if (doUpdateMethod == null)
 			{
 				return;
@@ -853,11 +1169,7 @@ public partial class GameplayTweaksPlugin
 
 		private static void TryForceUpdateMissedIllegalBackroomBuildingsBeforeRespect(bool initial)
 		{
-			MethodInfo doUpdateMethod = AccessTools.Method(typeof(ModulesComponent), "DoUpdate", new Type[]
-			{
-				typeof(SimTime),
-				typeof(bool)
-			});
+			MethodInfo doUpdateMethod = GetModulesComponentDoUpdateMethod();
 			if (doUpdateMethod == null)
 			{
 				return;
@@ -921,11 +1233,7 @@ public partial class GameplayTweaksPlugin
 
 		private static void TryForceUpdateMissedIllegalBackroomBuildingsBeforeRecalculate(bool initial)
 		{
-			MethodInfo doUpdateMethod = AccessTools.Method(typeof(ModulesComponent), "DoUpdate", new Type[]
-			{
-				typeof(SimTime),
-				typeof(bool)
-			});
+			MethodInfo doUpdateMethod = GetModulesComponentDoUpdateMethod();
 			if (doUpdateMethod == null)
 			{
 				return;
@@ -989,73 +1297,63 @@ public partial class GameplayTweaksPlugin
 
 		private static void TryForceUpdateMissedIllegalBackroomBuildingsOnHumanTurnStart()
 		{
-			MethodInfo doUpdateMethod = AccessTools.Method(typeof(ModulesComponent), "DoUpdate", new Type[]
-			{
-				typeof(SimTime),
-				typeof(bool)
-			});
-			if (doUpdateMethod == null)
-			{
-				return;
-			}
-
 			SimTime now = global::Game.Game.ctx.clock.Now;
 			bool initial = false;
-			List<Entity> buildings = GetHumanControlledDirtyCashBackroomBuildings();
-			int candidateCount = buildings.Count;
-			int observedCount = 0;
-			int forceAppliedCount = 0;
-			foreach (Entity building in buildings)
+			LogIllegalBackroomSafetySweepSummary(
+				"human-turn-start-deferred",
+				now,
+				initial,
+				candidateCount: 0,
+				appliedCount: 0,
+				observedCount: 0,
+				alreadyUpdatedCount: 0);
+		}
+
+		private static MethodInfo GetModulesComponentDoUpdateMethod()
+		{
+			if (_modulesComponentDoUpdateMethod == null)
 			{
-				EntityID buildingId = building?.Id ?? EntityID.INVALID;
-				if (!buildingId.IsValid)
+				_modulesComponentDoUpdateMethod = AccessTools.Method(typeof(ModulesComponent), "DoUpdate", new Type[]
 				{
-					continue;
-				}
-
-				ModulesComponent modules = building?.components?.modules;
-				if (!HasInstalledDirtyCashRuntimeBypassModule(modules))
-				{
-					continue;
-				}
-
-				string updateKey = BuildIllegalBackroomBuildingUpdateKey(buildingId, now, initial);
-				if (ObservedIllegalBackroomBuildingUpdates.Contains(updateKey))
-				{
-					observedCount++;
-					continue;
-				}
-
-				doUpdateMethod.Invoke(modules, new object[]
-				{
-					now,
-					initial
+					typeof(SimTime),
+					typeof(bool)
 				});
-				if (HasInstalledDirtyCashBackroomModule(modules))
-				{
-					RefreshHeatAndRespectForLateForcedDirtyCashBackroom(building, initial, "human-turn-start");
-				}
-				forceAppliedCount++;
+			}
 
-				if (LoggedIllegalBackroomBusinessTickFallbacks.Add("humanturn|" + updateKey))
+			return _modulesComponentDoUpdateMethod;
+		}
+
+		private static Type GetAfterProhibitionEconomyPluginType()
+		{
+			if (!_afterProhibitionEconomyPluginTypeLookupComplete)
+			{
+				_afterProhibitionEconomyPluginType = AccessTools.TypeByName("AfterProhibitionEconomy.AfterProhibitionEconomyPlugin");
+				_afterProhibitionEconomyPluginTypeLookupComplete = true;
+			}
+
+			return _afterProhibitionEconomyPluginType;
+		}
+
+		private static bool WasIllegalBackroomRuntimeCoveredBeforeHumanTurn(SimTime now, bool initial)
+		{
+			string suffix = "|day=" + now.days + "|initial=" + initial;
+			foreach (string updateKey in PreSystemForcedIllegalBackroomBuildingUpdates)
+			{
+				if (!string.IsNullOrEmpty(updateKey) && updateKey.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
 				{
-					Debug.Log("[GameplayTweaks] DirtyCash runtime human turn-start force applied building=" +
-						buildingId +
-						" owner=" +
-						GetControllingPlayerString(building) +
-						" day=" +
-						now.days);
+					return true;
 				}
 			}
 
-			LogIllegalBackroomSafetySweepSummary(
-				"human-turn-start",
-				now,
-				initial,
-				candidateCount,
-				forceAppliedCount,
-				observedCount,
-				alreadyUpdatedCount: 0);
+			foreach (string updateKey in ObservedIllegalBackroomBuildingUpdates)
+			{
+				if (!string.IsNullOrEmpty(updateKey) && updateKey.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+				{
+					return true;
+				}
+			}
+
+			return false;
 		}
 
 		private static void RefreshHeatAndRespectForLateForcedDirtyCashBackroom(Entity building, bool initial, string source)
@@ -1358,38 +1656,103 @@ public partial class GameplayTweaksPlugin
 			}
 
 			HashSet<int> refreshedNodeIds = new HashSet<int>();
+			List<Node> nodesToRefresh = new List<Node>();
+			Dictionary<string, int> skippedTargetCounts = new Dictionary<string, int>(StringComparer.Ordinal);
 			int refreshedCount = 0;
 			int refreshedPlayerCount = 0;
-			foreach (PlayerInfo player in allPlayers)
+			List<PlayerInfo> playerSnapshot;
+			try
 			{
-				List<OutpostEntry> outposts = player?.outposts?.GetOutpostEntriesUnsafe();
-				TrackObservedOutpostCountAndAudit(player, outposts?.Count ?? 0, source);
-				if (outposts == null || outposts.Count == 0)
+				playerSnapshot = allPlayers
+					.Where(player => player != null)
+					.ToList();
+			}
+			catch (Exception ex)
+			{
+				VerificationLog(
+					"Compat",
+					$"outpost-target-respect-player-snapshot-skipped source={source} reason={ex.GetType().Name}:{ex.Message}");
+				return;
+			}
+			foreach (PlayerInfo player in playerSnapshot)
+			{
+				try
 				{
-					continue;
-				}
-
-				refreshedPlayerCount++;
-				for (int outpostIndex = 0; outpostIndex < outposts.Count; outpostIndex++)
-				{
-					OutpostEntry outpost = outposts[outpostIndex];
-					List<NodeEntry> targetNodes = outpost?.targetNodes;
-					if (targetNodes == null)
+					List<OutpostEntry> outposts = player?.outposts?.GetOutpostEntriesUnsafe();
+					TrackObservedOutpostCountAndAudit(player, outposts?.Count ?? 0, source);
+					if (outposts == null || outposts.Count == 0)
 					{
 						continue;
 					}
 
-					for (int nodeIndex = 0; nodeIndex < targetNodes.Count; nodeIndex++)
+					List<OutpostEntry> outpostSnapshot = outposts
+						.Where(outpost => outpost != null)
+						.ToList();
+					if (outpostSnapshot.Count == 0)
 					{
-						Node node = targetNodes[nodeIndex]?.nodeId.FindNode();
-						if (node == null || !refreshedNodeIds.Add(node.id.index))
+						continue;
+					}
+
+					refreshedPlayerCount++;
+					foreach (OutpostEntry outpost in outpostSnapshot)
+					{
+						List<NodeEntry> targetNodes = outpost?.targetNodes;
+						if (targetNodes == null)
 						{
 							continue;
 						}
 
-						HeatAndRespect.RecomputeRespectForAllPlayers(node, true);
-						refreshedCount++;
+						List<NodeEntry> targetNodeSnapshot = targetNodes
+							.Where(targetNode => targetNode != null)
+							.ToList();
+						foreach (NodeEntry targetNode in targetNodeSnapshot)
+						{
+							try
+							{
+								Node node = targetNode.nodeId.FindNode();
+								if (node == null || !refreshedNodeIds.Add(node.id.index))
+								{
+									continue;
+								}
+
+								nodesToRefresh.Add(node);
+							}
+							catch (Exception ex)
+							{
+								string skipKey = $"pid={player.PID.id} reason={ex.GetType().Name}:{ex.Message}";
+								skippedTargetCounts.TryGetValue(skipKey, out int skipCount);
+								skippedTargetCounts[skipKey] = skipCount + 1;
+							}
+						}
 					}
+				}
+				catch (Exception ex)
+				{
+					VerificationLog(
+						"Compat",
+						$"outpost-target-respect-player-skipped source={source} pid={(player?.PID.id ?? -1)} reason={ex.GetType().Name}:{ex.Message}");
+				}
+			}
+
+			foreach (KeyValuePair<string, int> skippedTargetCount in skippedTargetCounts)
+			{
+				VerificationLog(
+					"Compat",
+					$"outpost-target-respect-target-skipped source={source} count={skippedTargetCount.Value} {skippedTargetCount.Key}");
+			}
+
+			foreach (Node node in nodesToRefresh)
+			{
+				try
+				{
+					HeatAndRespect.RecomputeRespectForAllPlayers(node, true);
+					refreshedCount++;
+				}
+				catch (Exception ex)
+				{
+					VerificationLog(
+						"Compat",
+						$"outpost-target-respect-node-skipped source={source} node={node?.id.index ?? 0} reason={ex.GetType().Name}:{ex.Message}");
 				}
 			}
 
@@ -1407,7 +1770,8 @@ public partial class GameplayTweaksPlugin
 			}
 
 			int pid = player.PID.id;
-			if (LastObservedOutpostCountByPid.TryGetValue(pid, out int previousOutpostCount) && currentOutpostCount < previousOutpostCount)
+			bool isLoadPostfixRefresh = IsLoadPostfixTerritoryRefreshSource(source);
+			if (!isLoadPostfixRefresh && LastObservedOutpostCountByPid.TryGetValue(pid, out int previousOutpostCount) && currentOutpostCount < previousOutpostCount)
 			{
 				VerificationLog("Compat", $"outpost-count-drop pid={pid} previous={previousOutpostCount} current={currentOutpostCount} source={source}");
 				RequestDeferredHumanTerritoryFullRebuild(source + "-outpost-drop", delayFrames: 12, passes: 1);
@@ -1421,6 +1785,11 @@ public partial class GameplayTweaksPlugin
 			{
 				LastObservedOutpostCountByPid.Remove(pid);
 			}
+		}
+
+		private static bool IsLoadPostfixTerritoryRefreshSource(string source)
+		{
+			return !string.IsNullOrEmpty(source) && source.StartsWith("load-postfix", StringComparison.Ordinal);
 		}
 
 		internal static int TryRunGangOpsAutoProtectPass(
@@ -1440,6 +1809,11 @@ public partial class GameplayTweaksPlugin
 				return 0;
 			}
 
+			System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
+			long repairMs = 0L;
+			long recomputeMs = 0L;
+			long ownershipMs = 0L;
+			long refreshMs = 0L;
 			global::Game.Services.RespectSettings respectSettings = global::Game.Game.serv?.globals?.settings?.people?.social?.respect;
 			List<OutpostEntry> outposts = player?.outposts?.GetOutpostEntriesUnsafe();
 			if (respectSettings == null || outposts == null || outposts.Count == 0)
@@ -1488,25 +1862,49 @@ public partial class GameplayTweaksPlugin
 				return 0;
 			}
 
+			long phaseStartMs = stopwatch.ElapsedMilliseconds;
 			TryRepairStackedGangOpsTerritoryRespect(targetNodes, source);
+			repairMs = stopwatch.ElapsedMilliseconds - phaseStartMs;
 
-			for (int i = 0; i < targetNodes.Count; i++)
+			int recomputedNodeCount = 0;
+			bool shouldRecomputeRespect = supportResetCount > 0;
+			phaseStartMs = stopwatch.ElapsedMilliseconds;
+			if (shouldRecomputeRespect)
 			{
-				HeatAndRespect.RecomputeRespectForAllPlayers(targetNodes[i], false);
+				for (int i = 0; i < targetNodes.Count; i++)
+				{
+					HeatAndRespect.RecomputeRespectForAllPlayers(targetNodes[i], false);
+					recomputedNodeCount++;
+				}
 			}
+			recomputeMs = stopwatch.ElapsedMilliseconds - phaseStartMs;
 
 			HashSet<PlayerID> affectedPlayers = new HashSet<PlayerID>();
+			phaseStartMs = stopwatch.ElapsedMilliseconds;
 			int claimedNeutralNodes = ClaimNeutralNodesFromCurrentRespect(targetNodes, respectSettings, affectedPlayers, allowRelaxedUnownedClaim: true);
 			int ownershipSwitches = ReconcileTerritoryOwnershipFromCurrentRespectPass(targetNodes, respectSettings, affectedPlayers, allowRelaxedUnownedClaim: true);
+			ownershipMs = stopwatch.ElapsedMilliseconds - phaseStartMs;
 			int totalSwitches = claimedNeutralNodes + ownershipSwitches;
+			bool humanAffected = AffectedPlayersIncludeHuman(affectedPlayers);
+			bool deferredVisualRefresh = affectedPlayers.Count > 0;
 			if (affectedPlayers.Count > 0)
 			{
-				RefreshLateForcedDirtyCashTerritoryState(affectedPlayers);
+				phaseStartMs = stopwatch.ElapsedMilliseconds;
+				RefreshLateForcedDirtyCashTerritoryState(
+					affectedPlayers,
+					source,
+					deferHumanVisualsIfNpcOnly: true,
+					deferHumanVisualsAlways: true,
+					lightweightDeferredVisuals: true,
+					deferredVisualDelayFrames: 12);
+				refreshMs = stopwatch.ElapsedMilliseconds - phaseStartMs;
 			}
 
-			if (totalSwitches > 0 || supportResetCount > 0)
+			stopwatch.Stop();
+			if (totalSwitches > 0 || supportResetCount > 0 || stopwatch.ElapsedMilliseconds >= 40L)
 			{
-				VerificationLog("Compat", $"gangops-auto-protect source={source} channel={GetGangOpsChannelTag(channel)} pid={player.PID.id} outposts={outpostCount} nodes={protectedNodeCount} neutralClaims={claimedNeutralNodes} ownershipSwitches={ownershipSwitches} supportResets={supportResetCount} range={clampedRange}");
+				string visualMode = deferredVisualRefresh ? (humanAffected ? "deferred-human-light" : "deferred") : "none";
+				VerificationLog("Compat", $"gangops-auto-protect source={source} channel={GetGangOpsChannelTag(channel)} pid={player.PID.id} outposts={outpostCount} nodes={protectedNodeCount} neutralClaims={claimedNeutralNodes} ownershipSwitches={ownershipSwitches} supportResets={supportResetCount} range={clampedRange} recomputedNodes={recomputedNodeCount} visual={visualMode} ms={stopwatch.ElapsedMilliseconds} repairMs={repairMs} recomputeMs={recomputeMs} ownershipMs={ownershipMs} refreshMs={refreshMs}");
 			}
 			return totalSwitches;
 		}
@@ -1705,7 +2103,13 @@ public partial class GameplayTweaksPlugin
 			int totalSwitches = claimedNeutralNodes + ownershipSwitches;
 			if (affectedPlayers.Count > 0)
 			{
-				RefreshLateForcedDirtyCashTerritoryState(affectedPlayers);
+				RefreshLateForcedDirtyCashTerritoryState(
+					affectedPlayers,
+					source,
+					deferHumanVisualsIfNpcOnly: true,
+					deferHumanVisualsAlways: true,
+					lightweightDeferredVisuals: true,
+					deferredVisualDelayFrames: 12);
 			}
 
 			VerificationLog("Compat", $"ai-outpost-territory-pass source={source} channel={GetGangOpsChannelTag(channel)} players={playerCount} outposts={outpostCount} nodes={targetNodes.Count} neutralClaims={claimedNeutralNodes} ownershipSwitches={ownershipSwitches} relaxedNeutralClaims=True relaxedSwitches={relaxedOwnershipSwitches} territoryAggro={aggressionPercent}");
@@ -2537,9 +2941,9 @@ public partial class GameplayTweaksPlugin
 
 				return true;
 			}
-			catch
+			catch (Exception ex)
 			{
-				waitReason = "pick-refresh-exception";
+				waitReason = "pick-refresh-exception:" + ex.GetType().Name + ":" + ex.Message;
 				return false;
 			}
 		}
@@ -2733,12 +3137,19 @@ public partial class GameplayTweaksPlugin
 			return respect.goal > respect.current ? respect.goal : respect.current;
 		}
 
-		private static bool TryForceRefreshHumanTerritoryVisuals(out string waitReason)
+		private static bool TryForceRefreshHumanTerritoryVisuals(out string waitReason, bool fullTerritoryColorRefresh = true)
 		{
 			waitReason = string.Empty;
 			try
 			{
-				TerritoryColorPatch.RefreshAllTerritoryColors();
+				if (fullTerritoryColorRefresh)
+				{
+					TerritoryColorPatch.RefreshAllTerritoryColors();
+				}
+				else
+				{
+					TerritoryColorPatch.RefreshTerritoryColorCacheOnly("human-territory-visual-light");
+				}
 			}
 			catch
 			{
@@ -2797,9 +3208,49 @@ public partial class GameplayTweaksPlugin
 				refreshPickContainersMethod?.Invoke(pickManager, new object[] { false, true });
 				return true;
 			}
-			catch
+			catch (Exception ex)
 			{
-				waitReason = "pick-refresh-exception";
+				waitReason = "pick-refresh-exception:" + ex.GetType().Name + ":" + ex.Message;
+				return false;
+			}
+		}
+
+		private static bool TryCheckHumanTerritoryVisualRefreshReady(out string waitReason)
+		{
+			waitReason = string.Empty;
+			try
+			{
+				if (!TryResolveHudPickManager(out object pickManager))
+				{
+					waitReason = "no-pick-manager";
+					return false;
+				}
+
+				if (_cachedHudPickManager != pickManager
+					|| _refreshVisibleSummaryPicksMethod == null
+					|| _refreshVisibleCornerPicksMethod == null
+					|| _refreshVisibleBuildingPicksMethod == null)
+				{
+					Type pickManagerType = pickManager.GetType();
+					_cachedHudPickManager = pickManager;
+					_refreshVisibleSummaryPicksMethod = pickManagerType.GetMethod("RefreshVisibleSummaryPicks", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+					_refreshVisibleCornerPicksMethod = pickManagerType.GetMethod("RefreshVisibleCornerPicks", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+					_refreshVisibleBuildingPicksMethod = pickManagerType.GetMethod("RefreshVisibleBuildingPicks", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+				}
+
+				if (_refreshVisibleSummaryPicksMethod == null
+					|| _refreshVisibleCornerPicksMethod == null
+					|| _refreshVisibleBuildingPicksMethod == null)
+				{
+					waitReason = "missing-pick-refresh-method";
+					return false;
+				}
+
+				return true;
+			}
+			catch (Exception ex)
+			{
+				waitReason = "pick-refresh-probe-exception:" + ex.GetType().Name + ":" + ex.Message;
 				return false;
 			}
 		}
@@ -2811,6 +3262,11 @@ public partial class GameplayTweaksPlugin
 			int previousRemainingPasses = _pendingDeferredHumanTerritoryRefreshRemainingPasses;
 			_loadedSessionTerritoryRefreshCompleted = false;
 			_pendingDeferredHumanTerritoryRefresh = true;
+			if (!wasPending)
+			{
+				_deferredHumanTerritoryVisualWaitAttemptCount = 0;
+				_pendingDeferredHumanTerritoryRefreshDidStatePass = false;
+			}
 			int requestedEarliestFrame = Time.frameCount + Mathf.Max(0, delayFrames);
 			if (_pendingDeferredHumanTerritoryRefreshEarliestFrame < 0)
 			{
@@ -2844,19 +3300,131 @@ public partial class GameplayTweaksPlugin
 
 		private static void RequestDeferredHumanTerritoryFullRebuild(string sourceTag, int delayFrames = 0, int passes = 1)
 		{
+			string normalizedSourceTag = string.IsNullOrEmpty(sourceTag) ? "unknown" : sourceTag;
+			bool staggerBulkRebuild = normalizedSourceTag.IndexOf("gang-death", StringComparison.OrdinalIgnoreCase) >= 0
+				|| normalizedSourceTag.IndexOf("outpost-drop", StringComparison.OrdinalIgnoreCase) >= 0;
+			int effectiveDelayFrames = staggerBulkRebuild
+				? Math.Max(delayFrames, BulkTerritoryFullRebuildMinDelayFrames)
+				: delayFrames;
+			int requestedEarliestFrame = Time.frameCount + Math.Max(0, effectiveDelayFrames);
 			bool wasPending = _pendingDeferredHumanTerritoryFullRebuild;
 			_pendingDeferredHumanTerritoryFullRebuild = true;
 			if (!wasPending || string.IsNullOrEmpty(_pendingDeferredHumanTerritoryFullRebuildSource))
 			{
-				_pendingDeferredHumanTerritoryFullRebuildSource = string.IsNullOrEmpty(sourceTag) ? "unknown" : sourceTag;
+				_pendingDeferredHumanTerritoryFullRebuildSource = normalizedSourceTag;
 			}
-			RequestDeferredHumanTerritoryRefresh(sourceTag, delayFrames, passes);
+			RequestDeferredHumanTerritoryRefresh(normalizedSourceTag, effectiveDelayFrames, passes);
+			if (staggerBulkRebuild && _pendingDeferredHumanTerritoryRefreshEarliestFrame >= 0 && _pendingDeferredHumanTerritoryRefreshEarliestFrame < requestedEarliestFrame)
+			{
+				_pendingDeferredHumanTerritoryRefreshEarliestFrame = requestedEarliestFrame;
+			}
 			if (!wasPending)
 			{
 				VerificationLog(
 					"Compat",
-					$"deferred-human-territory-full-rebuild-requested source={_pendingDeferredHumanTerritoryFullRebuildSource} earliestFrame={_pendingDeferredHumanTerritoryRefreshEarliestFrame} passes={Mathf.Max(1, passes)} frame={Time.frameCount}");
+					$"deferred-human-territory-full-rebuild-requested source={_pendingDeferredHumanTerritoryFullRebuildSource} earliestFrame={_pendingDeferredHumanTerritoryRefreshEarliestFrame} passes={Mathf.Max(1, passes)} delay={effectiveDelayFrames} frame={Time.frameCount}");
 			}
+		}
+
+		private static bool TryRunPendingGangCollapseTerritoryCleanup(
+			string rebuildSource,
+			out int handledPids,
+			out int skippedPids,
+			out int ownedNodesBefore,
+			out int controlledBuildingsBefore,
+			out List<Node> affectedNodes)
+		{
+			handledPids = 0;
+			skippedPids = 0;
+			ownedNodesBefore = 0;
+			controlledBuildingsBefore = 0;
+			affectedNodes = new List<Node>();
+			HashSet<int> affectedNodeIndexes = new HashSet<int>();
+
+			if (PendingGangCollapseTerritoryRebuildPids.Count == 0
+				|| string.IsNullOrEmpty(rebuildSource)
+				|| rebuildSource.IndexOf("gang-death", StringComparison.OrdinalIgnoreCase) < 0)
+			{
+				return false;
+			}
+
+			if (_removeBuildingsAndTerritoryOnDefeatMethod == null)
+			{
+				_removeBuildingsAndTerritoryOnDefeatMethod = AccessTools.Method(typeof(PlayerTerritory), "RemoveBuildingsAndTerritoryOnDefeat");
+			}
+			if (_removeBuildingsAndTerritoryOnDefeatMethod == null)
+			{
+				return false;
+			}
+
+			foreach (int rawPid in PendingGangCollapseTerritoryRebuildPids.ToList())
+			{
+				if (rawPid < short.MinValue || rawPid > short.MaxValue)
+				{
+					skippedPids++;
+					continue;
+				}
+
+				PlayerID pid = new PlayerID((short)rawPid);
+				PlayerInfo player = pid.IsValid ? pid.FindPlayer() : null;
+				if (player == null || player.PID.IsHumanPlayer || player.IsJustCop || player.territory == null)
+				{
+					skippedPids++;
+					continue;
+				}
+
+				int outpostCount = player.outposts?.GetOutpostEntriesUnsafe()?.Count ?? 0;
+				bool crewDefeated = player.crew?.IsCrewDefeated ?? false;
+				if (!crewDefeated || outpostCount > 0)
+				{
+					skippedPids++;
+					continue;
+				}
+
+				int ownedNodeCount = player.territory.OwnedNodeCount;
+				int buildingCount = 0;
+				List<NodeID> ownedNodeIds = player.territory.OwnedNodeIds != null
+					? player.territory.OwnedNodeIds.ToList()
+					: new List<NodeID>();
+				try
+				{
+					buildingCount = player.territory.CountControlledBuildings();
+				}
+				catch
+				{
+					buildingCount = 0;
+				}
+
+				if (ownedNodeCount <= 0 && buildingCount <= 0)
+				{
+					handledPids++;
+					continue;
+				}
+
+				try
+				{
+					for (int nodeIndex = 0; nodeIndex < ownedNodeIds.Count; nodeIndex++)
+					{
+						Node node = ownedNodeIds[nodeIndex].FindNode();
+						if (node != null && affectedNodeIndexes.Add(node.id.index))
+						{
+							affectedNodes.Add(node);
+						}
+					}
+
+					_removeBuildingsAndTerritoryOnDefeatMethod.Invoke(player.territory, null);
+					handledPids++;
+					ownedNodesBefore += ownedNodeCount;
+					controlledBuildingsBefore += buildingCount;
+				}
+				catch (Exception ex)
+				{
+					skippedPids++;
+					VerificationLog("Compat", $"gang-collapse-targeted-cleanup-skipped pid={rawPid} reason={ex.GetType().Name}:{ex.Message}");
+				}
+			}
+
+			return handledPids > 0;
 		}
 
 		internal static void EnsureDeferredHumanTerritoryRefreshScheduledForLoadedSession(string sourceTag)
@@ -2900,7 +3468,7 @@ public partial class GameplayTweaksPlugin
 				return;
 			}
 
-			RequestDeferredHumanTerritoryRefresh(sourceTag, 0, ctx.IsSessionFromNewGame ? 6 : 5);
+			RequestDeferredHumanTerritoryRefresh(sourceTag, 0, ctx.IsSessionFromNewGame ? 2 : 1);
 			VerificationLog("Compat", $"deferred-human-territory-refresh-scheduled source={sourceTag} mode={(ctx.IsSessionFromNewGame ? "new-game" : "loaded")} frame={Time.frameCount}");
 		}
 
@@ -2908,6 +3476,7 @@ public partial class GameplayTweaksPlugin
 		{
 			if (!_pendingDeferredHumanTerritoryRefresh)
 			{
+				FlushDeferredHumanTerritoryVisualOnlyRefresh(sourceTag);
 				return;
 			}
 
@@ -2929,19 +3498,55 @@ public partial class GameplayTweaksPlugin
 				_pendingDeferredHumanTerritoryRefreshEarliestFrame = Time.frameCount + 2;
 				return;
 			}
+			if (!TryCheckHumanTerritoryVisualRefreshReady(out string readinessWaitReason))
+			{
+				if (!string.Equals(_lastDeferredHumanTerritoryRefreshWaitReason, readinessWaitReason, StringComparison.Ordinal))
+				{
+					_lastDeferredHumanTerritoryRefreshWaitReason = readinessWaitReason;
+					VerificationLog("Compat", $"deferred-human-territory-refresh-wait source={sourceTag} reason={readinessWaitReason} stage=visual-probe frame={Time.frameCount}");
+				}
+				_deferredHumanTerritoryVisualWaitAttemptCount++;
+				_pendingDeferredHumanTerritoryRefreshEarliestFrame = Time.frameCount + Mathf.Min(30, 5 + (_deferredHumanTerritoryVisualWaitAttemptCount * 2));
+				return;
+			}
+			_deferredHumanTerritoryVisualWaitAttemptCount = 0;
 			_lastDeferredHumanTerritoryRefreshWaitReason = string.Empty;
 
+			string refreshOperation = "start";
+			bool usedTargetedGangCollapseCleanup = false;
+			List<Node> targetedGangCollapseNodes = null;
 			try
 			{
 				bool didFullRebuild = false;
+				bool shouldRunStatePass = !_pendingDeferredHumanTerritoryRefreshDidStatePass || _pendingDeferredHumanTerritoryFullRebuild;
 				if (_pendingDeferredHumanTerritoryFullRebuild)
 				{
+					refreshOperation = "full-rebuild";
 					string rebuildSource = _pendingDeferredHumanTerritoryFullRebuildSource;
-					int ownershipSwitchCount;
-					int rebuiltNodeCount = RebuildLateForcedDirtyCashRespectState(initial: false, out ownershipSwitchCount);
-					VerificationLog(
-						"Compat",
-						$"deferred-human-territory-full-rebuild source={rebuildSource}->{sourceTag} nodes={rebuiltNodeCount} ownershipSwitches={ownershipSwitchCount} gangCollapsePids={PendingGangCollapseTerritoryRebuildPids.Count} suppressedCollapseRequests={_gangCollapseTerritoryDeferredSuppressedCount}");
+					if (TryRunPendingGangCollapseTerritoryCleanup(
+						rebuildSource,
+						out int handledGangCollapsePids,
+						out int skippedGangCollapsePids,
+						out int gangCollapseOwnedNodes,
+						out int gangCollapseControlledBuildings,
+						out List<Node> gangCollapseAffectedNodes))
+					{
+						usedTargetedGangCollapseCleanup = true;
+						targetedGangCollapseNodes = gangCollapseAffectedNodes ?? new List<Node>();
+						ForceRefreshHumanTerritoryVisuals();
+						TerritoryColorPatch.RefreshAllTerritoryColors();
+						VerificationLog(
+							"Compat",
+							$"deferred-human-territory-gang-collapse-cleanup source={rebuildSource}->{sourceTag} handledPids={handledGangCollapsePids} skippedPids={skippedGangCollapsePids} ownedNodes={gangCollapseOwnedNodes} buildings={gangCollapseControlledBuildings} affectedNodes={targetedGangCollapseNodes.Count} suppressedCollapseRequests={_gangCollapseTerritoryDeferredSuppressedCount} mode=targeted");
+					}
+					else
+					{
+						int ownershipSwitchCount;
+						int rebuiltNodeCount = RebuildLateForcedDirtyCashRespectState(initial: false, out ownershipSwitchCount);
+						VerificationLog(
+							"Compat",
+							$"deferred-human-territory-full-rebuild source={rebuildSource}->{sourceTag} nodes={rebuiltNodeCount} ownershipSwitches={ownershipSwitchCount} gangCollapsePids={PendingGangCollapseTerritoryRebuildPids.Count} suppressedCollapseRequests={_gangCollapseTerritoryDeferredSuppressedCount}");
+					}
 					PendingGangCollapseTerritoryRebuildPids.Clear();
 					_gangCollapseTerritoryDeferredSuppressedCount = 0;
 					_pendingDeferredHumanTerritoryFullRebuild = false;
@@ -2949,26 +3554,37 @@ public partial class GameplayTweaksPlugin
 					didFullRebuild = true;
 				}
 
-				if (!didFullRebuild)
+				if (shouldRunStatePass && !didFullRebuild)
 				{
+					refreshOperation = "refresh-outpost-target-respect";
 					TryRefreshAllPlayerOutpostTargetRespect(_pendingDeferredHumanTerritoryRefreshSource);
 				}
+				IEnumerable<Node> refreshNodes = usedTargetedGangCollapseCleanup
+					? (IEnumerable<Node>)(targetedGangCollapseNodes ?? new List<Node>())
+					: allNodes;
 				HashSet<PlayerID> neutralNodeClaims = new HashSet<PlayerID>();
 				global::Game.Services.RespectSettings respectSettings = global::Game.Game.serv?.globals?.settings?.people?.social?.respect;
-				int claimedNeutralNodes = ClaimNeutralNodesFromCurrentRespect(allNodes, respectSettings, neutralNodeClaims);
-				if (claimedNeutralNodes > 0)
+				if (shouldRunStatePass)
 				{
-					RefreshLateForcedDirtyCashTerritoryState(neutralNodeClaims);
-					VerificationLog("Compat", $"territory-neutral-claim source={_pendingDeferredHumanTerritoryRefreshSource} switches={claimedNeutralNodes}");
+					refreshOperation = "claim-neutral-nodes";
+					int claimedNeutralNodes = ClaimNeutralNodesFromCurrentRespect(refreshNodes, respectSettings, neutralNodeClaims);
+					if (claimedNeutralNodes > 0)
+					{
+						RefreshLateForcedDirtyCashTerritoryState(neutralNodeClaims);
+						VerificationLog("Compat", $"territory-neutral-claim source={_pendingDeferredHumanTerritoryRefreshSource} switches={claimedNeutralNodes}");
+					}
+					if (!usedTargetedGangCollapseCleanup && ShouldEnableHumanBackgroundTerritoryReconcile())
+					{
+						refreshOperation = "reconcile-territory-ownership";
+						ReconcileTerritoryOwnershipFromCurrentRespectUntilStable(
+							refreshNodes,
+							_pendingDeferredHumanTerritoryRefreshSource,
+							refreshVisualsWhenNoChanges: false,
+							allowRelaxedUnownedClaim: true);
+					}
+					_pendingDeferredHumanTerritoryRefreshDidStatePass = true;
 				}
-				if (ShouldEnableHumanBackgroundTerritoryReconcile())
-				{
-					ReconcileTerritoryOwnershipFromCurrentRespectUntilStable(
-						allNodes,
-						_pendingDeferredHumanTerritoryRefreshSource,
-						refreshVisualsWhenNoChanges: false,
-						allowRelaxedUnownedClaim: true);
-				}
+				refreshOperation = "refresh-human-territory-visuals";
 				if (!TryForceRefreshHumanTerritoryVisuals(out string visualWaitReason))
 				{
 					if (!string.Equals(_lastDeferredHumanTerritoryRefreshWaitReason, visualWaitReason, StringComparison.Ordinal))
@@ -2976,13 +3592,14 @@ public partial class GameplayTweaksPlugin
 						_lastDeferredHumanTerritoryRefreshWaitReason = visualWaitReason;
 						VerificationLog("Compat", $"deferred-human-territory-refresh-wait source={sourceTag} reason={visualWaitReason} frame={Time.frameCount}");
 					}
-					_pendingDeferredHumanTerritoryRefreshEarliestFrame = Time.frameCount + 2;
+					_deferredHumanTerritoryVisualWaitAttemptCount++;
+					_pendingDeferredHumanTerritoryRefreshEarliestFrame = Time.frameCount + Mathf.Min(30, 5 + (_deferredHumanTerritoryVisualWaitAttemptCount * 2));
 					return;
 				}
 			}
 			catch (Exception ex)
 			{
-				Debug.LogWarning("[GameplayTweaks] Deferred human territory refresh failed: " + ex.Message);
+				Debug.LogWarning("[GameplayTweaks] Deferred human territory refresh failed operation=" + refreshOperation + " type=" + ex.GetType().Name + " message=" + ex.Message);
 			}
 			_lastDeferredHumanTerritoryRefreshWaitReason = string.Empty;
 
@@ -2994,12 +3611,31 @@ public partial class GameplayTweaksPlugin
 				return;
 			}
 
+			string completedRefreshSource = _pendingDeferredHumanTerritoryRefreshSource;
 			_pendingDeferredHumanTerritoryRefresh = false;
 			_pendingDeferredHumanTerritoryRefreshEarliestFrame = -1;
 			_pendingDeferredHumanTerritoryRefreshRemainingPasses = 0;
 			_pendingDeferredHumanTerritoryRefreshSource = string.Empty;
+			_pendingDeferredHumanTerritoryRefreshDidStatePass = false;
+			_deferredHumanTerritoryVisualWaitAttemptCount = 0;
+			_pendingDeferredHumanTerritoryVisualOnlyRefresh = false;
+			_pendingDeferredHumanTerritoryVisualOnlyRefreshEarliestFrame = -1;
+			_pendingDeferredHumanTerritoryVisualOnlyRefreshWaitAttempts = 0;
+			_pendingDeferredHumanTerritoryVisualOnlyRefreshSource = string.Empty;
+			_pendingDeferredHumanTerritoryVisualOnlyRefreshLightweight = false;
 			_loadedSessionTerritoryRefreshCompleted = true;
-			LogTerritoryOwnershipAudit(sourceTag);
+			if (usedTargetedGangCollapseCleanup)
+			{
+				VerificationLog("Compat", $"territory-audit-skipped source={sourceTag} mode=targeted-gang-collapse nodes={targetedGangCollapseNodes?.Count ?? 0}");
+			}
+			else if (IsLoadPostfixTerritoryRefreshSource(completedRefreshSource))
+			{
+				VerificationLog("Compat", $"territory-audit-skipped source={sourceTag} mode=load-postfix refreshSource={completedRefreshSource}");
+			}
+			else
+			{
+				LogTerritoryOwnershipAudit(sourceTag);
+			}
 			VerificationLog("Compat", $"deferred-human-territory-refresh-complete source={sourceTag}");
 		}
 
@@ -3007,6 +3643,12 @@ public partial class GameplayTweaksPlugin
 		{
 			if (PendingIllegalBackroomVisualRefreshes.Count == 0)
 			{
+				return;
+			}
+			if (global::Game.Game.ctx?.entityman == null)
+			{
+				PendingIllegalBackroomVisualRefreshes.Clear();
+				VerificationLog("Compat", $"deferred-illegal-backroom-visual-refresh-cleared source={sourceTag} reason=no-entity-manager");
 				return;
 			}
 
@@ -3024,10 +3666,28 @@ public partial class GameplayTweaksPlugin
 					continue;
 				}
 
-				Entity building = buildingId.FindEntity();
+				if (!buildingId.IsValid)
+				{
+					PendingIllegalBackroomVisualRefreshes.Remove(buildingId);
+					VerificationLog("Compat", $"deferred-illegal-backroom-visual-refresh-pruned source={pending.Source}->{sourceTag} building={buildingId} reason=invalid-id");
+					continue;
+				}
+
+				Entity building = null;
+				try
+				{
+					building = buildingId.FindEntity();
+				}
+				catch (Exception ex)
+				{
+					PendingIllegalBackroomVisualRefreshes.Remove(buildingId);
+					VerificationLog("Compat", $"deferred-illegal-backroom-visual-refresh-pruned source={pending.Source}->{sourceTag} building={buildingId} reason=find-entity-failed ex={ex.GetType().Name}");
+					continue;
+				}
 				if (building == null || !HasInstalledDirtyCashBackroomModule(building.components?.modules))
 				{
 					PendingIllegalBackroomVisualRefreshes.Remove(buildingId);
+					VerificationLog("Compat", $"deferred-illegal-backroom-visual-refresh-pruned source={pending.Source}->{sourceTag} building={buildingId} reason={(building == null ? "missing-building" : "missing-dirtycash-module")}");
 					continue;
 				}
 
@@ -3081,24 +3741,32 @@ public partial class GameplayTweaksPlugin
 			}
 		}
 
-		private static void RefreshLateForcedDirtyCashTerritoryState(IEnumerable<PlayerID> affectedPlayers)
+		private static void RefreshLateForcedDirtyCashTerritoryState(
+			IEnumerable<PlayerID> affectedPlayers,
+			string source = "dirtycash-territory-state",
+			bool deferHumanVisualsIfNpcOnly = false,
+			bool deferHumanVisualsAlways = false,
+			bool lightweightDeferredVisuals = false,
+			int deferredVisualDelayFrames = 2)
 		{
 			if (affectedPlayers == null)
 			{
 				return;
 			}
 
-			MethodInfo updateNodeDataOnTerritoryChange = AccessTools.Method(typeof(PlayerTerritory), "UpdateNodeDataOnTerritoryChange");
-			FieldInfo cachedPotentialsField = AccessTools.Field(typeof(PlayerTerritory), "_cachedPotentials");
-			MethodInfo onTerritoryChangedMethod = cachedPotentialsField != null
-				? AccessTools.Method(cachedPotentialsField.FieldType, "OnTerritoryChanged")
-				: null;
+			EnsurePlayerTerritoryRefreshReflectionCached();
 			HashSet<int> refreshedPlayerIds = new HashSet<int>();
+			bool humanAffected = false;
 			foreach (PlayerID affectedPlayer in affectedPlayers)
 			{
 				if (affectedPlayer.IsNotValid || !refreshedPlayerIds.Add(affectedPlayer.id))
 				{
 					continue;
+				}
+
+				if (affectedPlayer.IsHumanPlayer)
+				{
+					humanAffected = true;
 				}
 
 				PlayerTerritory territory = G.FindPlayerById(affectedPlayer.id)?.territory;
@@ -3109,7 +3777,7 @@ public partial class GameplayTweaksPlugin
 
 				try
 				{
-					updateNodeDataOnTerritoryChange?.Invoke(territory, null);
+					_playerTerritoryUpdateNodeDataOnTerritoryChangeMethod?.Invoke(territory, null);
 				}
 				catch
 				{
@@ -3117,15 +3785,112 @@ public partial class GameplayTweaksPlugin
 
 				try
 				{
-					object cachedPotentials = cachedPotentialsField?.GetValue(territory);
-					onTerritoryChangedMethod?.Invoke(cachedPotentials, null);
+					object cachedPotentials = _playerTerritoryCachedPotentialsField?.GetValue(territory);
+					_playerTerritoryCachedPotentialsChangedMethod?.Invoke(cachedPotentials, null);
 				}
 				catch
 				{
 				}
 			}
 
+			if (deferHumanVisualsAlways || (deferHumanVisualsIfNpcOnly && !humanAffected))
+			{
+				RequestDeferredHumanTerritoryVisualOnlyRefresh(source, deferredVisualDelayFrames, lightweightDeferredVisuals);
+				return;
+			}
+
 			ForceRefreshHumanTerritoryVisuals();
+		}
+
+		private static bool AffectedPlayersIncludeHuman(IEnumerable<PlayerID> affectedPlayers)
+		{
+			if (affectedPlayers == null)
+			{
+				return false;
+			}
+
+			foreach (PlayerID affectedPlayer in affectedPlayers)
+			{
+				if (affectedPlayer.IsHumanPlayer)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		private static void EnsurePlayerTerritoryRefreshReflectionCached()
+		{
+			if (_playerTerritoryUpdateNodeDataOnTerritoryChangeMethod == null)
+			{
+				_playerTerritoryUpdateNodeDataOnTerritoryChangeMethod = AccessTools.Method(typeof(PlayerTerritory), "UpdateNodeDataOnTerritoryChange");
+			}
+
+			if (_playerTerritoryCachedPotentialsField == null)
+			{
+				_playerTerritoryCachedPotentialsField = AccessTools.Field(typeof(PlayerTerritory), "_cachedPotentials");
+			}
+
+			if (_playerTerritoryCachedPotentialsChangedMethod == null && _playerTerritoryCachedPotentialsField != null)
+			{
+				_playerTerritoryCachedPotentialsChangedMethod = AccessTools.Method(_playerTerritoryCachedPotentialsField.FieldType, "OnTerritoryChanged");
+			}
+		}
+
+		internal static void RequestDeferredHumanTerritoryVisualOnlyRefresh(string sourceTag, int delayFrames = 2, bool lightweight = false)
+		{
+			int earliestFrame = Time.frameCount + Mathf.Max(1, delayFrames);
+			bool wasPending = _pendingDeferredHumanTerritoryVisualOnlyRefresh;
+			if (!wasPending || earliestFrame < _pendingDeferredHumanTerritoryVisualOnlyRefreshEarliestFrame)
+			{
+				_pendingDeferredHumanTerritoryVisualOnlyRefreshEarliestFrame = earliestFrame;
+			}
+
+			_pendingDeferredHumanTerritoryVisualOnlyRefresh = true;
+			_pendingDeferredHumanTerritoryVisualOnlyRefreshSource = sourceTag ?? "dirtycash-territory-visual";
+			_pendingDeferredHumanTerritoryVisualOnlyRefreshLightweight = wasPending
+				? (_pendingDeferredHumanTerritoryVisualOnlyRefreshLightweight && lightweight)
+				: lightweight;
+			if (!wasPending)
+			{
+				_pendingDeferredHumanTerritoryVisualOnlyRefreshWaitAttempts = 0;
+				VerificationLog("Compat", $"deferred-human-territory-visual-refresh-scheduled source={_pendingDeferredHumanTerritoryVisualOnlyRefreshSource} frame={Time.frameCount} earliest={_pendingDeferredHumanTerritoryVisualOnlyRefreshEarliestFrame} mode={(_pendingDeferredHumanTerritoryVisualOnlyRefreshLightweight ? "light" : "full")}");
+			}
+		}
+
+		private static void FlushDeferredHumanTerritoryVisualOnlyRefresh(string sourceTag)
+		{
+			if (!_pendingDeferredHumanTerritoryVisualOnlyRefresh)
+			{
+				return;
+			}
+
+			if (Time.frameCount < _pendingDeferredHumanTerritoryVisualOnlyRefreshEarliestFrame)
+			{
+				return;
+			}
+
+			bool fullTerritoryColorRefresh = !_pendingDeferredHumanTerritoryVisualOnlyRefreshLightweight;
+			if (TryForceRefreshHumanTerritoryVisuals(out string waitReason, fullTerritoryColorRefresh))
+			{
+				VerificationLog("Compat", $"deferred-human-territory-visual-refresh-complete source={_pendingDeferredHumanTerritoryVisualOnlyRefreshSource}->{sourceTag} attempts={_pendingDeferredHumanTerritoryVisualOnlyRefreshWaitAttempts} frame={Time.frameCount} mode={(fullTerritoryColorRefresh ? "full" : "light")}");
+				_pendingDeferredHumanTerritoryVisualOnlyRefresh = false;
+				_pendingDeferredHumanTerritoryVisualOnlyRefreshEarliestFrame = -1;
+				_pendingDeferredHumanTerritoryVisualOnlyRefreshWaitAttempts = 0;
+				_pendingDeferredHumanTerritoryVisualOnlyRefreshSource = string.Empty;
+				_pendingDeferredHumanTerritoryVisualOnlyRefreshLightweight = false;
+				return;
+			}
+
+			if (!string.Equals(_lastDeferredHumanTerritoryRefreshWaitReason, waitReason, StringComparison.Ordinal))
+			{
+				_lastDeferredHumanTerritoryRefreshWaitReason = waitReason;
+				VerificationLog("Compat", $"deferred-human-territory-visual-refresh-wait source={_pendingDeferredHumanTerritoryVisualOnlyRefreshSource}->{sourceTag} reason={waitReason} frame={Time.frameCount}");
+			}
+
+			_pendingDeferredHumanTerritoryVisualOnlyRefreshWaitAttempts++;
+			_pendingDeferredHumanTerritoryVisualOnlyRefreshEarliestFrame = Time.frameCount + Mathf.Min(30, 5 + (_pendingDeferredHumanTerritoryVisualOnlyRefreshWaitAttempts * 2));
 		}
 
 		private static bool TryGetHumanPlayer(out PlayerInfo humanPlayer)
@@ -3424,6 +4189,16 @@ public partial class GameplayTweaksPlugin
 				IModuleConfig config = __instance?.ModuleConfig;
 				bool isDirtyBackroom = IsHumanOwnedDirtyCashBackroomModule(config, q.container, q.pid);
 				bool isPlayerLegalBusiness = IsHumanOwnedPlayerLegalDirtyCashBusinessModule(config, q.container, q.pid);
+				if (isPlayerLegalBusiness && DoesAfterProhibitionEconomyOwnPlayerLegalBusinessConsumerMutation())
+				{
+					if (!isDirtyBackroom)
+					{
+						return;
+					}
+
+					isPlayerLegalBusiness = false;
+				}
+
 				if (!isDirtyBackroom && !isPlayerLegalBusiness)
 				{
 					return;
@@ -3451,12 +4226,34 @@ public partial class GameplayTweaksPlugin
 					" result=" +
 					__result);
 
+				if (isPlayerLegalBusiness)
+				{
+					LogAfterProhibitionEconomyPlayerLegalBusinessConsumerBridge(
+						q.container,
+						moduleId,
+						initial,
+						enabled,
+						__result,
+						consumeDays: 0,
+						currentDay: 0,
+						lastUpdateDay: 0,
+						source: "consumer-update");
+				}
+
 				if (enabled && isDirtyBackroom)
 				{
 					RequestDeferredIllegalBackroomVisualRefresh(q.container, initial ? "consumer-enabled-initial" : "consumer-enabled");
 				}
 
-				LogDirtyCashConsumerIdleState(__instance, q, initial, enabled, __result, label, isPlayerLegalBusiness ? LoggedPlayerLegalBusinessConsumerIdleStates : LoggedIllegalBackroomConsumerIdleStates);
+				LogDirtyCashConsumerIdleState(
+					__instance,
+					q,
+					initial,
+					enabled,
+					__result,
+					label,
+					isPlayerLegalBusiness,
+					isPlayerLegalBusiness ? LoggedPlayerLegalBusinessConsumerIdleStates : LoggedIllegalBackroomConsumerIdleStates);
 			}
 			catch (Exception ex)
 			{
@@ -3464,7 +4261,15 @@ public partial class GameplayTweaksPlugin
 			}
 		}
 
-		private static void LogDirtyCashConsumerIdleState(ConsumerModule module, ModuleQuery q, bool initial, bool enabled, ModuleResult result, string label, HashSet<string> idleLog)
+		private static void LogDirtyCashConsumerIdleState(
+			ConsumerModule module,
+			ModuleQuery q,
+			bool initial,
+			bool enabled,
+			ModuleResult result,
+			string label,
+			bool isPlayerLegalBusiness,
+			HashSet<string> idleLog)
 		{
 			if (module?.config?.sink == null || initial || !enabled || result != ModuleResult.Default)
 			{
@@ -3505,6 +4310,137 @@ public partial class GameplayTweaksPlugin
 				currentDay +
 				" lastUpdateDay=" +
 				lastUpdateDay);
+
+			if (isPlayerLegalBusiness)
+			{
+				LogAfterProhibitionEconomyPlayerLegalBusinessConsumerBridge(
+					q.container,
+					moduleId,
+					initial,
+					enabled,
+					result,
+					consumeDays,
+					currentDay,
+					lastUpdateDay,
+					source: "consumer-idle");
+			}
+		}
+
+		private static void LogAfterProhibitionEconomyPlayerLegalBusinessConsumerBridge(
+			Entity container,
+			string moduleId,
+			bool initial,
+			bool enabled,
+			ModuleResult result,
+			int consumeDays,
+			int currentDay,
+			int lastUpdateDay,
+			string source)
+		{
+			try
+			{
+				string summary = TryGetAfterProhibitionEconomyPlayerLegalBusinessConsumerRuntimeSummary(
+					container?.Id ?? EntityID.INVALID,
+					moduleId,
+					initial,
+					enabled,
+					result,
+					consumeDays,
+					currentDay,
+					lastUpdateDay);
+				if (!string.IsNullOrWhiteSpace(summary))
+				{
+					VerificationLog("EconomyConsumer", $"source={source} {summary}");
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Failed to log AfterProhibitionEconomy player legal business consumer bridge: " + ex.Message);
+			}
+		}
+
+		private static string TryGetAfterProhibitionEconomyPlayerLegalBusinessConsumerRuntimeSummary(
+			EntityID buildingId,
+			string moduleId,
+			bool initial,
+			bool enabled,
+			ModuleResult result,
+			int consumeDays,
+			int currentDay,
+			int lastUpdateDay)
+		{
+			Type economyType = GetAfterProhibitionEconomyPluginType();
+			if (economyType == null)
+			{
+				return string.Empty;
+			}
+
+			_afterProhibitionEconomyPlayerLegalBusinessConsumerRuntimeSummaryMethod =
+				_afterProhibitionEconomyPlayerLegalBusinessConsumerRuntimeSummaryMethod ??
+				AccessTools.Method(economyType, "GetPlayerLegalBusinessConsumerRuntimeSummary");
+			if (_afterProhibitionEconomyPlayerLegalBusinessConsumerRuntimeSummaryMethod == null)
+			{
+				return string.Empty;
+			}
+
+			object summary = _afterProhibitionEconomyPlayerLegalBusinessConsumerRuntimeSummaryMethod.Invoke(
+				null,
+				new object[]
+				{
+					buildingId,
+					moduleId,
+					initial,
+					enabled,
+					result.ToString(),
+					consumeDays,
+					currentDay,
+					lastUpdateDay
+				});
+			return summary as string ?? string.Empty;
+		}
+
+		private static bool DoesAfterProhibitionEconomyOwnPlayerLegalBusinessConsumerMutation()
+		{
+			try
+			{
+				Type economyType = GetAfterProhibitionEconomyPluginType();
+				if (economyType == null)
+				{
+					return false;
+				}
+
+				_afterProhibitionEconomyOwnsPlayerLegalBusinessConsumerMutationMethod =
+					_afterProhibitionEconomyOwnsPlayerLegalBusinessConsumerMutationMethod ??
+					AccessTools.Method(economyType, "OwnsPlayerLegalBusinessConsumerMutation");
+				object result = _afterProhibitionEconomyOwnsPlayerLegalBusinessConsumerMutationMethod?.Invoke(null, null);
+				return result is bool ownsMutation && ownsMutation;
+			}
+			catch
+			{
+				return false;
+			}
+		}
+
+		private static bool DoesAfterProhibitionEconomyOwnDirtyCashRuntimeSweepMutation()
+		{
+			try
+			{
+				Type economyType = GetAfterProhibitionEconomyPluginType();
+				if (economyType == null)
+				{
+					return false;
+				}
+
+				_afterProhibitionEconomyOwnsDirtyCashRuntimeSweepMutationMethod =
+					_afterProhibitionEconomyOwnsDirtyCashRuntimeSweepMutationMethod ??
+					AccessTools.Method(economyType, "OwnsDirtyCashRuntimeSweepMutation");
+				object result = _afterProhibitionEconomyOwnsDirtyCashRuntimeSweepMutationMethod?.Invoke(null, null);
+				return result is bool ownsMutation && ownsMutation;
+			}
+			catch
+			{
+				return false;
+			}
 		}
 
 		private static bool IsHumanOwnedIllegalBackroom(IModuleConfig config, Entity container, PlayerID pid)
@@ -3546,6 +4482,7 @@ public partial class GameplayTweaksPlugin
 
 			return pid.IsHumanPlayer || IsHumanOwnedBuilding(container);
 		}
+
 
 		private static bool ShouldTrackIllegalBackroomDirtyCashMoney(IModuleConfig config, Entity container, PlayerID pid)
 		{
@@ -3620,6 +4557,8 @@ public partial class GameplayTweaksPlugin
 				return false;
 			}
 
+			int amountInt = GameplayTweaksPlugin.ReadFixnum(amount);
+			int before = amountInt >= 1000 ? GameplayTweaksPlugin.ReadInventoryAmount(container, ModConstants.DIRTY_CASH_LABEL) : 0;
 			if (EnsureExternalDirtyCashAddIncomeMethod())
 			{
 				try
@@ -3631,6 +4570,11 @@ public partial class GameplayTweaksPlugin
 						_externalDirtyCashBackroomReason,
 						target
 					});
+					if (amountInt >= 1000)
+					{
+						int after = GameplayTweaksPlugin.ReadInventoryAmount(container, ModConstants.DIRTY_CASH_LABEL);
+						VerificationLog("DirtyCash", $"external-income-routed container={container.Id.id} amount={amountInt} before={before} after={after} target={target.id} source=dirtycash-economy-manager");
+					}
 					return true;
 				}
 				catch (Exception ex)
@@ -3646,6 +4590,11 @@ public partial class GameplayTweaksPlugin
 			}
 
 			inventory.data.Increment((Label)"dirty-cash", amount);
+			if (amountInt >= 1000)
+			{
+				int after = GameplayTweaksPlugin.ReadInventoryAmount(container, ModConstants.DIRTY_CASH_LABEL);
+				VerificationLog("DirtyCash", $"external-income-fallback container={container.Id.id} amount={amountInt} before={before} after={after} target={target.id} source=inventory-increment");
+			}
 			return true;
 		}
 
@@ -3701,6 +4650,8 @@ public partial class GameplayTweaksPlugin
 
 			try
 			{
+				int detachedPatchGroups = 0;
+
 				MethodInfo consumerDoConsumeAndPayMethod = AccessTools.Method(typeof(ConsumerModule), "DoConsumeAndPay", new Type[]
 				{
 					typeof(ModuleQuery),
@@ -3708,21 +4659,31 @@ public partial class GameplayTweaksPlugin
 					typeof(Fixnum),
 					typeof(int)
 				});
-				if (consumerDoConsumeAndPayMethod != null)
-				{
-					_compatHarmony.Unpatch(consumerDoConsumeAndPayMethod, HarmonyPatchType.Prefix, ExternalDirtyCashHarmonyId);
-					_compatHarmony.Unpatch(consumerDoConsumeAndPayMethod, HarmonyPatchType.Postfix, ExternalDirtyCashHarmonyId);
-				}
+				detachedPatchGroups += UnpatchExternalDirtyCashMethod(consumerDoConsumeAndPayMethod, "ConsumerModule.DoConsumeAndPay");
 
-				MethodInfo manufactureDoConsumeAndProduceMethod = AccessTools.Method(typeof(ManufactureModule), "DoConsumeAndProduce", new Type[]
+				MethodInfo manufactureDoConsumeAndProduceOuterMethod = AccessTools.Method(typeof(ManufactureModule), "DoConsumeAndProduce", new Type[]
 				{
 					typeof(ModuleQuery),
 					typeof(InventoryModule)
 				});
-				if (manufactureDoConsumeAndProduceMethod != null)
+				detachedPatchGroups += UnpatchExternalDirtyCashMethod(manufactureDoConsumeAndProduceOuterMethod, "ManufactureModule.DoConsumeAndProduce.outer");
+
+				MethodInfo manufactureDoConsumeAndProduceInnerMethod = AccessTools.Method(typeof(ManufactureModule), "DoConsumeAndProduce", new Type[]
 				{
-					_compatHarmony.Unpatch(manufactureDoConsumeAndProduceMethod, HarmonyPatchType.Prefix, ExternalDirtyCashHarmonyId);
-				}
+					typeof(InventoryModule),
+					typeof(Recipe),
+					typeof(ModuleQuery)
+				});
+				detachedPatchGroups += UnpatchExternalDirtyCashMethod(manufactureDoConsumeAndProduceInnerMethod, "ManufactureModule.DoConsumeAndProduce.inner");
+
+				MethodInfo recipeProduceAllItemsMethod = AccessTools.Method(typeof(Recipe), "ProduceAllItems", new Type[]
+				{
+					typeof(ManufactureModuleConfig)
+				});
+				detachedPatchGroups += UnpatchExternalDirtyCashMethod(recipeProduceAllItemsMethod, "Recipe.ProduceAllItems");
+
+				MethodInfo manufactureConfigProduceMfgItemsMethod = AccessTools.Method(typeof(ManufactureModuleConfig), "ProduceMfgItems");
+				detachedPatchGroups += UnpatchExternalDirtyCashMethod(manufactureConfigProduceMfgItemsMethod, "ManufactureModuleConfig.ProduceMfgItems");
 
 				MethodInfo doChangeMoneyEntityMethod = AccessTools.Method(typeof(PlayerFinances), "DoChangeMoney", new Type[]
 				{
@@ -3731,21 +4692,46 @@ public partial class GameplayTweaksPlugin
 					typeof(MoneyReason),
 					typeof(EntityID?)
 				});
-				if (doChangeMoneyEntityMethod != null)
-				{
-					_compatHarmony.Unpatch(doChangeMoneyEntityMethod, HarmonyPatchType.Prefix, ExternalDirtyCashHarmonyId);
-				}
+				detachedPatchGroups += UnpatchExternalDirtyCashMethod(doChangeMoneyEntityMethod, "PlayerFinances.DoChangeMoney");
 
 				_externalDirtyCashOriginalOverridesRemoved = true;
 				if (!_loggedExternalDirtyCashOriginalOverrideRemoval)
 				{
 					_loggedExternalDirtyCashOriginalOverrideRemoval = true;
-					Debug.Log("[GameplayTweaks] DirtyCashEconomy original consumer/manufacture income overrides detached for human illegal backrooms; GameplayTweaks bridge will route dirty cash on vanilla module flow.");
+					Debug.Log("[GameplayTweaks] DirtyCashEconomy original consumer/manufacture income overrides detached for human illegal backrooms; source/shop module installation restored while preserving DirtyCashEconomy convo/delivery UI patches. patchGroups=" + detachedPatchGroups);
 				}
 			}
 			catch (Exception ex)
 			{
 				Debug.LogWarning("[GameplayTweaks] Failed to detach DirtyCashEconomy original overrides: " + ex.Message);
+			}
+		}
+
+		private static int UnpatchExternalDirtyCashMethod(MethodInfo method, string label)
+		{
+			if (method == null || _compatHarmony == null)
+			{
+				return 0;
+			}
+
+			int detachedPatchGroups = 0;
+			UnpatchExternalDirtyCashMethodPatch(method, label, HarmonyPatchType.Prefix, ref detachedPatchGroups);
+			UnpatchExternalDirtyCashMethodPatch(method, label, HarmonyPatchType.Postfix, ref detachedPatchGroups);
+			UnpatchExternalDirtyCashMethodPatch(method, label, HarmonyPatchType.Transpiler, ref detachedPatchGroups);
+			UnpatchExternalDirtyCashMethodPatch(method, label, HarmonyPatchType.Finalizer, ref detachedPatchGroups);
+			return detachedPatchGroups;
+		}
+
+		private static void UnpatchExternalDirtyCashMethodPatch(MethodInfo method, string label, HarmonyPatchType patchType, ref int detachedPatchGroups)
+		{
+			try
+			{
+				_compatHarmony.Unpatch(method, patchType, ExternalDirtyCashHarmonyId);
+				detachedPatchGroups++;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Failed to detach DirtyCashEconomy patch method=" + label + " type=" + patchType + ": " + ex.Message);
 			}
 		}
 
@@ -3988,10 +4974,20 @@ public partial class GameplayTweaksPlugin
 
 		private static List<Entity> GetHumanControlledDirtyCashBackroomBuildings()
 		{
+			int currentDay = global::Game.Game.ctx?.clock != null
+				? global::Game.Game.ctx.clock.Now.days
+				: int.MinValue;
+			if (_cachedDirtyCashBackroomCandidates != null && _lastDirtyCashBackroomCandidateDay == currentDay)
+			{
+				return _cachedDirtyCashBackroomCandidates;
+			}
+
 			List<Entity> results = new List<Entity>();
 			IEnumerable<Entity> buildings = global::Game.Game.ctx?.entityman?.GetCachedEntitiesBuildingsUnsafe();
 			if (buildings == null)
 			{
+				_cachedDirtyCashBackroomCandidates = results;
+				_lastDirtyCashBackroomCandidateDay = currentDay;
 				return results;
 			}
 
@@ -4010,6 +5006,8 @@ public partial class GameplayTweaksPlugin
 				results.Add(building);
 			}
 
+			_cachedDirtyCashBackroomCandidates = results;
+			_lastDirtyCashBackroomCandidateDay = currentDay;
 			return results;
 		}
 
@@ -4044,21 +5042,612 @@ public partial class GameplayTweaksPlugin
 			}
 		}
 
+		private static void TryRepairEmptyBusinessModulesFromConfig(string source, bool force)
+		{
+			if (global::Game.Game.ctx?.entityman == null || global::Game.Game.ctx?.clock == null)
+			{
+				return;
+			}
+
+			if (ShouldDelegateBusinessRepairAndStockRefreshToAfterProhibitionEconomy(source))
+			{
+				return;
+			}
+
+			SimTime now = global::Game.Game.ctx.clock.Now;
+			if (!force && _lastEmptyBusinessModuleRepairDay == now.days)
+			{
+				return;
+			}
+
+			_lastEmptyBusinessModuleRepairDay = now.days;
+			int candidates = 0;
+			int repaired = 0;
+			int failed = 0;
+			int stockRefreshCandidates = 0;
+			int stockRefreshed = 0;
+			int stockRefreshFailed = 0;
+			IEnumerable<Entity> buildings = global::Game.Game.ctx.entityman.GetCachedEntitiesBuildingsUnsafe();
+			if (buildings == null)
+			{
+				return;
+			}
+
+			foreach (Entity building in buildings)
+			{
+				if (!CanRepairBusinessModules(building))
+				{
+					continue;
+				}
+
+				Entity biz = BuildingUtil.FindBizForBuilding(building);
+				BizConfig config = biz?.components?.biz?.Config;
+				List<Label> moduleIds = GetBusinessModuleIdsForRepair(biz, config);
+				if (moduleIds == null || moduleIds.Count == 0)
+				{
+					continue;
+				}
+
+				List<Label> unexpectedModuleIds = GetUnexpectedBusinessModuleIds(building.components.modules, moduleIds);
+				List<Label> missingModuleIds = GetInstallableMissingBusinessModuleIds(building.components.modules, moduleIds);
+				if (unexpectedModuleIds.Count == 0 && missingModuleIds.Count == 0)
+				{
+					continue;
+				}
+
+				candidates++;
+				try
+				{
+					biz.data.biz.modules = moduleIds;
+					if (unexpectedModuleIds.Count > 0)
+					{
+						building.components.modules.RemoveModules(unexpectedModuleIds, shutdown: false);
+						missingModuleIds = GetInstallableMissingBusinessModuleIds(building.components.modules, moduleIds);
+					}
+
+					if (missingModuleIds.Count > 0)
+					{
+						building.components.modules.InstallModules(missingModuleIds, now);
+					}
+
+					if (HasAnyExpectedBusinessModuleInstalled(building.components.modules, moduleIds) && !HasMissingInstallableBusinessModule(building.components.modules, moduleIds))
+					{
+						repaired++;
+						LogEmptyBusinessModuleRepair(source, building, biz, missingModuleIds);
+					}
+					else
+					{
+						failed++;
+						LogBusinessModuleRepairFailure(source, building, biz, moduleIds);
+					}
+				}
+				catch (Exception ex)
+				{
+					failed++;
+					Debug.LogWarning("[GameplayTweaks] Empty business module repair failed for building=" +
+						(building?.Id.ToString() ?? "null") +
+						" biz=" +
+						(biz?.Id.ToString() ?? "null") +
+						": " +
+						ex.Message);
+				}
+			}
+
+			TryRefreshNpcPurchaseStockFromInstalledSources(source, now, out stockRefreshCandidates, out stockRefreshed, out stockRefreshFailed);
+
+			if (candidates > 0 || failed > 0 || stockRefreshCandidates > 0 || stockRefreshFailed > 0)
+			{
+				Debug.Log("[GameplayTweaks] Empty business module repair source=" +
+					source +
+					" candidates=" +
+					candidates +
+					" repaired=" +
+					repaired +
+					" failed=" +
+					failed +
+					" stockCandidates=" +
+					stockRefreshCandidates +
+					" stockRefreshed=" +
+					stockRefreshed +
+					" stockFailed=" +
+					stockRefreshFailed +
+					" day=" +
+					now.days);
+			}
+		}
+
+		private static bool ShouldDelegateBusinessRepairAndStockRefreshToAfterProhibitionEconomy(string source)
+		{
+			try
+			{
+				if (!TryGetAfterProhibitionEconomyOwnership(
+					out bool ownsPurchaseStockRefresh,
+					out bool ownsEmptyBusinessModuleRepair,
+					out bool ownsShopAccessClassification,
+					out bool ownsCivicPurchaseAccessClassification,
+					out bool ownsDirtyCashRoutingClassification,
+					out bool ownsDirtyCashRuntimeSweepClassification,
+					out bool ownsPlayerLegalBusinessConsumerClassification,
+					out bool ownsFrontResourceClassification,
+					out bool ownsRouteShopOrderClassification,
+					out string summary))
+				{
+					return false;
+				}
+
+				if (!ownsPurchaseStockRefresh || !ownsEmptyBusinessModuleRepair)
+				{
+					return false;
+				}
+
+				if (!_loggedAfterProhibitionEconomyRepairDelegation)
+				{
+					_loggedAfterProhibitionEconomyRepairDelegation = true;
+					VerificationLog(
+						"Economy",
+						$"source=afterprohibition-economy businessRepair=delegated purchaseStock=delegated shopAccess={(ownsShopAccessClassification ? "bridge-available" : "fallback")} bankWarehouseAccess={(ownsCivicPurchaseAccessClassification ? "bridge-available" : "fallback")} dirtyCashRouting={(ownsDirtyCashRoutingClassification ? "bridge-available" : "fallback")} dirtyCashRuntimeSweeps={(ownsDirtyCashRuntimeSweepClassification ? "bridge-available" : "gameplaytweaks-execution")} playerLegalBusinessConsumer={(ownsPlayerLegalBusinessConsumerClassification ? "bridge-available" : "gameplaytweaks-execution")} frontResource={(ownsFrontResourceClassification ? "bridge-available" : "fallback")} routeShopOrders={(ownsRouteShopOrderClassification ? "bridge-available" : "fallback")} behaviorFallback=True repairFallback=False trigger={source} {summary}");
+				}
+
+				return true;
+			}
+			catch (Exception ex)
+			{
+				VerificationLog("Economy", $"source=gameplaytweaks fallback=True reason=afterprohibition-economy-delegation-error error={ex.GetType().Name}:{ex.Message}");
+				return false;
+			}
+		}
+
+		private static bool TryGetAfterProhibitionEconomyOwnership(
+			out bool ownsPurchaseStockRefresh,
+			out bool ownsEmptyBusinessModuleRepair,
+			out bool ownsShopAccessClassification,
+			out bool ownsCivicPurchaseAccessClassification,
+			out bool ownsDirtyCashRoutingClassification,
+			out bool ownsDirtyCashRuntimeSweepClassification,
+			out bool ownsPlayerLegalBusinessConsumerClassification,
+			out bool ownsFrontResourceClassification,
+			out bool ownsRouteShopOrderClassification,
+			out string summary)
+		{
+			ownsPurchaseStockRefresh = false;
+			ownsEmptyBusinessModuleRepair = false;
+			ownsShopAccessClassification = false;
+			ownsCivicPurchaseAccessClassification = false;
+			ownsDirtyCashRoutingClassification = false;
+			ownsDirtyCashRuntimeSweepClassification = false;
+			ownsPlayerLegalBusinessConsumerClassification = false;
+			ownsFrontResourceClassification = false;
+			ownsRouteShopOrderClassification = false;
+			summary = string.Empty;
+
+			if (_afterProhibitionEconomyOwnershipLookupComplete)
+			{
+				AfterProhibitionEconomyOwnershipSnapshot cached = _afterProhibitionEconomyOwnershipSnapshot;
+				if (!cached.Available)
+				{
+					return false;
+				}
+
+				ownsPurchaseStockRefresh = cached.OwnsPurchaseStockRefresh;
+				ownsEmptyBusinessModuleRepair = cached.OwnsEmptyBusinessModuleRepair;
+				ownsShopAccessClassification = cached.OwnsShopAccessClassification;
+				ownsCivicPurchaseAccessClassification = cached.OwnsCivicPurchaseAccessClassification;
+				ownsDirtyCashRoutingClassification = cached.OwnsDirtyCashRoutingClassification;
+				ownsDirtyCashRuntimeSweepClassification = cached.OwnsDirtyCashRuntimeSweepClassification;
+				ownsPlayerLegalBusinessConsumerClassification = cached.OwnsPlayerLegalBusinessConsumerClassification;
+				ownsFrontResourceClassification = cached.OwnsFrontResourceClassification;
+				ownsRouteShopOrderClassification = cached.OwnsRouteShopOrderClassification;
+				summary = cached.Summary ?? string.Empty;
+				return true;
+			}
+
+			Type economyType = GetAfterProhibitionEconomyPluginType();
+			if (economyType == null)
+			{
+				_afterProhibitionEconomyOwnershipSnapshot = new AfterProhibitionEconomyOwnershipSnapshot
+				{
+					Available = false
+				};
+				_afterProhibitionEconomyOwnershipLookupComplete = true;
+				return false;
+			}
+
+			_afterProhibitionEconomyOwnsPurchaseStockRefreshMethod =
+				_afterProhibitionEconomyOwnsPurchaseStockRefreshMethod ?? AccessTools.Method(economyType, "OwnsPurchaseStockRefresh");
+			_afterProhibitionEconomyOwnsEmptyBusinessModuleRepairMethod =
+				_afterProhibitionEconomyOwnsEmptyBusinessModuleRepairMethod ?? AccessTools.Method(economyType, "OwnsEmptyBusinessModuleRepair");
+			_afterProhibitionEconomyOwnsShopAccessClassificationMethod =
+				_afterProhibitionEconomyOwnsShopAccessClassificationMethod ?? AccessTools.Method(economyType, "OwnsShopAccessClassification");
+			_afterProhibitionEconomyOwnsCivicPurchaseAccessClassificationMethod =
+				_afterProhibitionEconomyOwnsCivicPurchaseAccessClassificationMethod ?? AccessTools.Method(economyType, "OwnsCivicPurchaseAccessClassification");
+			_afterProhibitionEconomyOwnsDirtyCashRoutingClassificationMethod =
+				_afterProhibitionEconomyOwnsDirtyCashRoutingClassificationMethod ?? AccessTools.Method(economyType, "OwnsDirtyCashRoutingClassification");
+			_afterProhibitionEconomyOwnsDirtyCashRuntimeSweepClassificationMethod =
+				_afterProhibitionEconomyOwnsDirtyCashRuntimeSweepClassificationMethod ?? AccessTools.Method(economyType, "OwnsDirtyCashRuntimeSweepClassification");
+			_afterProhibitionEconomyOwnsPlayerLegalBusinessConsumerClassificationMethod =
+				_afterProhibitionEconomyOwnsPlayerLegalBusinessConsumerClassificationMethod ?? AccessTools.Method(economyType, "OwnsPlayerLegalBusinessConsumerClassification");
+			_afterProhibitionEconomyOwnsFrontResourceClassificationMethod =
+				_afterProhibitionEconomyOwnsFrontResourceClassificationMethod ?? AccessTools.Method(economyType, "OwnsFrontResourceClassification");
+			_afterProhibitionEconomyOwnsRouteShopOrderClassificationMethod =
+				_afterProhibitionEconomyOwnsRouteShopOrderClassificationMethod ?? AccessTools.Method(economyType, "OwnsRouteShopOrderClassification");
+			_afterProhibitionEconomyOwnershipSummaryMethod =
+				_afterProhibitionEconomyOwnershipSummaryMethod ?? AccessTools.Method(economyType, "GetEconomyOwnershipSummary");
+
+			if (_afterProhibitionEconomyOwnsPurchaseStockRefreshMethod == null || _afterProhibitionEconomyOwnsEmptyBusinessModuleRepairMethod == null)
+			{
+				_afterProhibitionEconomyOwnershipSnapshot = new AfterProhibitionEconomyOwnershipSnapshot
+				{
+					Available = false
+				};
+				_afterProhibitionEconomyOwnershipLookupComplete = true;
+				return false;
+			}
+
+			object purchaseStockValue = _afterProhibitionEconomyOwnsPurchaseStockRefreshMethod.Invoke(null, null);
+			object moduleRepairValue = _afterProhibitionEconomyOwnsEmptyBusinessModuleRepairMethod.Invoke(null, null);
+			object shopAccessValue = _afterProhibitionEconomyOwnsShopAccessClassificationMethod?.Invoke(null, null);
+			object civicAccessValue = _afterProhibitionEconomyOwnsCivicPurchaseAccessClassificationMethod?.Invoke(null, null);
+			object dirtyCashRoutingValue = _afterProhibitionEconomyOwnsDirtyCashRoutingClassificationMethod?.Invoke(null, null);
+			object dirtyCashRuntimeSweepValue = _afterProhibitionEconomyOwnsDirtyCashRuntimeSweepClassificationMethod?.Invoke(null, null);
+			object playerLegalBusinessConsumerValue = _afterProhibitionEconomyOwnsPlayerLegalBusinessConsumerClassificationMethod?.Invoke(null, null);
+			object frontResourceValue = _afterProhibitionEconomyOwnsFrontResourceClassificationMethod?.Invoke(null, null);
+			object routeShopOrderValue = _afterProhibitionEconomyOwnsRouteShopOrderClassificationMethod?.Invoke(null, null);
+			ownsPurchaseStockRefresh = purchaseStockValue is bool purchaseStockEnabled && purchaseStockEnabled;
+			ownsEmptyBusinessModuleRepair = moduleRepairValue is bool moduleRepairEnabled && moduleRepairEnabled;
+			ownsShopAccessClassification = shopAccessValue is bool shopAccessEnabled && shopAccessEnabled;
+			ownsCivicPurchaseAccessClassification = civicAccessValue is bool civicAccessEnabled && civicAccessEnabled;
+			ownsDirtyCashRoutingClassification = dirtyCashRoutingValue is bool dirtyCashRoutingEnabled && dirtyCashRoutingEnabled;
+			ownsDirtyCashRuntimeSweepClassification = dirtyCashRuntimeSweepValue is bool dirtyCashRuntimeSweepEnabled && dirtyCashRuntimeSweepEnabled;
+			ownsPlayerLegalBusinessConsumerClassification = playerLegalBusinessConsumerValue is bool playerLegalBusinessConsumerEnabled && playerLegalBusinessConsumerEnabled;
+			ownsFrontResourceClassification = frontResourceValue is bool frontResourceEnabled && frontResourceEnabled;
+			ownsRouteShopOrderClassification = routeShopOrderValue is bool routeShopOrderEnabled && routeShopOrderEnabled;
+			summary = _afterProhibitionEconomyOwnershipSummaryMethod?.Invoke(null, null) as string ?? string.Empty;
+			_afterProhibitionEconomyOwnershipSnapshot = new AfterProhibitionEconomyOwnershipSnapshot
+			{
+				Available = true,
+				OwnsPurchaseStockRefresh = ownsPurchaseStockRefresh,
+				OwnsEmptyBusinessModuleRepair = ownsEmptyBusinessModuleRepair,
+				OwnsShopAccessClassification = ownsShopAccessClassification,
+				OwnsCivicPurchaseAccessClassification = ownsCivicPurchaseAccessClassification,
+				OwnsDirtyCashRoutingClassification = ownsDirtyCashRoutingClassification,
+				OwnsDirtyCashRuntimeSweepClassification = ownsDirtyCashRuntimeSweepClassification,
+				OwnsPlayerLegalBusinessConsumerClassification = ownsPlayerLegalBusinessConsumerClassification,
+				OwnsFrontResourceClassification = ownsFrontResourceClassification,
+				OwnsRouteShopOrderClassification = ownsRouteShopOrderClassification,
+				Summary = summary
+			};
+			_afterProhibitionEconomyOwnershipLookupComplete = true;
+			return true;
+		}
+
+		private static bool CanRepairBusinessModules(Entity building)
+		{
+			if (building?.components?.building == null || building.components.modules == null || building.data?.building == null)
+			{
+				return false;
+			}
+
+			if (!building.components.building.IsBusinessBuildingType || building.components.building.IsSafehouse || building.components.building.IsOutpost)
+			{
+				return false;
+			}
+
+			if (building.data.building.controlled.Get().IsHumanPlayer)
+			{
+				return false;
+			}
+
+			List<IModule> slots = building.components.modules.GetAllSlotsUnsafe();
+			return slots != null && slots.Count > 0;
+		}
+
+		private static List<Label> GetBusinessModuleIdsForRepair(Entity biz, BizConfig config)
+		{
+			if (biz?.data?.biz == null || config == null)
+			{
+				return null;
+			}
+
+			List<Label> existingModules = biz.data.biz.modules;
+			if (existingModules != null && existingModules.Count > 0)
+			{
+				return existingModules;
+			}
+
+			if (config.modulesInBuilding == null || config.modulesInBuilding.Count == 0)
+			{
+				return null;
+			}
+
+			return config.PickModulesForBuilding(biz);
+		}
+
+		private static List<Label> GetInstallableMissingBusinessModuleIds(ModulesComponent modules, List<Label> expectedModuleIds)
+		{
+			List<Label> missing = new List<Label>();
+			if (modules == null || expectedModuleIds == null)
+			{
+				return missing;
+			}
+
+			foreach (Label moduleId in expectedModuleIds)
+			{
+				IModuleConfig moduleConfig = ModulesUtil.FindModuleDef(moduleId);
+				if (moduleConfig != null && !modules.HasModuleInstalled(moduleId) && HasAvailableSlotForModule(modules, moduleConfig))
+				{
+					missing.Add(moduleId);
+				}
+			}
+
+			return missing;
+		}
+
+		private static bool HasMissingInstallableBusinessModule(ModulesComponent modules, List<Label> expectedModuleIds)
+		{
+			return GetInstallableMissingBusinessModuleIds(modules, expectedModuleIds).Count > 0;
+		}
+
+		private static bool HasAnyExpectedBusinessModuleInstalled(ModulesComponent modules, List<Label> expectedModuleIds)
+		{
+			if (modules == null || expectedModuleIds == null || expectedModuleIds.Count == 0)
+			{
+				return false;
+			}
+
+			return expectedModuleIds.Any(moduleId => modules.HasModuleInstalled(moduleId));
+		}
+
+		private static void TryRefreshNpcPurchaseStockFromInstalledSources(string source, SimTime now, out int candidates, out int refreshed, out int failed)
+		{
+			candidates = 0;
+			refreshed = 0;
+			failed = 0;
+			IEnumerable<Entity> buildings = global::Game.Game.ctx?.entityman?.GetCachedEntitiesBuildingsUnsafe();
+			if (buildings == null)
+			{
+				return;
+			}
+
+			foreach (Entity building in buildings)
+			{
+				if (!CanRepairBusinessModules(building))
+				{
+					continue;
+				}
+
+				ModulesComponent modules = building.components.modules;
+				if (!HasInstalledPurchaseProducingModule(modules) || HasPositivePlayerBuyOffer(modules))
+				{
+					continue;
+				}
+
+				candidates++;
+				if (TryForceBusinessModulesUpdate(modules, now, source) && HasPositivePlayerBuyOffer(modules))
+				{
+					refreshed++;
+					LogBusinessPurchaseStockRefresh(source, building);
+				}
+				else
+				{
+					failed++;
+				}
+			}
+		}
+
+		private static bool HasInstalledPurchaseProducingModule(ModulesComponent modules)
+		{
+			if (modules?.bizmodules == null || modules.inventory == null)
+			{
+				return false;
+			}
+
+			try
+			{
+				foreach (IBizModule bizModule in modules.bizmodules)
+				{
+					IEnumerable<MfgItem> items = bizModule?.ProduceAllItemsInCurrentRecipe();
+					if (items != null && items.Any(item => !item.consumed))
+					{
+						return true;
+					}
+				}
+			}
+			catch
+			{
+			}
+
+			return false;
+		}
+
+		private static bool HasPositivePlayerBuyOffer(ModulesComponent modules)
+		{
+			if (modules?.inventory == null)
+			{
+				return false;
+			}
+
+			try
+			{
+				return modules.ProduceAllItemsPlayerCanBuyOrSell(PlayerID.HumanPlayer, playerBuys: true, playerSells: false).Any(element => element.qty.IsPositive);
+			}
+			catch
+			{
+				return false;
+			}
+		}
+
+		private static bool TryForceBusinessModulesUpdate(ModulesComponent modules, SimTime now, string source)
+		{
+			if (modules == null)
+			{
+				return false;
+			}
+
+			try
+			{
+				MethodInfo method = GetModulesComponentDoUpdateMethod();
+				if (method == null)
+				{
+					return false;
+				}
+
+				method.Invoke(modules, new object[]
+				{
+					now,
+					true
+				});
+				return true;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Purchase stock refresh failed source=" +
+					source +
+					" building=" +
+					(modules.entity?.Id.ToString() ?? "null") +
+					": " +
+					ex.GetType().Name +
+					":" +
+					ex.Message);
+				return false;
+			}
+		}
+
+		private static bool HasAvailableSlotForModule(ModulesComponent modules, IModuleConfig moduleConfig)
+		{
+			List<IModule> slots = modules?.GetAllSlotsUnsafe();
+			List<ModuleSlot> slotConfigs = modules?.Config?.slots;
+			if (slots == null || slotConfigs == null || moduleConfig == null)
+			{
+				return false;
+			}
+
+			int count = Math.Min(slots.Count, slotConfigs.Count);
+			for (int i = 0; i < count; i++)
+			{
+				if (slots[i] == null && slotConfigs[i]?.CanSlotHouseThisModule(moduleConfig) == true)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		private static List<Label> GetUnexpectedBusinessModuleIds(ModulesComponent modules, List<Label> expectedModuleIds)
+		{
+			List<Label> unexpected = new List<Label>();
+			List<IModule> slots = modules?.GetAllSlotsUnsafe();
+			if (slots == null || expectedModuleIds == null || expectedModuleIds.Count == 0)
+			{
+				return unexpected;
+			}
+
+			foreach (IModule slot in slots)
+			{
+				Label? installedId = slot?.ModuleConfig?.Id;
+				if (installedId.HasValue && !expectedModuleIds.Contains(installedId.Value))
+				{
+					unexpected.Add(installedId.Value);
+				}
+			}
+
+			return unexpected;
+		}
+
+		private static bool HasAnyInstalledModule(ModulesComponent modules)
+		{
+			return modules != null && HasAnyInstalledModule(modules.GetAllSlotsUnsafe());
+		}
+
+		private static bool HasAnyInstalledModule(List<IModule> slots)
+		{
+			return slots != null && slots.Any(slot => slot != null);
+		}
+
+		private static void LogEmptyBusinessModuleRepair(string source, Entity building, Entity biz, List<Label> moduleIds)
+		{
+			string key = (building?.Id.ToString() ?? "null") + "|" + (biz?.Id.ToString() ?? "null");
+			if (!LoggedEmptyBusinessModuleRepairs.Add(key))
+			{
+				return;
+			}
+
+			Debug.Log("[GameplayTweaks] Empty business module repaired source=" +
+				source +
+				" building=" +
+				(building?.Id.ToString() ?? "null") +
+				" biz=" +
+				(biz?.Id.ToString() ?? "null") +
+				" modules=" +
+				string.Join(",", moduleIds.Select(id => id.ToString()).ToArray()));
+		}
+
+		private static void LogBusinessPurchaseStockRefresh(string source, Entity building)
+		{
+			Entity biz = BuildingUtil.FindBizForBuilding(building);
+			string key = (building?.Id.ToString() ?? "null") + "|" + (biz?.Id.ToString() ?? "null");
+			if (!LoggedBusinessPurchaseStockRefreshes.Add(key))
+			{
+				return;
+			}
+
+			Debug.Log("[GameplayTweaks] Business purchase stock refreshed source=" +
+				source +
+				" building=" +
+				(building?.Id.ToString() ?? "null") +
+				" biz=" +
+				(biz?.Id.ToString() ?? "null"));
+		}
+
+		private static void LogBusinessModuleRepairFailure(string source, Entity building, Entity biz, List<Label> expectedModuleIds)
+		{
+			string key = source + "|" + (building?.Id.ToString() ?? "null") + "|" + (biz?.Id.ToString() ?? "null");
+			if (!LoggedBusinessModuleRepairFailures.Add(key) || LoggedBusinessModuleRepairFailures.Count > 25)
+			{
+				return;
+			}
+
+			ModulesComponent modules = building?.components?.modules;
+			List<Label> missing = expectedModuleIds?
+				.Where(moduleId => modules == null || !modules.HasModuleInstalled(moduleId))
+				.ToList() ?? new List<Label>();
+			List<IModule> slots = modules?.GetAllSlotsUnsafe();
+			IEnumerable<string> installed = slots == null
+				? Enumerable.Empty<string>()
+				: slots.Select(slot => slot?.ModuleConfig?.Id.ToString() ?? "empty");
+
+			Debug.LogWarning("[GameplayTweaks] Empty business module repair incomplete source=" +
+				source +
+				" building=" +
+				(building?.Id.ToString() ?? "null") +
+				" biz=" +
+				(biz?.Id.ToString() ?? "null") +
+				" expected=" +
+				string.Join(",", expectedModuleIds?.Select(id => id.ToString()).ToArray() ?? new string[0]) +
+				" missing=" +
+				string.Join(",", missing.Select(id => id.ToString()).ToArray()) +
+				" installed=" +
+				string.Join(",", installed.ToArray()));
+		}
+
 		private static void LogIllegalBackroomSafetySweepSummary(string source, SimTime now, bool initial, int candidateCount, int appliedCount, int observedCount, int alreadyUpdatedCount)
 		{
-			string logKey = source +
-				"|day=" +
-				now.days +
-				"|initial=" +
-				initial +
-				"|candidates=" +
-				candidateCount +
-				"|applied=" +
-				appliedCount +
-				"|observed=" +
-				observedCount +
-				"|alreadyUpdated=" +
-				alreadyUpdatedCount;
+			bool noWork = candidateCount == 0 && appliedCount == 0 && observedCount == 0 && alreadyUpdatedCount == 0;
+			string logKey = noWork
+				? source + "|zero-work|initial=" + initial
+				: source +
+					"|day=" +
+					now.days +
+					"|initial=" +
+					initial +
+					"|candidates=" +
+					candidateCount +
+					"|applied=" +
+					appliedCount +
+					"|observed=" +
+					observedCount +
+					"|alreadyUpdated=" +
+					alreadyUpdatedCount;
 			if (!LoggedIllegalBackroomSafetySweepSummaries.Add(logKey))
 			{
 				return;
@@ -4077,7 +5666,51 @@ public partial class GameplayTweaksPlugin
 				" initial=" +
 				initial +
 				" day=" +
-				now.days);
+				now.days +
+				(noWork ? " repeatZeroWorkSuppressed=True" : string.Empty));
+
+			LogAfterProhibitionEconomyDirtyCashRuntimeSweepBridge(source);
+		}
+
+		private static void LogAfterProhibitionEconomyDirtyCashRuntimeSweepBridge(string source)
+		{
+			try
+			{
+				string summary = TryGetAfterProhibitionEconomyDirtyCashRuntimeSweepSummary(source);
+				if (!string.IsNullOrWhiteSpace(summary))
+				{
+					VerificationLog("EconomySweep", summary);
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Failed to log AfterProhibitionEconomy Dirty Cash runtime sweep bridge: " + ex.Message);
+			}
+		}
+
+		private static string TryGetAfterProhibitionEconomyDirtyCashRuntimeSweepSummary(string source)
+		{
+			Type economyType = GetAfterProhibitionEconomyPluginType();
+			if (economyType == null)
+			{
+				return string.Empty;
+			}
+
+			_afterProhibitionEconomyDirtyCashRuntimeSweepSummaryMethod =
+				_afterProhibitionEconomyDirtyCashRuntimeSweepSummaryMethod ??
+				AccessTools.Method(economyType, "GetDirtyCashRuntimeSweepSummary");
+			if (_afterProhibitionEconomyDirtyCashRuntimeSweepSummaryMethod == null)
+			{
+				return string.Empty;
+			}
+
+			object summary = _afterProhibitionEconomyDirtyCashRuntimeSweepSummaryMethod.Invoke(
+				null,
+				new object[]
+				{
+					source
+				});
+			return summary as string ?? string.Empty;
 		}
 
 		private static string GetControllingPlayerString(Entity container)
@@ -4107,6 +5740,14 @@ public partial class GameplayTweaksPlugin
 
 				IModule installedModule = Traverse.Create(currentSlot).Field("module").GetValue<IModule>();
 				object slotdef = Traverse.Create(currentSlot).Field("slotdef").GetValue<object>();
+				IModuleConfig installedConfig = installedModule?.ModuleConfig;
+				if (installedModule != null && IsFrontRoomSlot(slotdef) && IsPlayerLegalDirtyCashBusinessModule(installedConfig))
+				{
+					FilterLegalFrontUpgradeChoices(__result, installedConfig);
+					LogLegalFrontUpgradeList(installedConfig, __result);
+					return;
+				}
+
 				if (!IsBackroomSlot(slotdef))
 				{
 					return;
@@ -4137,7 +5778,20 @@ public partial class GameplayTweaksPlugin
 		{
 			try
 			{
-				if (__result == null || __result.Count == 0 || !IsIllegalBackroomModule(module?.ModuleConfig))
+				if (__result == null || __result.Count == 0)
+				{
+					return;
+				}
+
+				IModuleConfig moduleConfig = module?.ModuleConfig;
+				if (IsPlayerLegalDirtyCashBusinessModule(moduleConfig))
+				{
+					FilterLegalFrontUpgradeChoices(__result, moduleConfig);
+					LogLegalFrontUpgradeList(moduleConfig, __result);
+					return;
+				}
+
+				if (!IsIllegalBackroomModule(moduleConfig))
 				{
 					return;
 				}
@@ -4157,6 +5811,44 @@ public partial class GameplayTweaksPlugin
 			}
 		}
 
+		private static void OwnedBizAddModulePopupInitializeOnPushPostfix(OwnedBizAddModulePopup __instance)
+		{
+			try
+			{
+				GameObject go = __instance?.GameObject;
+				if (go == null)
+				{
+					return;
+				}
+
+				OwnedBizController controller = Traverse.Create(__instance).Field("_controller").GetValue<OwnedBizController>();
+				object currentSlot = controller == null ? null : Traverse.Create(controller).Property("Model").Field("currentSlot").GetValue<object>();
+				object slotdef = currentSlot == null ? null : Traverse.Create(currentSlot).Field("slotdef").GetValue<object>();
+				IModule installedModule = currentSlot == null ? null : Traverse.Create(currentSlot).Field("module").GetValue<IModule>();
+				IModuleConfig installedConfig = installedModule?.ModuleConfig;
+				bool isUpgrade = __instance.IsUpgrade;
+
+				if (IsFrontRoomSlot(slotdef) || IsPlayerLegalDirtyCashBusinessModule(installedConfig))
+				{
+					go.SetText("Panel/Title", "Legal front");
+					go.SetText("Panel/Header", isUpgrade ? "Upgrade your legal front" : "Choose a legal front to operate here.");
+					LogOwnedBizModulePopupLabel("legal-front", isUpgrade, installedConfig);
+					return;
+				}
+
+				if (IsBackroomSlot(slotdef) || IsDirtyCashBackroomModule(installedConfig))
+				{
+					go.SetText("Panel/Title", "Backroom operation");
+					go.SetText("Panel/Header", isUpgrade ? "Upgrade your backroom operation" : "Choose a backroom operation to build here.");
+					LogOwnedBizModulePopupLabel("backroom", isUpgrade, installedConfig);
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Failed to label owned-biz module popup: " + ex.Message);
+			}
+		}
+
 		private static void CanInstallPostfix(OwnedBizController __instance, AddModuleDef moduledef, ref bool __result)
 		{
 			if (!__result)
@@ -4166,6 +5858,14 @@ public partial class GameplayTweaksPlugin
 
 			try
 			{
+				object currentSlot = Traverse.Create(__instance).Property("Model").Field("currentSlot").GetValue<object>();
+				object slotdef = currentSlot == null ? null : Traverse.Create(currentSlot).Field("slotdef").GetValue<object>();
+				if (IsBackroomSlot(slotdef) && IsFrontRoomChoiceForBackroomSlot(moduledef.config))
+				{
+					__result = false;
+					return;
+				}
+
 				if (ShouldBlockIllegalBackroomInstall(__instance, moduledef.config, out _))
 				{
 					__result = false;
@@ -4181,6 +5881,16 @@ public partial class GameplayTweaksPlugin
 		{
 			try
 			{
+				if (IsBackroomSlot(slotdef) && IsFrontRoomChoiceForBackroomSlot(moduledef.config))
+				{
+					Debug.LogWarning("[GameplayTweaks] Blocked front-room module install from backroom slot selected=" +
+						(moduledef.config?.Id.String ?? "null"));
+					OkPopup.ShowOk("That operation belongs in the legal business slot, not a backroom slot.", delegate
+					{
+					});
+					return false;
+				}
+
 				if (!ShouldBlockIllegalBackroomInstall(__instance, moduledef.config, out IModule conflictingModule))
 				{
 					if (!IsIllegalBackroomModule(moduledef.config))
@@ -4405,11 +6115,94 @@ public partial class GameplayTweaksPlugin
 
 			for (int i = defs.Count - 1; i >= 0; i--)
 			{
-				if (IsDisallowedBackroomChoice(defs[i].config))
+				if (IsDisallowedBackroomChoice(defs[i].config) || IsFrontRoomChoiceForBackroomSlot(defs[i].config))
 				{
 					defs.RemoveAt(i);
 				}
 			}
+		}
+
+		private static void FilterLegalFrontUpgradeChoices(List<AddModuleDef> defs, IModuleConfig currentConfig)
+		{
+			if (defs == null || defs.Count == 0)
+			{
+				return;
+			}
+
+			string currentId = currentConfig?.Id.String ?? string.Empty;
+			for (int i = defs.Count - 1; i >= 0; i--)
+			{
+				IModuleConfig config = defs[i].config;
+				string id = config?.Id.String ?? string.Empty;
+				if (string.Equals(id, currentId, StringComparison.OrdinalIgnoreCase) || !IsLegalFrontUpgradeChoice(config))
+				{
+					defs.RemoveAt(i);
+				}
+			}
+		}
+
+		private static bool IsLegalFrontUpgradeChoice(IModuleConfig config)
+		{
+			if (!IsPlayerLegalDirtyCashBusinessModule(config))
+			{
+				return false;
+			}
+
+			string id = config.Id.String;
+			return !string.Equals(id, "player-legal-biz-base", StringComparison.OrdinalIgnoreCase);
+		}
+
+		private static bool IsFrontRoomChoiceForBackroomSlot(IModuleConfig config)
+		{
+			if (config?.Common?.tags == null)
+			{
+				return false;
+			}
+
+			if (IsLegalBackroomChoice(config))
+			{
+				return false;
+			}
+
+			return IsPureLegalFrontChoice(config) ||
+				config.Common.tags.Contains(TagConstants.TAG_SAFEHOUSE_FRONTROOMS) ||
+				config.Common.tags.Contains((Label)"tag-player-legal-biz");
+		}
+
+		private static bool IsPureLegalFrontChoice(IModuleConfig config)
+		{
+			if (!IsPlayerLegalDirtyCashBusinessModule(config))
+			{
+				return false;
+			}
+
+			return !IsLegalBackroomChoice(config);
+		}
+
+		private static bool IsLegalBackroomChoice(IModuleConfig config)
+		{
+			if (!IsPlayerLegalDirtyCashBusinessModule(config))
+			{
+				return false;
+			}
+
+			string id = config.Id.String ?? string.Empty;
+			if (id.IndexOf("backroom", StringComparison.OrdinalIgnoreCase) >= 0 ||
+				id.IndexOf("distro", StringComparison.OrdinalIgnoreCase) >= 0)
+			{
+				return true;
+			}
+
+			ModuleCommon common = config.Common;
+			Label upgradeTag = common?.upgradetag ?? default(Label);
+			if (upgradeTag.IsNotSet)
+			{
+				return false;
+			}
+
+			string tag = upgradeTag.String ?? string.Empty;
+			return tag.StartsWith("tag-upgrade-booze-", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(tag, "tag-upgrade-supper-club", StringComparison.OrdinalIgnoreCase);
 		}
 
 		private static void FilterDuplicateIllegalBackroomChoices(List<AddModuleDef> defs, string currentFamily)
@@ -4488,6 +6281,48 @@ public partial class GameplayTweaksPlugin
 
 			TagList tags = Traverse.Create(slot).Field("tags").GetValue<TagList>();
 			return tags != null && tags.Contains(TagConstants.TAG_SAFEHOUSE_BACKROOMS);
+		}
+
+		private static bool IsFrontRoomSlot(object slot)
+		{
+			if (slot == null)
+			{
+				return false;
+			}
+
+			TagList tags = Traverse.Create(slot).Field("tags").GetValue<TagList>();
+			return tags != null && tags.Contains(TagConstants.TAG_SAFEHOUSE_FRONTROOMS);
+		}
+
+		private static void LogOwnedBizModulePopupLabel(string slotKind, bool isUpgrade, IModuleConfig config)
+		{
+			string moduleId = config?.Id.String ?? "none";
+			string key = slotKind + "|upgrade=" + isUpgrade + "|module=" + moduleId;
+			if (LoggedOwnedBizModulePopupLabels.Add(key))
+			{
+				VerificationLog("OwnedBizUI", $"module-popup-label slot={slotKind} upgrade={isUpgrade} module={moduleId}");
+			}
+		}
+
+		private static void LogLegalFrontUpgradeList(IModuleConfig currentConfig, List<AddModuleDef> defs)
+		{
+			if (currentConfig == null || defs == null)
+			{
+				return;
+			}
+
+			string currentId = currentConfig.Id.String ?? "unknown";
+			string key = currentId + "|count=" + defs.Count;
+			if (!LoggedLegalFrontUpgradeLists.Add(key))
+			{
+				return;
+			}
+
+			string sample = string.Join(",", defs
+				.Take(10)
+				.Select(def => def.config?.Id.String ?? "null")
+				.ToArray());
+			VerificationLog("OwnedBizUI", $"legal-front-upgrade-list current={currentId} count={defs.Count} sample={sample}");
 		}
 
 		private static bool IsDisallowedBackroomChoice(IModuleConfig config)

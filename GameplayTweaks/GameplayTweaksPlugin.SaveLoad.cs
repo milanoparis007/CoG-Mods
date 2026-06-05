@@ -18,6 +18,16 @@ namespace GameplayTweaks
 {
 public partial class GameplayTweaksPlugin
 {
+	private static readonly Dictionary<Type, FieldInfo[]> SionSerializableFieldsByType = new Dictionary<Type, FieldInfo[]>();
+	private const int DeferredModDataSaveQuietFrames = 45;
+	private const int DeferredModDataSaveMaxWaitFrames = 240;
+	private const int DeferredModDataSaveMaxSourceLogLength = 220;
+	private const int ModDataBaseSaveFutureToleranceSeconds = 120;
+	private static bool _v2CriticalTextRecoveryReadOnly;
+	private static bool _v2CriticalTextRecoverySaveBlockLogged;
+	private static string _v2CriticalTextRecoveryReason = string.Empty;
+	private static string _lastModDataLoadSource = string.Empty;
+	private static int _lastModDataLoadPactCount = -1;
 
 	private static class SaveLoadPatch
 	{
@@ -121,12 +131,18 @@ public partial class GameplayTweaksPlugin
 				return;
 			}
 			VerificationLog("TweaksSave", $"load-hook save={saveName} source={source}");
+			ClearDeferredModDataSaveState();
 			TurnUpdatePatch.ResetRuntime();
+			TurnPerformanceDiagnosticsPatch.ClearRuntimeCheatPlayerSetupCache();
+			RouteShopStagingState.ClearAll("load", source);
 			LoadModData(saveName);
-			DirtyCashEconomyCompatibilityPatch.RequestDeferredHumanTerritoryRefresh("load-postfix", 30, 3);
+			DirtyCashEconomyCompatibilityPatch.RequestDeferredHumanTerritoryRefresh("load-postfix", 30, 1);
 			ResetTransientPolicePortraitState("load-postfix");
 			_lastGangTrackDay = -1;
 			_lastGangRelationshipBuffReconcileDay = -1;
+			ResetLoyaltyTurnSummary();
+			_lastGlobalScavengeableVehicleScrubFrame = -1;
+			_lastLowHappinessPromptGlobalDay = int.MinValue;
 		}
 
 		private static void OnSaveComplete(string saveName, string source)
@@ -162,13 +178,43 @@ public partial class GameplayTweaksPlugin
 
 	internal static void SaveModData()
 		{
+		ClearDeferredModDataSaveState();
+		if (ShouldBlockCriticalTextRecoverySaveOverwrite())
+		{
+			if (!_v2CriticalTextRecoverySaveBlockLogged)
+			{
+				_v2CriticalTextRecoverySaveBlockLogged = true;
+				VerificationLog("TweaksSave", $"critical-recovery-save-blocked reason={_v2CriticalTextRecoveryReason} path={GetTweaksSavePathForLog()} loadedCrew={SaveData?.CrewStates?.Count ?? 0} loadedPacts={SaveData?.Pacts?.Count ?? 0} loadedBuffs={SaveData?.GangRelationshipBuffs?.Count ?? 0}");
+			}
+			return;
+		}
+		if (ShouldBlockSuspiciousEmptyPactSaveOverwrite())
+		{
+			return;
+		}
+		if (string.IsNullOrWhiteSpace(_currentTweaksSaveName)
+			&& string.IsNullOrEmpty(_saveFilePath)
+			&& string.IsNullOrEmpty(_legacySaveFilePath)
+			&& string.IsNullOrEmpty(_v2SaveFilePath))
+		{
+			return;
+		}
 		if (ShouldUseV2SaveFormat())
 		{
-			SaveModDataV2();
-			return;
+			if (SaveModDataV2())
+			{
+				return;
+			}
+			_v2SaveDisabledSaveName = _currentTweaksSaveName;
+			Debug.LogWarning("[GameplayTweaks] V2 save failed; using legacy JSON fallback for this save slot until reload.");
+			if (!string.IsNullOrEmpty(_legacySaveFilePath))
+			{
+				_saveFilePath = _legacySaveFilePath;
+			}
 		}
 		try
 		{
+			System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
 			if (string.IsNullOrEmpty(_saveFilePath))
 			{
 				return;
@@ -177,7 +223,7 @@ public partial class GameplayTweaksPlugin
 			VerificationStats verificationStats = EnsureVerifyStats();
 			GangMeetingMode gangMeetingMode = GetGangMeetingMode();
 			bool flag3 = gangMeetingMode == GangMeetingMode.Auto;
-			stringBuilder.Append("{\"NextPactId\":" + SaveData.NextPactId + ",\"PlayerPactId\":" + SaveData.PlayerPactId + ",\"PJI\":" + SaveData.PlayerJoinedPactIndex + ",\"LPJD\":" + SaveData.LastPactJoinDay + ",\"NAP\":" + SaveData.NeverAcceptPacts.ToString().ToLower() + ",\"LOD\":" + CrewRelationshipHandlerPatch._lastOutingDay + ",\"GMB\":" + CrewRelationshipHandlerPatch._globalMayorBribeActive.ToString().ToLower() + ",\"GMBD\":" + CrewRelationshipHandlerPatch._globalMayorBribeExpireDay + ",\"PPWSD\":" + SaveData.PlayerPactWarStartDay + ",\"PPWTID\":" + SaveData.PlayerPactWarTargetId + ",\"PED\":" + SaveData.PactEpochDay + ",\"SCPR\":" + SaveData.SnitchCaseProgress.ToString(CultureInfo.InvariantCulture) + ",\"NSCD\":" + SaveData.NextSnitchCollectionDay + ",\"LSRD\":" + SaveData.LastSnitchRaidDay + ",\"GME\":" + flag3.ToString().ToLower() + ",\"GMM\":" + (int)gangMeetingMode + ",\"GMT\":" + SaveData.GangMeetingTier + ",\"GMI\":" + SaveData.GangMeetingIntervalDays + ",\"GOV\":" + SaveData.GangOpsDefaultsProfileVersion + ",\"V10\":{\"BLC\":" + verificationStats.BossLoyaltyChecks + ",\"BLV\":" + verificationStats.BossLoyaltyViolations + ",\"LCI\":" + verificationStats.LoyaltyCapInitCount + ",\"LDE\":" + verificationStats.LoyaltyDecayEvents + ",\"ZLD\":" + verificationStats.ZeroLoyaltyDefections + ",\"PLG\":" + verificationStats.PepTalkLoyaltyGainEvents + ",\"VLG\":" + verificationStats.VacationLoyaltyGainEvents + ",\"SIR\":" + verificationStats.SnitchIntakeRuns + ",\"SLE\":" + verificationStats.SnitchLeakEvents + ",\"SRT\":" + verificationStats.SnitchRaidTriggers + ",\"RUT\":" + verificationStats.RetainerUpkeepTicks + ",\"RTR\":" + verificationStats.RetainerTrialAssistRolls + ",\"RTW\":" + verificationStats.RetainerTrialAssistWins + "},\"PICD\":{");
+			stringBuilder.Append("{\"NextPactId\":" + SaveData.NextPactId + ",\"PlayerPactId\":" + SaveData.PlayerPactId + ",\"PJI\":" + SaveData.PlayerJoinedPactIndex + ",\"LPJD\":" + SaveData.LastPactJoinDay + ",\"NAP\":" + SaveData.NeverAcceptPacts.ToString().ToLower() + ",\"RERM\":" + SaveData.RobberyPromptsEvadeRefuseMode.ToString().ToLower() + ",\"LOD\":" + CrewRelationshipHandlerPatch._lastOutingDay + ",\"GMB\":" + CrewRelationshipHandlerPatch._globalMayorBribeActive.ToString().ToLower() + ",\"GMBD\":" + CrewRelationshipHandlerPatch._globalMayorBribeExpireDay + ",\"PPWSD\":" + SaveData.PlayerPactWarStartDay + ",\"PPWTID\":" + SaveData.PlayerPactWarTargetId + ",\"PED\":" + SaveData.PactEpochDay + ",\"SCPR\":" + SaveData.SnitchCaseProgress.ToString(CultureInfo.InvariantCulture) + ",\"NSCD\":" + SaveData.NextSnitchCollectionDay + ",\"LSRD\":" + SaveData.LastSnitchRaidDay + ",\"GME\":" + flag3.ToString().ToLower() + ",\"GMM\":" + (int)gangMeetingMode + ",\"GMT\":" + SaveData.GangMeetingTier + ",\"GMI\":" + SaveData.GangMeetingIntervalDays + ",\"GOV\":" + SaveData.GangOpsDefaultsProfileVersion + ",\"V10\":{\"BLC\":" + verificationStats.BossLoyaltyChecks + ",\"BLV\":" + verificationStats.BossLoyaltyViolations + ",\"LCI\":" + verificationStats.LoyaltyCapInitCount + ",\"LDE\":" + verificationStats.LoyaltyDecayEvents + ",\"ZLD\":" + verificationStats.ZeroLoyaltyDefections + ",\"PLG\":" + verificationStats.PepTalkLoyaltyGainEvents + ",\"VLG\":" + verificationStats.VacationLoyaltyGainEvents + ",\"SIR\":" + verificationStats.SnitchIntakeRuns + ",\"SLE\":" + verificationStats.SnitchLeakEvents + ",\"SRT\":" + verificationStats.SnitchRaidTriggers + ",\"RUT\":" + verificationStats.RetainerUpkeepTicks + ",\"RTR\":" + verificationStats.RetainerTrialAssistRolls + ",\"RTW\":" + verificationStats.RetainerTrialAssistWins + "},\"PICD\":{");
 			bool picdFirst = true;
 			foreach (KeyValuePair<int, int> inviteCd in SaveData.PactInviteCooldowns)
 			{
@@ -290,11 +336,132 @@ public partial class GameplayTweaksPlugin
 			}
 			stringBuilder.AppendLine("]}");
 			File.WriteAllText(_saveFilePath, stringBuilder.ToString());
+			stopwatch.Stop();
+			if (stopwatch.ElapsedMilliseconds >= 20)
+			{
+				Debug.Log($"[PERF][TweaksSave] layout={GetTweaksSavePathKind(_saveFilePath)} writer=legacy-json path={GetTweaksSavePathForLog()} ms={stopwatch.ElapsedMilliseconds} crew={SaveData.CrewStates.Count} pacts={SaveData.Pacts.Count} pactMembers={GetPactMemberCountForSaveLog()} buffs={SaveData.GangRelationshipBuffs.Count} grapevine={SaveData.GrapevineEvents.Count}");
+			}
 		}
 		catch (Exception arg)
 		{
 			Debug.LogError($"[GameplayTweaks] Save failed: {arg}");
 		}
+	}
+
+	internal static void QueueDeferredModDataSave(string source, SimTime now, int delayFrames)
+	{
+		try
+		{
+			ClearDeferredModDataSaveState();
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] Deferred mod save queue failed: " + ex.GetType().Name + ":" + ex.Message);
+		}
+	}
+
+	internal static void FlushDeferredModDataSave(string source)
+	{
+		try
+		{
+			if (!_deferredModDataSaveQueued)
+			{
+				return;
+			}
+
+			int frame = Time.frameCount;
+			string waitReason = GetDeferredModDataSaveFlushWaitReason(frame);
+			if (waitReason != null)
+			{
+				_deferredModDataSaveDeferrals++;
+				if (_deferredModDataSaveDeferrals == 1 || _deferredModDataSaveDeferrals % 60 == 0)
+				{
+					Debug.Log("[PERF][TweaksSaveDeferred] wait source=" + (_deferredModDataSaveSource ?? "unknown") + " flushSource=" + (source ?? "unknown") + " reason=" + waitReason + " deferrals=" + _deferredModDataSaveDeferrals + " frame=" + frame + " earliest=" + _deferredModDataSaveEarliestFrame + " lastQueued=" + _deferredModDataSaveLastQueuedFrame + " sourceCount=" + _deferredModDataSaveSourceCount);
+				}
+
+				return;
+			}
+
+			int queuedDay = _deferredModDataSaveDay;
+			int queuedTurn = _deferredModDataSaveTurn;
+			string queuedSource = _deferredModDataSaveSource ?? "unknown";
+			int deferrals = _deferredModDataSaveDeferrals;
+			ClearDeferredModDataSaveState();
+
+			long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+			SaveModData();
+			long elapsedMs = (long)((System.Diagnostics.Stopwatch.GetTimestamp() - startTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+			Debug.Log("[PERF][TweaksSaveDeferred] flushed source=" + queuedSource + " flushSource=" + (source ?? "unknown") + " ms=" + elapsedMs + " queuedDay=" + queuedDay + " queuedTurn=" + queuedTurn + " day=" + (global::Game.Game.ctx?.clock?.Now.days ?? -1) + " turn=" + (global::Game.Game.ctx?.clock?.CurrentTurn ?? -1) + " deferrals=" + deferrals + " frame=" + frame);
+		}
+		catch (Exception ex)
+		{
+			ClearDeferredModDataSaveState();
+			Debug.LogWarning("[GameplayTweaks] Deferred mod save flush failed: " + ex.GetType().Name + ":" + ex.Message);
+		}
+	}
+
+	private static string GetDeferredModDataSaveFlushWaitReason(int frame)
+	{
+		bool allowMaxWaitOverride = _deferredModDataSaveQueuedFrame >= 0 && frame - _deferredModDataSaveQueuedFrame >= DeferredModDataSaveMaxWaitFrames;
+		if (frame < _deferredModDataSaveEarliestFrame && !allowMaxWaitOverride)
+		{
+			return "earliest";
+		}
+		if (ShouldDeferUiMaintenanceForMouseInput() && !allowMaxWaitOverride)
+		{
+			return "input";
+		}
+
+		try
+		{
+			if (global::Game.Game.ctx?.clock != null && !global::Game.Game.ctx.clock.CurrentPlayer.IsHumanPlayer)
+			{
+				return "nonhuman-turn";
+			}
+		}
+		catch
+		{
+		}
+
+		if (_deferredModDataSaveLastQueuedFrame >= 0
+			&& frame - _deferredModDataSaveLastQueuedFrame < DeferredModDataSaveQuietFrames
+			&& !allowMaxWaitOverride)
+		{
+			return "quiet-window";
+		}
+
+		return null;
+	}
+
+	private static string AppendDeferredModDataSaveSource(string existing, string source)
+	{
+		string nextSource = source ?? "unknown";
+		if (string.IsNullOrEmpty(existing))
+		{
+			return nextSource;
+		}
+
+		if (existing.Length + nextSource.Length + 1 <= DeferredModDataSaveMaxSourceLogLength)
+		{
+			return existing + "+" + nextSource;
+		}
+
+		return existing.IndexOf("+...", StringComparison.Ordinal) >= 0
+			? existing
+			: existing + "+...";
+	}
+
+	private static void ClearDeferredModDataSaveState()
+	{
+		_deferredModDataSaveQueued = false;
+		_deferredModDataSaveDay = int.MinValue;
+		_deferredModDataSaveTurn = int.MinValue;
+		_deferredModDataSaveQueuedFrame = -1;
+		_deferredModDataSaveLastQueuedFrame = -1;
+		_deferredModDataSaveEarliestFrame = -1;
+		_deferredModDataSaveDeferrals = 0;
+		_deferredModDataSaveSourceCount = 0;
+		_deferredModDataSaveSource = null;
 	}
 
 	private static string EscapeJsonString(string s)
@@ -311,6 +478,9 @@ public partial class GameplayTweaksPlugin
 			SetSavePaths(saveName);
 			SaveData = new ModSaveData();
 			_legacyLoadPendingMigrationLog = false;
+			_v2CriticalTextRecoveryReadOnly = false;
+			_v2CriticalTextRecoverySaveBlockLogged = false;
+			_v2CriticalTextRecoveryReason = string.Empty;
 			if (LoadModDataV2(saveName))
 			{
 				source = "v2";
@@ -357,6 +527,7 @@ public partial class GameplayTweaksPlugin
 			SaveData.PlayerJoinedPactIndex = JInt(text, "PJI", -1);
 			SaveData.LastPactJoinDay = JInt(text, "LPJD", -1);
 			SaveData.NeverAcceptPacts = JBool(text, "NAP", d: false);
+			SaveData.RobberyPromptsEvadeRefuseMode = JBool(text, "RERM", d: false);
 			CrewRelationshipHandlerPatch._lastOutingDay = JInt(text, "LOD", -1);
 			CrewRelationshipHandlerPatch._globalMayorBribeActive = JBool(text, "GMB", d: false);
 			CrewRelationshipHandlerPatch._globalMayorBribeExpireDay = JInt(text, "GMBD", -1);
@@ -752,12 +923,15 @@ public partial class GameplayTweaksPlugin
 		{
 			stopwatch.Stop();
 			EnsureSaveDataDefaults();
+			_lastModDataLoadSource = source;
+			_lastModDataLoadPactCount = SaveData?.Pacts?.Count ?? 0;
 			Debug.Log($"[PERF][TweaksLoad] source={source} path={GetTweaksSavePathForLog()} ms={stopwatch.ElapsedMilliseconds} crew={SaveData.CrewStates.Count} pacts={SaveData.Pacts.Count} pactMembers={GetPactMemberCountForSaveLog()} buffs={SaveData.GangRelationshipBuffs.Count} pactHeat={SaveData.PactWarHeat.Count} pactRevenge={SaveData.PactRevengeQueue.Count} independentHeat={SaveData.IndependentWarHeat.Count} independentRevenge={SaveData.IndependentRevengeQueue.Count} grapevine={SaveData.GrapevineEvents.Count}");
 		}
 	}
 
-	private static void SaveModDataV2()
+	private static bool SaveModDataV2()
 	{
+		System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
 		try
 		{
 			// Migration boundary: once legacy data is loaded, subsequent saves are persisted as V2 envelope.
@@ -767,7 +941,7 @@ public partial class GameplayTweaksPlugin
 			}
 			if (string.IsNullOrEmpty(_v2SaveFilePath))
 			{
-				return;
+				return false;
 			}
 			EnsureSaveDataDefaults();
 			TweaksSaveEnvelopeV2 tweaksSaveEnvelopeV = new TweaksSaveEnvelopeV2();
@@ -776,25 +950,262 @@ public partial class GameplayTweaksPlugin
 			tweaksSaveEnvelopeV.LastOutingDay = CrewRelationshipHandlerPatch._lastOutingDay;
 			tweaksSaveEnvelopeV.GlobalMayorBribeActive = CrewRelationshipHandlerPatch._globalMayorBribeActive;
 			tweaksSaveEnvelopeV.GlobalMayorBribeExpireDay = CrewRelationshipHandlerPatch._globalMayorBribeExpireDay;
-			string contents = FileUtil.SerializeToString(tweaksSaveEnvelopeV);
-			WriteTextAtomic(_v2SaveFilePath, contents);
-			WriteTweaksSaveManifest();
-			Debug.Log($"[PERF][TweaksSave] layout={GetTweaksSavePathKind(_v2SaveFilePath)} path={GetTweaksSavePathForLog()} manifest={(_v2ManifestFilePath ?? string.Empty)} crew={SaveData.CrewStates.Count} pacts={SaveData.Pacts.Count} pactMembers={GetPactMemberCountForSaveLog()} buffs={SaveData.GangRelationshipBuffs.Count} pactHeat={SaveData.PactWarHeat.Count} pactRevenge={SaveData.PactRevengeQueue.Count} independentHeat={SaveData.IndependentWarHeat.Count} independentRevenge={SaveData.IndependentRevengeQueue.Count}");
+			long serializeTicks = stopwatch.ElapsedMilliseconds;
+			string contents = SerializeTweaksSaveEnvelopeV2(tweaksSaveEnvelopeV);
+			long serializedMs = stopwatch.ElapsedMilliseconds - serializeTicks;
+			long writeTicks = stopwatch.ElapsedMilliseconds;
+			bool dataWritten = WriteTextAtomicIfChanged(_v2SaveFilePath, contents);
+			long dataWriteMs = stopwatch.ElapsedMilliseconds - writeTicks;
+			long manifestTicks = stopwatch.ElapsedMilliseconds;
+			bool manifestWritten = WriteTweaksSaveManifest();
+			long manifestMs = stopwatch.ElapsedMilliseconds - manifestTicks;
+			stopwatch.Stop();
+			Debug.Log($"[PERF][TweaksSave] layout={GetTweaksSavePathKind(_v2SaveFilePath)} writer=fields-only-sion path={GetTweaksSavePathForLog()} manifest={(_v2ManifestFilePath ?? string.Empty)} ms={stopwatch.ElapsedMilliseconds} serializeMs={serializedMs} dataWriteMs={dataWriteMs} manifestMs={manifestMs} dataWritten={dataWritten} manifestWritten={manifestWritten} crew={SaveData.CrewStates.Count} pacts={SaveData.Pacts.Count} pactMembers={GetPactMemberCountForSaveLog()} buffs={SaveData.GangRelationshipBuffs.Count} pactHeat={SaveData.PactWarHeat.Count} pactRevenge={SaveData.PactRevengeQueue.Count} independentHeat={SaveData.IndependentWarHeat.Count} independentRevenge={SaveData.IndependentRevengeQueue.Count}");
 			if (_legacyLoadPendingMigrationLog)
 			{
 				Debug.Log("[PERF][TweaksLoad] migration legacy-to-moddata-v2 completed");
 				_legacyLoadPendingMigrationLog = false;
 			}
+			return true;
 		}
 		catch (Exception arg)
 		{
 			Debug.LogError($"[GameplayTweaks] Save failed: {arg}");
+			return false;
 		}
+	}
+
+	private static string SerializeTweaksSaveEnvelopeV2(TweaksSaveEnvelopeV2 envelope)
+	{
+		StringBuilder builder = new StringBuilder(65536);
+		WriteSionValue(builder, envelope, 0);
+		builder.AppendLine();
+		return builder.ToString();
+	}
+
+	private static void WriteSionValue(StringBuilder builder, object value, int indent)
+	{
+		if (value == null)
+		{
+			builder.Append("{}");
+			return;
+		}
+
+		Type type = value.GetType();
+		if (type == typeof(string))
+		{
+			WriteSionString(builder, (string)value);
+			return;
+		}
+		if (type == typeof(bool))
+		{
+			builder.Append((bool)value ? "#true" : "#false");
+			return;
+		}
+		if (type.IsEnum)
+		{
+			builder.Append(Convert.ToInt32(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture));
+			return;
+		}
+		if (IsSionNumberType(type))
+		{
+			builder.Append(Convert.ToString(value, CultureInfo.InvariantCulture));
+			return;
+		}
+		if (value is IDictionary dictionary)
+		{
+			WriteSionDictionary(builder, dictionary, indent);
+			return;
+		}
+		if (value is IEnumerable enumerable && !(value is string))
+		{
+			WriteSionEnumerable(builder, enumerable, indent);
+			return;
+		}
+
+		WriteSionObject(builder, value, indent);
+	}
+
+	private static bool IsSionNumberType(Type type)
+	{
+		type = Nullable.GetUnderlyingType(type) ?? type;
+		return type == typeof(byte)
+			|| type == typeof(sbyte)
+			|| type == typeof(short)
+			|| type == typeof(ushort)
+			|| type == typeof(int)
+			|| type == typeof(uint)
+			|| type == typeof(long)
+			|| type == typeof(ulong)
+			|| type == typeof(float)
+			|| type == typeof(double)
+			|| type == typeof(decimal);
+	}
+
+	private static void WriteSionObject(StringBuilder builder, object value, int indent)
+	{
+		builder.Append("{");
+		bool wroteAny = false;
+		foreach (FieldInfo field in GetSionSerializableFields(value.GetType()))
+		{
+			object fieldValue = field.GetValue(value);
+			if (fieldValue == null)
+			{
+				continue;
+			}
+
+			builder.AppendLine();
+			AppendSionIndent(builder, indent + 1);
+			builder.Append(field.Name).Append(' ');
+			WriteSionValue(builder, fieldValue, indent + 1);
+			wroteAny = true;
+		}
+		if (wroteAny)
+		{
+			builder.AppendLine();
+			AppendSionIndent(builder, indent);
+		}
+		builder.Append("}");
+	}
+
+	private static FieldInfo[] GetSionSerializableFields(Type type)
+	{
+		if (type == null)
+		{
+			return new FieldInfo[0];
+		}
+		if (SionSerializableFieldsByType.TryGetValue(type, out FieldInfo[] cachedFields))
+		{
+			return cachedFields;
+		}
+
+		FieldInfo[] fields = type.GetFields(BindingFlags.Instance | BindingFlags.Public);
+		List<FieldInfo> serializableFields = new List<FieldInfo>(fields.Length);
+		for (int i = 0; i < fields.Length; i++)
+		{
+			FieldInfo field = fields[i];
+			if (!field.IsStatic && !field.IsNotSerialized)
+			{
+				serializableFields.Add(field);
+			}
+		}
+
+		FieldInfo[] result = serializableFields.ToArray();
+		SionSerializableFieldsByType[type] = result;
+		return result;
+	}
+
+	private static void WriteSionDictionary(StringBuilder builder, IDictionary dictionary, int indent)
+	{
+		builder.Append("{");
+		bool wroteAny = false;
+		foreach (DictionaryEntry entry in dictionary)
+		{
+			if (entry.Key == null || entry.Value == null)
+			{
+				continue;
+			}
+
+			builder.AppendLine();
+			AppendSionIndent(builder, indent + 1);
+			WriteSionDictionaryKey(builder, entry.Key);
+			builder.Append(' ');
+			WriteSionValue(builder, entry.Value, indent + 1);
+			wroteAny = true;
+		}
+		if (wroteAny)
+		{
+			builder.AppendLine();
+			AppendSionIndent(builder, indent);
+		}
+		builder.Append("}");
+	}
+
+	private static void WriteSionEnumerable(StringBuilder builder, IEnumerable enumerable, int indent)
+	{
+		builder.Append("[");
+		bool wroteAny = false;
+		foreach (object item in enumerable)
+		{
+			if (item == null)
+			{
+				continue;
+			}
+
+			builder.AppendLine();
+			AppendSionIndent(builder, indent + 1);
+			WriteSionValue(builder, item, indent + 1);
+			wroteAny = true;
+		}
+		if (wroteAny)
+		{
+			builder.AppendLine();
+			AppendSionIndent(builder, indent);
+		}
+		builder.Append("]");
+	}
+
+	private static void WriteSionDictionaryKey(StringBuilder builder, object key)
+	{
+		if (key == null)
+		{
+			WriteSionString(builder, string.Empty);
+			return;
+		}
+
+		Type keyType = key.GetType();
+		if (keyType.IsEnum || IsSionNumberType(keyType))
+		{
+			builder.Append(Convert.ToString(key, CultureInfo.InvariantCulture));
+			return;
+		}
+
+		WriteSionString(builder, Convert.ToString(key, CultureInfo.InvariantCulture) ?? string.Empty);
+	}
+
+	private static void WriteSionString(StringBuilder builder, string value)
+	{
+		builder.Append('"');
+		if (!string.IsNullOrEmpty(value))
+		{
+			for (int i = 0; i < value.Length; i++)
+			{
+				char ch = value[i];
+				switch (ch)
+				{
+					case '\\':
+						builder.Append("\\\\");
+						break;
+					case '"':
+						builder.Append("\\\"");
+						break;
+					case '\r':
+						builder.Append("\\r");
+						break;
+					case '\n':
+						builder.Append("\\n");
+						break;
+					case '\t':
+						builder.Append("\\t");
+						break;
+					default:
+						builder.Append(ch);
+						break;
+				}
+			}
+		}
+		builder.Append('"');
+	}
+
+	private static void AppendSionIndent(StringBuilder builder, int indent)
+	{
+		builder.Append(' ', Math.Max(0, indent) * 2);
 	}
 
 	private static bool ShouldUseV2SaveFormat()
 	{
-		return true;
+		return string.IsNullOrEmpty(_v2SaveDisabledSaveName)
+			|| !string.Equals(_v2SaveDisabledSaveName, _currentTweaksSaveName, StringComparison.Ordinal);
 	}
 
 	private static bool LoadModDataV2(string saveName)
@@ -815,15 +1226,46 @@ public partial class GameplayTweaksPlugin
 			{
 				return false;
 			}
+			if (IsTweaksModDataNewerThanBaseSave(saveName, _v2SaveFilePath, out string freshnessReason))
+			{
+				VerificationLog("TweaksSave", "v2-freshness-warning-accepted " + freshnessReason);
+			}
 			Debug.Log($"[PERF][TweaksLoad] v2-path layout={GetTweaksSavePathKind(_v2SaveFilePath)} path={_v2SaveFilePath}");
 			string text = File.ReadAllText(_v2SaveFilePath, Encoding.UTF8);
 			if (string.IsNullOrWhiteSpace(text))
 			{
 				return false;
 			}
-			TweaksSaveEnvelopeV2 tweaksSaveEnvelopeV = FileUtil.DeserializeFromString<TweaksSaveEnvelopeV2>(text);
+			TweaksSaveEnvelopeV2 tweaksSaveEnvelopeV = null;
+			string genericLoadFailure = null;
+			try
+			{
+				tweaksSaveEnvelopeV = FileUtil.DeserializeFromString<TweaksSaveEnvelopeV2>(text);
+			}
+			catch (Exception ex)
+			{
+				genericLoadFailure = ex.GetType().Name + ":" + ex.Message;
+			}
+			if ((genericLoadFailure != null || tweaksSaveEnvelopeV == null || tweaksSaveEnvelopeV.Data == null || ShouldRetryV2LoadWithFallbackReader(tweaksSaveEnvelopeV.Data, text))
+				&& TryDeserializeTweaksSaveEnvelopeV2FromSion(text, out TweaksSaveEnvelopeV2 fallbackEnvelope, out string fallbackReason))
+			{
+				tweaksSaveEnvelopeV = fallbackEnvelope;
+				string reason = genericLoadFailure == null ? fallbackReason : fallbackReason + ";generic=" + genericLoadFailure;
+				if (fallbackReason.StartsWith("critical-text-recovery", StringComparison.Ordinal))
+				{
+					_v2CriticalTextRecoveryReadOnly = true;
+					_v2CriticalTextRecoveryReason = reason;
+				}
+				VerificationLog(
+					"TweaksSave",
+					$"v2-fallback-reader path={GetTweaksSavePathForLog()} reason={reason} crew={tweaksSaveEnvelopeV.Data?.CrewStates?.Count ?? 0} pacts={tweaksSaveEnvelopeV.Data?.Pacts?.Count ?? 0} pactMembers={GetPactMemberCountForSaveLog(tweaksSaveEnvelopeV.Data)} buffs={tweaksSaveEnvelopeV.Data?.GangRelationshipBuffs?.Count ?? 0}");
+			}
 			if (tweaksSaveEnvelopeV == null || tweaksSaveEnvelopeV.Data == null)
 			{
+				if (!string.IsNullOrEmpty(genericLoadFailure))
+				{
+					Debug.LogWarning("[GameplayTweaks] V2 load failed, falling back to legacy JSON: " + genericLoadFailure);
+				}
 				return false;
 			}
 			SaveData = tweaksSaveEnvelopeV.Data ?? new ModSaveData();
@@ -831,6 +1273,7 @@ public partial class GameplayTweaksPlugin
 			{
 				SaveData.GangMeetingMode = (SaveData.GangMeetingsEnabled ? GangMeetingMode.Auto : GangMeetingMode.Prompt);
 			}
+			TryRecoverEmptyPactsFromNearbyModData(saveName, _v2SaveFilePath, SaveData);
 			CrewRelationshipHandlerPatch._lastOutingDay = tweaksSaveEnvelopeV.LastOutingDay;
 			CrewRelationshipHandlerPatch._globalMayorBribeActive = tweaksSaveEnvelopeV.GlobalMayorBribeActive;
 			CrewRelationshipHandlerPatch._globalMayorBribeExpireDay = tweaksSaveEnvelopeV.GlobalMayorBribeExpireDay;
@@ -871,6 +1314,339 @@ public partial class GameplayTweaksPlugin
 			Debug.LogWarning($"[GameplayTweaks] Legacy JSON load failed: {arg.Message}");
 			return false;
 		}
+	}
+
+	private static bool TryRecoverEmptyPactsFromNearbyModData(string saveName, string currentPath, ModSaveData currentData)
+	{
+		try
+		{
+			if (currentData == null
+				|| (currentData.Pacts != null && currentData.Pacts.Count > 0)
+				|| string.IsNullOrWhiteSpace(saveName)
+				|| string.IsNullOrWhiteSpace(currentPath))
+			{
+				return false;
+			}
+			if (!IsCurrentV2FileEmptyPacts(currentPath))
+			{
+				return false;
+			}
+			string currentFullPath = Path.GetFullPath(currentPath);
+			string bestPath = null;
+			ModSaveData bestData = null;
+			DateTime bestWriteUtc = DateTime.MinValue;
+			foreach (string candidatePath in EnumerateNearbyTweaksV2SaveFiles(saveName, currentFullPath))
+			{
+				try
+				{
+					if (string.IsNullOrWhiteSpace(candidatePath) || !File.Exists(candidatePath))
+					{
+						continue;
+					}
+					string candidateFullPath = Path.GetFullPath(candidatePath);
+					if (string.Equals(candidateFullPath, currentFullPath, StringComparison.OrdinalIgnoreCase))
+					{
+						continue;
+					}
+					string text = File.ReadAllText(candidateFullPath, Encoding.UTF8);
+					if (!HasNonEmptySionPactsBlock(text))
+					{
+						continue;
+					}
+					if (!TryDeserializeTweaksSaveEnvelopeV2FromSion(text, out TweaksSaveEnvelopeV2 envelope, out string reason)
+						|| envelope?.Data?.Pacts == null
+						|| envelope.Data.Pacts.Count == 0)
+					{
+						VerificationLog("TweaksSave", $"pact-recovery-candidate-skip path={candidateFullPath} reason={reason}");
+						continue;
+					}
+					DateTime writeUtc = File.GetLastWriteTimeUtc(candidateFullPath);
+					if (writeUtc <= bestWriteUtc)
+					{
+						continue;
+					}
+					bestWriteUtc = writeUtc;
+					bestPath = candidateFullPath;
+					bestData = envelope.Data;
+				}
+				catch (Exception candidateEx)
+				{
+					Debug.LogWarning("[GameplayTweaks] Pact recovery candidate check failed: " + candidateEx.Message);
+				}
+			}
+			if (bestData == null || bestData.Pacts == null || bestData.Pacts.Count == 0)
+			{
+				VerificationLog("TweaksSave", $"pact-recovery-unavailable save={saveName} current={currentFullPath}");
+				return false;
+			}
+
+			currentData.Pacts = CloneAlliancePacts(bestData.Pacts);
+			currentData.NextPactId = Math.Max(currentData.NextPactId, bestData.NextPactId);
+			currentData.PlayerPactId = bestData.PlayerPactId;
+			currentData.PlayerJoinedPactIndex = bestData.PlayerJoinedPactIndex;
+			currentData.LastPactJoinDay = bestData.LastPactJoinDay;
+			currentData.PlayerPactWarStartDay = bestData.PlayerPactWarStartDay;
+			currentData.PlayerPactWarTargetId = bestData.PlayerPactWarTargetId;
+			currentData.PactEpochDay = Math.Max(currentData.PactEpochDay, bestData.PactEpochDay);
+			if (bestData.PactAlliances != null && bestData.PactAlliances.Count > 0)
+			{
+				currentData.PactAlliances = bestData.PactAlliances.Select(CloneInterPactAlliance).Where(a => a != null).ToList();
+			}
+			if (bestData.PactAllianceVotes != null && bestData.PactAllianceVotes.Count > 0)
+			{
+				currentData.PactAllianceVotes = bestData.PactAllianceVotes.Select(CloneInterPactAllianceVote).Where(v => v != null).ToList();
+			}
+			currentData.NextPactAllianceId = Math.Max(currentData.NextPactAllianceId, bestData.NextPactAllianceId);
+			currentData.NextPactAllianceVoteId = Math.Max(currentData.NextPactAllianceVoteId, bestData.NextPactAllianceVoteId);
+			VerificationLog("TweaksSave", $"pact-recovery-applied save={saveName} source={bestPath} recoveredPacts={currentData.Pacts.Count} playerPact={currentData.PlayerPactId} nextPactId={currentData.NextPactId}");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] Pact recovery failed: " + ex.Message);
+			return false;
+		}
+	}
+
+	private static bool IsCurrentV2FileEmptyPacts(string path)
+	{
+		try
+		{
+			if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+			{
+				return false;
+			}
+			string text = File.ReadAllText(path, Encoding.UTF8);
+			if (!TryFindSionFieldBlock(text, nameof(ModSaveData.Pacts), '[', ']', out string pactsBlock))
+			{
+				return false;
+			}
+			return !HasNonEmptySionPactsBlock(text) && pactsBlock.IndexOf('{') < 0;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static IEnumerable<string> EnumerateNearbyTweaksV2SaveFiles(string saveName, string currentFullPath)
+	{
+		HashSet<string> yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		if (!string.IsNullOrWhiteSpace(currentFullPath))
+		{
+			string currentBackup = currentFullPath + ".pacts.bak";
+			if (yielded.Add(currentBackup))
+			{
+				yield return currentBackup;
+			}
+		}
+		foreach (string root in GetTweaksSaveRootCandidates())
+		{
+			if (string.IsNullOrWhiteSpace(root))
+			{
+				continue;
+			}
+			string modDataRoot = Path.Combine(root, "ModData");
+			if (Directory.Exists(modDataRoot))
+			{
+				foreach (string candidate in Directory.GetDirectories(modDataRoot)
+					.OrderByDescending(dir => dir, StringComparer.Ordinal))
+				{
+					string slotName = Path.GetFileName(candidate);
+					if (string.Equals(slotName, saveName, StringComparison.Ordinal))
+					{
+						continue;
+					}
+					if (string.CompareOrdinal(slotName, saveName) > 0)
+					{
+						continue;
+					}
+					string file = Path.Combine(candidate, "GameplayTweaks_v2.sim");
+					if (yielded.Add(file))
+					{
+						yield return file;
+					}
+					string backup = file + ".pacts.bak";
+					if (yielded.Add(backup))
+					{
+						yield return backup;
+					}
+				}
+			}
+			string legacyPatternRoot = root;
+			if (Directory.Exists(legacyPatternRoot))
+			{
+				foreach (string file in Directory.GetFiles(legacyPatternRoot, "*_tweaks_v2.sim"))
+				{
+					string legacyName = Path.GetFileNameWithoutExtension(file);
+					if (legacyName != null && legacyName.EndsWith("_tweaks_v2", StringComparison.Ordinal))
+					{
+						legacyName = legacyName.Substring(0, legacyName.Length - "_tweaks_v2".Length);
+					}
+					if (string.IsNullOrWhiteSpace(legacyName)
+						|| string.Equals(legacyName, saveName, StringComparison.Ordinal)
+						|| string.CompareOrdinal(legacyName, saveName) > 0)
+					{
+						continue;
+					}
+					if (yielded.Add(file))
+					{
+						yield return file;
+					}
+					string backup = file + ".pacts.bak";
+					if (yielded.Add(backup))
+					{
+						yield return backup;
+					}
+				}
+			}
+		}
+	}
+
+	private static List<AlliancePact> CloneAlliancePacts(IEnumerable<AlliancePact> source)
+	{
+		List<AlliancePact> result = new List<AlliancePact>();
+		if (source == null)
+		{
+			return result;
+		}
+		foreach (AlliancePact pact in source)
+		{
+			if (pact == null)
+			{
+				continue;
+			}
+			result.Add(new AlliancePact
+			{
+				PactId = pact.PactId,
+				PactName = pact.PactName,
+				ColorIndex = pact.ColorIndex,
+				LeaderGangId = pact.LeaderGangId,
+				MemberIds = pact.MemberIds?.Where(id => id >= 0).Distinct().ToList() ?? new List<int>(),
+				ColorR = pact.ColorR,
+				ColorG = pact.ColorG,
+				ColorB = pact.ColorB,
+				FormedDays = pact.FormedDays,
+				IsPending = pact.IsPending,
+				PlayerInvited = pact.PlayerInvited,
+				PlayerColorConfirmed = pact.PlayerColorConfirmed,
+				EarningRate = pact.EarningRate,
+				CrewCapacityBonus = pact.CrewCapacityBonus,
+				LastVoteDay = pact.LastVoteDay,
+				LastVoteType = pact.LastVoteType,
+				PlayerProposedVote = pact.PlayerProposedVote,
+				PendingVoteCycleDay = pact.PendingVoteCycleDay,
+				VotePromptShown = pact.VotePromptShown,
+				VotePromptAnswered = pact.VotePromptAnswered,
+				BossHappiness = pact.BossHappiness != null ? new Dictionary<int, float>(pact.BossHappiness) : new Dictionary<int, float>(),
+				VotePreferences = pact.VotePreferences != null ? new Dictionary<int, int>(pact.VotePreferences) : new Dictionary<int, int>()
+			});
+		}
+		return result;
+	}
+
+	private static InterPactAlliance CloneInterPactAlliance(InterPactAlliance source)
+	{
+		if (source == null)
+		{
+			return null;
+		}
+		return new InterPactAlliance
+		{
+			AllianceId = source.AllianceId,
+			LeftPactId = source.LeftPactId,
+			RightPactId = source.RightPactId,
+			CreatedDay = source.CreatedDay,
+			Active = source.Active
+		};
+	}
+
+	private static InterPactAllianceVote CloneInterPactAllianceVote(InterPactAllianceVote source)
+	{
+		if (source == null)
+		{
+			return null;
+		}
+		return new InterPactAllianceVote
+		{
+			VoteId = source.VoteId,
+			SourcePactId = source.SourcePactId,
+			TargetPactId = source.TargetPactId,
+			AllianceId = source.AllianceId,
+			IsRemoval = source.IsRemoval,
+			ProposedDay = source.ProposedDay,
+			ProposerGangId = source.ProposerGangId,
+			InitiatedByHuman = source.InitiatedByHuman,
+			Resolved = source.Resolved,
+			ResolvedDay = source.ResolvedDay,
+			VotesByGang = source.VotesByGang != null ? new Dictionary<int, bool>(source.VotesByGang) : new Dictionary<int, bool>()
+		};
+	}
+
+	private static bool WriteTextAtomicIfChanged(string path, string contents)
+	{
+		if (string.IsNullOrEmpty(path))
+		{
+			return false;
+		}
+
+		TweaksSavedTextStamp stamp = CreateTweaksSavedTextStamp(contents);
+		if (File.Exists(path)
+			&& _lastTweaksSavedTextByPath.TryGetValue(path, out TweaksSavedTextStamp previous)
+			&& previous.Length == stamp.Length
+			&& previous.Hash == stamp.Hash)
+		{
+			return false;
+		}
+
+		CreateTweaksSaveBackupIfNeeded(path);
+		WriteTextAtomic(path, contents);
+		_lastTweaksSavedTextByPath[path] = stamp;
+		return true;
+	}
+
+	private static void CreateTweaksSaveBackupIfNeeded(string path)
+	{
+		try
+		{
+			if (string.IsNullOrWhiteSpace(path)
+				|| !File.Exists(path)
+				|| !string.Equals(Path.GetFileName(path), "GameplayTweaks_v2.sim", StringComparison.OrdinalIgnoreCase))
+			{
+				return;
+			}
+			string existing = File.ReadAllText(path, Encoding.UTF8);
+			if (!HasNonEmptySionPactsBlock(existing))
+			{
+				return;
+			}
+			string backupPath = path + ".pacts.bak";
+			File.Copy(path, backupPath, overwrite: true);
+			VerificationLog("TweaksSave", $"pact-backup-written path={backupPath}");
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] Pact backup write failed: " + ex.Message);
+		}
+	}
+
+	private static TweaksSavedTextStamp CreateTweaksSavedTextStamp(string contents)
+	{
+		ulong hash = 14695981039346656037UL;
+		if (contents != null)
+		{
+			for (int i = 0; i < contents.Length; i++)
+			{
+				hash ^= contents[i];
+				hash *= 1099511628211UL;
+			}
+		}
+
+		return new TweaksSavedTextStamp
+		{
+			Length = contents?.Length ?? 0,
+			Hash = hash
+		};
 	}
 
 	private static void WriteTextAtomic(string path, string contents)
@@ -1045,6 +1821,14 @@ public partial class GameplayTweaksPlugin
 		{
 			SaveData.AiGangLastLegalActionDayByGang = new Dictionary<int, int>();
 		}
+		if (SaveData.VehicleDriverByVehicleId == null)
+		{
+			SaveData.VehicleDriverByVehicleId = new Dictionary<long, long>();
+		}
+		if (SaveData.FrontRouteExpansionKeys == null)
+		{
+			SaveData.FrontRouteExpansionKeys = new List<string>();
+		}
 		if (SaveData.GangRelationshipBuffs == null)
 		{
 			SaveData.GangRelationshipBuffs = new List<GangRelationshipBuffState>();
@@ -1061,6 +1845,663 @@ public partial class GameplayTweaksPlugin
 		SaveData.GangMeetingIntervalDays = GANG_MEETING_INTERVAL_DAYS;
 		NormalizeGangMeetingModeState();
 		NormalizeInterPactAllianceData();
+	}
+
+	private static bool IsTweaksModDataNewerThanBaseSave(string saveName, string modDataPath, out string reason)
+	{
+		reason = "none";
+		try
+		{
+			if (string.IsNullOrWhiteSpace(saveName) || string.IsNullOrWhiteSpace(modDataPath) || !File.Exists(modDataPath))
+			{
+				return false;
+			}
+
+			if (!TryGetBaseSaveLastWriteUtc(saveName, out DateTime baseSaveUtc, out string baseSavePath))
+			{
+				return false;
+			}
+
+			DateTime modDataUtc = File.GetLastWriteTimeUtc(modDataPath);
+			double deltaSeconds = (modDataUtc - baseSaveUtc).TotalSeconds;
+			if (deltaSeconds <= ModDataBaseSaveFutureToleranceSeconds)
+			{
+				return false;
+			}
+
+			reason = "save=" + saveName
+				+ " basePath=" + baseSavePath
+				+ " baseUtc=" + baseSaveUtc.ToString("O", CultureInfo.InvariantCulture)
+				+ " modPath=" + modDataPath
+				+ " modUtc=" + modDataUtc.ToString("O", CultureInfo.InvariantCulture)
+				+ " deltaSeconds=" + deltaSeconds.ToString("F0", CultureInfo.InvariantCulture);
+			return true;
+		}
+		catch (Exception ex)
+		{
+			reason = "freshness-check-failed:" + ex.GetType().Name + ":" + ex.Message;
+			return false;
+		}
+	}
+
+	private static bool ShouldBlockCriticalTextRecoverySaveOverwrite()
+	{
+		if (!_v2CriticalTextRecoveryReadOnly || string.IsNullOrEmpty(_v2SaveFilePath) || !File.Exists(_v2SaveFilePath))
+		{
+			return false;
+		}
+		if ((SaveData?.CrewStates?.Count ?? 0) > 0 || (SaveData?.GangRelationshipBuffs?.Count ?? 0) > 0)
+		{
+			return false;
+		}
+		try
+		{
+			string text = File.ReadAllText(_v2SaveFilePath, Encoding.UTF8);
+			return HasNonEmptySionPactsBlock(text)
+				|| text.IndexOf("CrewStates {", StringComparison.Ordinal) >= 0
+				|| text.IndexOf("GangRelationshipBuffs [", StringComparison.Ordinal) >= 0
+				|| text.IndexOf("PactWarHeat {", StringComparison.Ordinal) >= 0
+				|| text.IndexOf("IndependentWarHeat {", StringComparison.Ordinal) >= 0;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] Critical recovery save-overwrite check failed; blocking save to preserve existing mod data. " + ex.Message);
+			return true;
+		}
+	}
+
+	private static bool ShouldBlockSuspiciousEmptyPactSaveOverwrite()
+	{
+		try
+		{
+			if (!string.Equals(_lastModDataLoadSource, "none", StringComparison.Ordinal)
+				|| (SaveData?.Pacts?.Count ?? 0) > 0
+				|| string.IsNullOrEmpty(_v2SaveFilePath)
+				|| !File.Exists(_v2SaveFilePath))
+			{
+				return false;
+			}
+			string text = File.ReadAllText(_v2SaveFilePath, Encoding.UTF8);
+			if (!HasNonEmptySionPactsBlock(text))
+			{
+				return false;
+			}
+			VerificationLog("TweaksSave", $"empty-pact-overwrite-blocked path={GetTweaksSavePathForLog()} lastLoad={_lastModDataLoadSource} lastLoadPacts={_lastModDataLoadPactCount} loadedCrew={SaveData?.CrewStates?.Count ?? 0} loadedPacts={SaveData?.Pacts?.Count ?? 0}");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] Empty pact overwrite guard failed: " + ex.Message);
+			return false;
+		}
+	}
+
+	private static bool HasNonEmptySionPactsBlock(string text)
+	{
+		if (string.IsNullOrEmpty(text))
+		{
+			return false;
+		}
+		if (!TryFindSionFieldBlock(text, nameof(ModSaveData.Pacts), '[', ']', out string pactsBlock))
+		{
+			return false;
+		}
+		return pactsBlock.IndexOf(nameof(AlliancePact.PactId), StringComparison.Ordinal) >= 0
+			|| pactsBlock.IndexOf(nameof(AlliancePact.LeaderGangId), StringComparison.Ordinal) >= 0
+			|| pactsBlock.IndexOf(nameof(AlliancePact.MemberIds), StringComparison.Ordinal) >= 0;
+	}
+
+	private static bool ShouldRetryV2LoadWithFallbackReader(ModSaveData loadedData, string text)
+	{
+		if (loadedData == null || string.IsNullOrEmpty(text))
+		{
+			return true;
+		}
+		bool loadedEmpty = (loadedData.CrewStates == null || loadedData.CrewStates.Count == 0)
+			&& (loadedData.Pacts == null || loadedData.Pacts.Count == 0)
+			&& (loadedData.GangRelationshipBuffs == null || loadedData.GangRelationshipBuffs.Count == 0)
+			&& (loadedData.PactWarHeat == null || loadedData.PactWarHeat.Count == 0)
+			&& (loadedData.IndependentWarHeat == null || loadedData.IndependentWarHeat.Count == 0)
+			&& (loadedData.GrapevineEvents == null || loadedData.GrapevineEvents.Count == 0);
+		if (!loadedEmpty)
+		{
+			return false;
+		}
+		return text.IndexOf("Pacts [", StringComparison.Ordinal) >= 0
+			|| text.IndexOf("CrewStates {", StringComparison.Ordinal) >= 0
+			|| text.IndexOf("GangRelationshipBuffs [", StringComparison.Ordinal) >= 0
+			|| text.IndexOf("PactWarHeat {", StringComparison.Ordinal) >= 0
+			|| text.IndexOf("IndependentWarHeat {", StringComparison.Ordinal) >= 0;
+	}
+
+	private static bool TryDeserializeTweaksSaveEnvelopeV2FromSion(string text, out TweaksSaveEnvelopeV2 envelope, out string reason)
+	{
+		envelope = null;
+		reason = "none";
+		try
+		{
+			Hashtable root = FileUtil.ParseAsHashtable(text, ResourceType.SimFile);
+			if (root == null)
+			{
+				reason = "parse-null";
+				return false;
+			}
+			Hashtable dataTable = HTable(root, nameof(TweaksSaveEnvelopeV2.Data));
+			if (dataTable == null)
+			{
+				reason = "missing-data";
+				return false;
+			}
+			envelope = new TweaksSaveEnvelopeV2
+			{
+				Version = ToInt(HGet(root, nameof(TweaksSaveEnvelopeV2.Version)), TweaksSaveVersionCurrent),
+				Data = ReadSionObject<ModSaveData>(dataTable),
+				LastOutingDay = ToInt(HGet(root, nameof(TweaksSaveEnvelopeV2.LastOutingDay)), -1),
+				GlobalMayorBribeActive = ToBool(HGet(root, nameof(TweaksSaveEnvelopeV2.GlobalMayorBribeActive)), d: false),
+				GlobalMayorBribeExpireDay = ToInt(HGet(root, nameof(TweaksSaveEnvelopeV2.GlobalMayorBribeExpireDay)), -1)
+			};
+			if (envelope.Data == null)
+			{
+				reason = "data-null";
+				return false;
+			}
+			reason = "sion-hashtable";
+			return true;
+		}
+		catch (Exception ex)
+		{
+			if (TryRecoverTweaksSaveEnvelopeV2CriticalSections(text, out envelope, out string recoveryReason))
+			{
+				reason = recoveryReason + ";sion-parser=" + ex.GetType().Name + ":" + ex.Message;
+				return true;
+			}
+			reason = ex.GetType().Name + ":" + ex.Message;
+			envelope = null;
+			return false;
+		}
+	}
+
+	private static bool TryRecoverTweaksSaveEnvelopeV2CriticalSections(string text, out TweaksSaveEnvelopeV2 envelope, out string reason)
+	{
+		envelope = null;
+		reason = "none";
+		try
+		{
+			if (string.IsNullOrWhiteSpace(text) || !TryFindSionFieldBlock(text, nameof(TweaksSaveEnvelopeV2.Data), '{', '}', out string dataBlock))
+			{
+				reason = "missing-data-block";
+				return false;
+			}
+
+			ModSaveData data = new ModSaveData
+			{
+				NextPactId = ReadSionInt(dataBlock, nameof(ModSaveData.NextPactId), 0),
+				PlayerPactId = ReadSionInt(dataBlock, nameof(ModSaveData.PlayerPactId), -1),
+				PlayerJoinedPactIndex = ReadSionInt(dataBlock, nameof(ModSaveData.PlayerJoinedPactIndex), -1),
+				LastPactJoinDay = ReadSionInt(dataBlock, nameof(ModSaveData.LastPactJoinDay), -1),
+				NeverAcceptPacts = ReadSionBool(dataBlock, nameof(ModSaveData.NeverAcceptPacts), d: false),
+				RobberyPromptsEvadeRefuseMode = ReadSionBool(dataBlock, nameof(ModSaveData.RobberyPromptsEvadeRefuseMode), d: false),
+				PlayerPactWarStartDay = ReadSionInt(dataBlock, nameof(ModSaveData.PlayerPactWarStartDay), -1),
+				PlayerPactWarTargetId = ReadSionInt(dataBlock, nameof(ModSaveData.PlayerPactWarTargetId), -1),
+				PactEpochDay = ReadSionInt(dataBlock, nameof(ModSaveData.PactEpochDay), -1),
+				SnitchCaseProgress = ReadSionFloat(dataBlock, nameof(ModSaveData.SnitchCaseProgress), 0f),
+				NextSnitchCollectionDay = ReadSionInt(dataBlock, nameof(ModSaveData.NextSnitchCollectionDay), -1),
+				LastSnitchRaidDay = ReadSionInt(dataBlock, nameof(ModSaveData.LastSnitchRaidDay), -1),
+				GangMeetingsEnabled = ReadSionBool(dataBlock, nameof(ModSaveData.GangMeetingsEnabled), d: true),
+				GangMeetingMode = (GangMeetingMode)ReadSionInt(dataBlock, nameof(ModSaveData.GangMeetingMode), (int)GangMeetingMode.Auto),
+				GangMeetingTier = ReadSionInt(dataBlock, nameof(ModSaveData.GangMeetingTier), 0),
+				GangMeetingIntervalDays = ReadSionInt(dataBlock, nameof(ModSaveData.GangMeetingIntervalDays), GANG_MEETING_INTERVAL_DAYS),
+				GangOpsDefaultsProfileVersion = ReadSionInt(dataBlock, nameof(ModSaveData.GangOpsDefaultsProfileVersion), 0)
+			};
+
+			if (TryFindSionFieldBlock(dataBlock, nameof(ModSaveData.Pacts), '[', ']', out string pactsBlock))
+			{
+				data.Pacts = ReadSionAlliancePacts(pactsBlock);
+			}
+			if (data.Pacts == null)
+			{
+				data.Pacts = new List<AlliancePact>();
+			}
+			if (data.Pacts.Count == 0)
+			{
+				reason = "critical-pacts-empty";
+				return false;
+			}
+
+			envelope = new TweaksSaveEnvelopeV2
+			{
+				Version = ReadSionInt(text, nameof(TweaksSaveEnvelopeV2.Version), TweaksSaveVersionCurrent),
+				Data = data,
+				LastOutingDay = ReadSionInt(text, nameof(TweaksSaveEnvelopeV2.LastOutingDay), -1),
+				GlobalMayorBribeActive = ReadSionBool(text, nameof(TweaksSaveEnvelopeV2.GlobalMayorBribeActive), d: false),
+				GlobalMayorBribeExpireDay = ReadSionInt(text, nameof(TweaksSaveEnvelopeV2.GlobalMayorBribeExpireDay), -1)
+			};
+			reason = "critical-text-recovery";
+			return true;
+		}
+		catch (Exception ex)
+		{
+			reason = ex.GetType().Name + ":" + ex.Message;
+			envelope = null;
+			return false;
+		}
+	}
+
+	private static List<AlliancePact> ReadSionAlliancePacts(string pactsBlock)
+	{
+		List<AlliancePact> pacts = new List<AlliancePact>();
+		if (string.IsNullOrEmpty(pactsBlock))
+		{
+			return pacts;
+		}
+		for (int i = 0; i < pactsBlock.Length; i++)
+		{
+			if (pactsBlock[i] != '{')
+			{
+				continue;
+			}
+			int close = MatchBrace(pactsBlock, i);
+			if (close <= i)
+			{
+				break;
+			}
+			string block = pactsBlock.Substring(i, close - i + 1);
+			AlliancePact pact = new AlliancePact
+			{
+				PactId = ReadSionString(block, nameof(AlliancePact.PactId), string.Empty),
+				PactName = ReadSionString(block, nameof(AlliancePact.PactName), string.Empty),
+				ColorIndex = ReadSionInt(block, nameof(AlliancePact.ColorIndex), 0),
+				LeaderGangId = ReadSionInt(block, nameof(AlliancePact.LeaderGangId), -1),
+				ColorR = ReadSionFloat(block, nameof(AlliancePact.ColorR), 1f),
+				ColorG = ReadSionFloat(block, nameof(AlliancePact.ColorG), 1f),
+				ColorB = ReadSionFloat(block, nameof(AlliancePact.ColorB), 1f),
+				FormedDays = ReadSionInt(block, nameof(AlliancePact.FormedDays), 0),
+				PlayerInvited = ReadSionBool(block, nameof(AlliancePact.PlayerInvited), d: false),
+				IsPending = ReadSionBool(block, nameof(AlliancePact.IsPending), d: false),
+				EarningRate = ReadSionFloat(block, nameof(AlliancePact.EarningRate), 0.05f),
+				CrewCapacityBonus = ReadSionInt(block, nameof(AlliancePact.CrewCapacityBonus), 0),
+				LastVoteDay = ReadSionInt(block, nameof(AlliancePact.LastVoteDay), -1),
+				LastVoteType = ReadSionInt(block, nameof(AlliancePact.LastVoteType), 0),
+				PlayerProposedVote = ClampPactVoteChoice(ReadSionInt(block, nameof(AlliancePact.PlayerProposedVote), -1), allowNone: true),
+				PendingVoteCycleDay = ReadSionInt(block, nameof(AlliancePact.PendingVoteCycleDay), -1),
+				VotePromptShown = ReadSionBool(block, nameof(AlliancePact.VotePromptShown), d: false),
+				VotePromptAnswered = ReadSionBool(block, nameof(AlliancePact.VotePromptAnswered), d: false),
+				PlayerColorConfirmed = ReadSionBool(block, nameof(AlliancePact.PlayerColorConfirmed), d: true)
+			};
+			if (TryFindSionFieldBlock(block, nameof(AlliancePact.MemberIds), '[', ']', out string membersBlock))
+			{
+				pact.MemberIds = ReadSionIntList(membersBlock)
+					.Where(id => id >= 0 && id != pact.LeaderGangId)
+					.Distinct()
+					.ToList();
+			}
+			if (TryFindSionFieldBlock(block, nameof(AlliancePact.BossHappiness), '{', '}', out string happinessBlock))
+			{
+				pact.BossHappiness = ReadSionIntFloatDictionary(happinessBlock);
+			}
+			if (TryFindSionFieldBlock(block, nameof(AlliancePact.VotePreferences), '{', '}', out string votesBlock))
+			{
+				pact.VotePreferences = ReadSionIntIntDictionary(votesBlock);
+			}
+			if (!string.IsNullOrWhiteSpace(pact.PactId) || pact.LeaderGangId >= 0 || pact.MemberIds.Count > 0)
+			{
+				pacts.Add(pact);
+			}
+			i = close;
+		}
+		return pacts;
+	}
+
+	private static bool TryFindSionFieldBlock(string text, string fieldName, char openChar, char closeChar, out string block)
+	{
+		block = null;
+		int fieldPos = FindSionFieldPosition(text, fieldName);
+		if (fieldPos < 0)
+		{
+			return false;
+		}
+		int open = text.IndexOf(openChar, fieldPos + fieldName.Length);
+		if (open < 0)
+		{
+			return false;
+		}
+		int close = openChar == '{' ? MatchBrace(text, open) : MatchBracket(text, open);
+		if (close <= open || closeChar != text[close])
+		{
+			return false;
+		}
+		block = text.Substring(open, close - open + 1);
+		return true;
+	}
+
+	private static int FindSionFieldPosition(string text, string fieldName)
+	{
+		if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(fieldName))
+		{
+			return -1;
+		}
+		int index = 0;
+		while (index < text.Length)
+		{
+			int lineEnd = text.IndexOf('\n', index);
+			if (lineEnd < 0)
+			{
+				lineEnd = text.Length;
+			}
+			int pos = index;
+			while (pos < lineEnd && char.IsWhiteSpace(text[pos]))
+			{
+				pos++;
+			}
+			if (pos + fieldName.Length <= lineEnd
+				&& string.Compare(text, pos, fieldName, 0, fieldName.Length, StringComparison.Ordinal) == 0)
+			{
+				int after = pos + fieldName.Length;
+				if (after >= lineEnd || char.IsWhiteSpace(text[after]) || text[after] == '{' || text[after] == '[')
+				{
+					return pos;
+				}
+			}
+			index = lineEnd + 1;
+		}
+		return -1;
+	}
+
+	private static string ReadSionLineValue(string text, string fieldName)
+	{
+		int pos = FindSionFieldPosition(text, fieldName);
+		if (pos < 0)
+		{
+			return null;
+		}
+		int valueStart = pos + fieldName.Length;
+		int lineEnd = text.IndexOf('\n', valueStart);
+		if (lineEnd < 0)
+		{
+			lineEnd = text.Length;
+		}
+		return text.Substring(valueStart, lineEnd - valueStart).Trim();
+	}
+
+	private static string ReadSionString(string text, string fieldName, string fallback)
+	{
+		string value = ReadSionLineValue(text, fieldName);
+		if (string.IsNullOrEmpty(value))
+		{
+			return fallback;
+		}
+		value = value.Trim();
+		if (value.Length < 2 || value[0] != '"')
+		{
+			return value;
+		}
+		StringBuilder builder = new StringBuilder(value.Length);
+		for (int i = 1; i < value.Length; i++)
+		{
+			char c = value[i];
+			if (c == '"')
+			{
+				return builder.ToString();
+			}
+			if (c == '\\' && i + 1 < value.Length)
+			{
+				char n = value[++i];
+				builder.Append(n == 'n' ? '\n' : n == 'r' ? '\r' : n == 't' ? '\t' : n);
+				continue;
+			}
+			builder.Append(c);
+		}
+		return builder.ToString();
+	}
+
+	private static int ReadSionInt(string text, string fieldName, int fallback)
+	{
+		return ToInt(ReadSionLineValue(text, fieldName), fallback);
+	}
+
+	private static float ReadSionFloat(string text, string fieldName, float fallback)
+	{
+		return ToFloat(ReadSionLineValue(text, fieldName), fallback);
+	}
+
+	private static bool ReadSionBool(string text, string fieldName, bool d)
+	{
+		return ToBool(ReadSionLineValue(text, fieldName), d);
+	}
+
+	private static List<int> ReadSionIntList(string block)
+	{
+		List<int> values = new List<int>();
+		foreach (string rawLine in block.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+		{
+			string line = rawLine.Trim();
+			if (line.Length == 0 || line == "[" || line == "]")
+			{
+				continue;
+			}
+			if (int.TryParse(line, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
+			{
+				values.Add(value);
+			}
+		}
+		return values;
+	}
+
+	private static Dictionary<int, float> ReadSionIntFloatDictionary(string block)
+	{
+		Dictionary<int, float> values = new Dictionary<int, float>();
+		foreach (string rawLine in block.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+		{
+			string line = rawLine.Trim();
+			if (line.Length == 0 || line == "{" || line == "}")
+			{
+				continue;
+			}
+			string[] parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+			if (parts.Length >= 2
+				&& int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int key)
+				&& float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float value))
+			{
+				values[key] = value;
+			}
+		}
+		return values;
+	}
+
+	private static Dictionary<int, int> ReadSionIntIntDictionary(string block)
+	{
+		Dictionary<int, int> values = new Dictionary<int, int>();
+		foreach (string rawLine in block.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+		{
+			string line = rawLine.Trim();
+			if (line.Length == 0 || line == "{" || line == "}")
+			{
+				continue;
+			}
+			string[] parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+			if (parts.Length >= 2
+				&& int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int key)
+				&& int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
+			{
+				values[key] = ClampPactVoteChoice(value, allowNone: false);
+			}
+		}
+		return values;
+	}
+
+	private static T ReadSionObject<T>(Hashtable table) where T : new()
+	{
+		object value = ReadSionValue(table, typeof(T));
+		return value is T typed ? typed : new T();
+	}
+
+	private static object ReadSionValue(object raw, Type targetType)
+	{
+		if (targetType == null)
+		{
+			return null;
+		}
+		if (raw == null)
+		{
+			return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
+		}
+		Type nullableType = Nullable.GetUnderlyingType(targetType);
+		if (nullableType != null)
+		{
+			return ReadSionValue(raw, nullableType);
+		}
+		if (targetType == typeof(string))
+		{
+			return ToStr(raw, string.Empty);
+		}
+		if (targetType == typeof(bool))
+		{
+			return ToBool(raw, d: false);
+		}
+		if (targetType == typeof(int))
+		{
+			return ToInt(raw, 0);
+		}
+		if (targetType == typeof(long))
+		{
+			return ToLong(raw, 0L);
+		}
+		if (targetType == typeof(float))
+		{
+			return ToFloat(raw, 0f);
+		}
+		if (targetType == typeof(double))
+		{
+			return Convert.ToDouble(raw, CultureInfo.InvariantCulture);
+		}
+		if (targetType.IsEnum)
+		{
+			return Enum.ToObject(targetType, ToInt(raw, 0));
+		}
+		if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(List<>))
+		{
+			return ReadSionList(raw as ArrayList, targetType);
+		}
+		if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(Dictionary<,>))
+		{
+			return ReadSionDictionary(raw as Hashtable, targetType);
+		}
+		if (raw is Hashtable table)
+		{
+			object instance = Activator.CreateInstance(targetType);
+			foreach (FieldInfo field in GetSionSerializableFields(targetType))
+			{
+				if (field == null || field.IsInitOnly || !table.ContainsKey(field.Name))
+				{
+					continue;
+				}
+				try
+				{
+					field.SetValue(instance, ReadSionValue(table[field.Name], field.FieldType));
+				}
+				catch (Exception ex)
+				{
+					Debug.LogWarning("[GameplayTweaks] V2 fallback load skipped field " + targetType.Name + "." + field.Name + ": " + ex.Message);
+				}
+			}
+			return instance;
+		}
+		return raw;
+	}
+
+	private static object ReadSionList(ArrayList rawList, Type listType)
+	{
+		object list = Activator.CreateInstance(listType);
+		if (!(list is IList targetList) || rawList == null)
+		{
+			return list;
+		}
+		Type itemType = listType.GetGenericArguments()[0];
+		foreach (object item in rawList)
+		{
+			targetList.Add(ReadSionValue(item, itemType));
+		}
+		return list;
+	}
+
+	private static object ReadSionDictionary(Hashtable rawDictionary, Type dictionaryType)
+	{
+		object dictionary = Activator.CreateInstance(dictionaryType);
+		if (!(dictionary is IDictionary targetDictionary) || rawDictionary == null)
+		{
+			return dictionary;
+		}
+		Type[] args = dictionaryType.GetGenericArguments();
+		Type keyType = args[0];
+		Type valueType = args[1];
+		foreach (DictionaryEntry entry in rawDictionary)
+		{
+			object key = ReadSionDictionaryKey(entry.Key, keyType);
+			object value = ReadSionValue(entry.Value, valueType);
+			if (key != null)
+			{
+				targetDictionary[key] = value;
+			}
+		}
+		return dictionary;
+	}
+
+	private static object ReadSionDictionaryKey(object rawKey, Type keyType)
+	{
+		if (keyType == typeof(string))
+		{
+			return ToStr(rawKey, string.Empty);
+		}
+		if (keyType == typeof(int))
+		{
+			return ToInt(rawKey, 0);
+		}
+		if (keyType == typeof(long))
+		{
+			return ToLong(rawKey, 0L);
+		}
+		if (keyType.IsEnum)
+		{
+			return Enum.ToObject(keyType, ToInt(rawKey, 0));
+		}
+		return Convert.ChangeType(rawKey, keyType, CultureInfo.InvariantCulture);
+	}
+
+	private static bool TryGetBaseSaveLastWriteUtc(string saveName, out DateTime lastWriteUtc, out string sourcePath)
+	{
+		lastWriteUtc = DateTime.MinValue;
+		sourcePath = string.Empty;
+		string saveRoot = GetCitySaveRootPath();
+		if (string.IsNullOrWhiteSpace(saveRoot) || string.IsNullOrWhiteSpace(saveName))
+		{
+			return false;
+		}
+
+		string slotRoot = Path.Combine(saveRoot, saveName);
+		string[] candidates =
+		{
+			Path.Combine(slotRoot, "savedata.sim.zip"),
+			Path.Combine(slotRoot, "savedata.sim"),
+			Path.Combine(slotRoot, "metadata.sim"),
+			Path.Combine(saveRoot, saveName + ".sim.zip"),
+			Path.Combine(saveRoot, saveName + ".sim")
+		};
+		foreach (string candidate in candidates)
+		{
+			if (string.IsNullOrWhiteSpace(candidate) || !File.Exists(candidate))
+			{
+				continue;
+			}
+
+			DateTime candidateUtc = File.GetLastWriteTimeUtc(candidate);
+			if (candidateUtc > lastWriteUtc)
+			{
+				lastWriteUtc = candidateUtc;
+				sourcePath = candidate;
+			}
+		}
+
+		return lastWriteUtc > DateTime.MinValue;
 	}
 
 	private static string ResolveExistingTweaksSavePath(string saveName, string suffix, string preferredPath)
@@ -1143,11 +2584,11 @@ public partial class GameplayTweaksPlugin
 			: "legacy-root";
 	}
 
-	private static void WriteTweaksSaveManifest()
+	private static bool WriteTweaksSaveManifest()
 	{
 		if (string.IsNullOrEmpty(_v2ManifestFilePath))
 		{
-			return;
+			return false;
 		}
 		try
 		{
@@ -1157,29 +2598,31 @@ public partial class GameplayTweaksPlugin
 			builder.Append("\"Version\":").Append(TweaksSaveVersionCurrent).Append(",");
 			builder.Append("\"SaveName\":\"").Append(EscapeJsonString(_currentTweaksSaveName ?? string.Empty)).Append("\",");
 			builder.Append("\"Layout\":\"moddata-v2\",");
-			builder.Append("\"DataFile\":\"GameplayTweaks_v2.sim\",");
-			builder.Append("\"CrewStates\":").Append(SaveData?.CrewStates?.Count ?? 0).Append(",");
-			builder.Append("\"Pacts\":").Append(SaveData?.Pacts?.Count ?? 0).Append(",");
-			builder.Append("\"PactMembers\":").Append(GetPactMemberCountForSaveLog()).Append(",");
-			builder.Append("\"GangRelationshipBuffs\":").Append(SaveData?.GangRelationshipBuffs?.Count ?? 0).Append(",");
-			builder.Append("\"PactWarHeat\":").Append(SaveData?.PactWarHeat?.Count ?? 0).Append(",");
-			builder.Append("\"PactRevenge\":").Append(SaveData?.PactRevengeQueue?.Count ?? 0).Append(",");
-			builder.Append("\"IndependentWarHeat\":").Append(SaveData?.IndependentWarHeat?.Count ?? 0).Append(",");
-			builder.Append("\"IndependentRevenge\":").Append(SaveData?.IndependentRevengeQueue?.Count ?? 0);
+			builder.Append("\"DataFile\":\"GameplayTweaks_v2.sim\"");
 			builder.Append("}");
-			WriteTextAtomic(_v2ManifestFilePath, builder.ToString());
+			return WriteTextAtomicIfChanged(_v2ManifestFilePath, builder.ToString());
 		}
 		catch (Exception ex)
 		{
 			Debug.LogWarning("[GameplayTweaks] Manifest save failed: " + ex.Message);
+			return false;
 		}
 	}
 
 	private static int GetPactMemberCountForSaveLog()
 	{
+		return GetPactMemberCountForSaveLog(SaveData);
+	}
+
+	private static int GetPactMemberCountForSaveLog(ModSaveData data)
+	{
 		try
 		{
-			return SaveData?.Pacts?.Where(p => p != null).Sum(p => GetPactMemberGangIds(p).Count) ?? 0;
+			return data?.Pacts?
+				.Where(p => p != null)
+				.Sum(p => p.MemberIds == null
+					? (p.LeaderGangId >= 0 ? 1 : 0)
+					: p.MemberIds.Concat(p.LeaderGangId >= 0 ? new[] { p.LeaderGangId } : Array.Empty<int>()).Where(id => id >= 0).Distinct().Count()) ?? 0;
 		}
 		catch
 		{
@@ -1193,6 +2636,7 @@ public partial class GameplayTweaksPlugin
 		{
 			return;
 		}
+		NormalizeHumanPoliticalBribeAfterLoad();
 		foreach (KeyValuePair<long, CrewModState> crewState in SaveData.CrewStates)
 		{
 			CrewModState value = crewState.Value;
@@ -1200,6 +2644,7 @@ public partial class GameplayTweaksPlugin
 			{
 				continue;
 			}
+			NormalizeStreetCreditStateAfterLoad(value, crewState.Key);
 			value.FederalWitnessCount = Mathf.Max(0, value.FederalWitnessCount);
 			value.WitnessCount = Mathf.Max(value.WitnessCount, value.FederalWitnessCount);
 			if (value.FederalWitnessCount > 0)
@@ -1212,10 +2657,58 @@ public partial class GameplayTweaksPlugin
 			value.SnitchWeight = Mathf.Clamp(value.SnitchWeight, 0f, 0.95f);
 			value.SnitchLeakCount = Mathf.Max(0, value.SnitchLeakCount);
 			value.HideoutMissedPayments = Mathf.Max(0, value.HideoutMissedPayments);
+			try
+			{
+				NormalizeOddJobCooldownState(value, G.GetNow(), "load", EntityID.FromID(unchecked((ulong)crewState.Key)));
+			}
+			catch
+			{
+			}
 			SyncLocalHeatFromLegacyFields(value);
 		}
 		ReconcileAllCrewJailStates("load");
 		ReconcilePersistentGangRelationshipBuffs("load", force: true);
+	}
+
+	private static void NormalizeStreetCreditStateAfterLoad(CrewModState state, long crewKey)
+	{
+		if (state == null)
+		{
+			return;
+		}
+		float progress = Mathf.Max(0f, state.StreetCreditProgress);
+		int carriedLevels = Mathf.FloorToInt(progress);
+		if (carriedLevels > 0)
+		{
+			state.StreetCreditLevel = Mathf.Max(0, state.StreetCreditLevel) + carriedLevels;
+			state.StreetCreditProgress = Mathf.Clamp01(progress - carriedLevels);
+			VerificationLog("StreetCredit", $"load-normalized-no-grant peep={(ulong)crewKey} carriedLevels={carriedLevels} level={state.StreetCreditLevel} progress={state.StreetCreditProgress:0.000}");
+			return;
+		}
+		state.StreetCreditLevel = Mathf.Max(0, state.StreetCreditLevel);
+		state.StreetCreditProgress = Mathf.Clamp01(progress);
+	}
+
+	private static void NormalizeHumanPoliticalBribeAfterLoad()
+	{
+		try
+		{
+			if (!CrewRelationshipHandlerPatch._globalMayorBribeActive)
+			{
+				return;
+			}
+			int today = G.GetNow().days;
+			if (CrewRelationshipHandlerPatch._globalMayorBribeExpireDay < 0 || CrewRelationshipHandlerPatch._globalMayorBribeExpireDay <= today)
+			{
+				int expireDay = CrewRelationshipHandlerPatch._globalMayorBribeExpireDay;
+				CrewRelationshipHandlerPatch._globalMayorBribeActive = false;
+				CrewRelationshipHandlerPatch._globalMayorBribeExpireDay = -1;
+				VerificationLog("Political", $"load-cleared-stale-bribe today={today} expireDay={expireDay}");
+			}
+		}
+		catch
+		{
+		}
 	}
 
 	private static object HGet(Hashtable table, string key)
@@ -1426,6 +2919,7 @@ public partial class GameplayTweaksPlugin
 		SaveData.PlayerJoinedPactIndex = ToInt(HGet(root, "PJI"), -1);
 		SaveData.LastPactJoinDay = ToInt(HGet(root, "LPJD"), -1);
 		SaveData.NeverAcceptPacts = ToBool(HGet(root, "NAP"), d: false);
+		SaveData.RobberyPromptsEvadeRefuseMode = ToBool(HGet(root, "RERM"), d: false);
 		CrewRelationshipHandlerPatch._lastOutingDay = ToInt(HGet(root, "LOD"), -1);
 		CrewRelationshipHandlerPatch._globalMayorBribeActive = ToBool(HGet(root, "GMB"), d: false);
 		CrewRelationshipHandlerPatch._globalMayorBribeExpireDay = ToInt(HGet(root, "GMBD"), -1);

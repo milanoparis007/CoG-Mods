@@ -1,0 +1,53 @@
+DEVLOG VIDEO PROMPT - MAY 2026 PUBLIC BUILD
+===========================================
+
+Goal: keep the video short, practical, and focused on what players will actually see.
+
+INSTALL SEGMENT FOR SUPPORTERS
+------------------------------
+
+- Start by showing the release archive or public release folder.
+- Show the main install path players should copy into their City of Gangsters folder.
+- Point out the BepInEx plugins folder and the updated GameplayTweaks.dll.
+- Be clear that this is not a DLL-only update.
+- Show that the included CoG_Data folder must be copied too because the build depends on the current StreamingAssets data.
+- Tell supporters that CoGCustomAssets is required for now for custom icons/assets.
+- Point out the expected CoGCustomAssets location:
+  BepInEx\plugins\CoGCustomAssets\CoGCustomAssets.dll
+- Mention that the changelog is included with the release files.
+- Keep this quick: copy files, overwrite when asked, launch the game.
+
+NEW GAME WALKTHROUGH
+--------------------
+
+- Start a new game normally so players can see the build from a clean start.
+- Say this update focuses on delivery routes, routed vehicles, and stability.
+
+WHAT TO SHOW IN-GAME
+--------------------
+
+- Open the delivery route editor.
+- Show the new resource search/filter field.
+- Explain that long buy/sell resource lists are now easier to narrow down without scrolling forever.
+- Show the delivery route front action text:
+  "Collect from or support a front."
+- Mention that this was the small StreamingAssets text/content update.
+- Show routed vehicle behavior if it comes up naturally.
+- Point out route state labels like in-route, arriving, or at-corner if they appear.
+- Mention that route-in destination handling and staged shop actions were cleaned up.
+
+QUICK STABILITY NOTES
+---------------------
+
+- Old save cleanup was improved.
+- Political and judge bribe cash checks were hardened.
+- Residential event stability was improved.
+- Jail and federal arrest UI refreshes were cleaned up.
+- Some noisy logs and repeated refresh work were reduced.
+
+CLOSING
+-------
+
+- Keep the closing simple:
+  "The biggest visible change is delivery route search and smoother route behavior."
+- Tell players to check the changelog for the full list.

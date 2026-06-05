@@ -12,6 +12,7 @@ Player-prev.log
 .codex_tmp*/
 .codex_tmp_*.cs
 _buildtmp/
+tmp/
 tmp_video_frames/
 artifacts/
 GameOptimizer/obj_gameoptimizer/
@@ -24,3 +25,12 @@ Things To Have/**/CoG_Data/Managed/
 Things To Have/Vanilla Streamingassets and Csharp/
 Things To Have/PIA Mod After Prohibition/
 Things To Have/PIA Mod Vanilla/
+Things To Have/GameplayTweaks.dll
+Things To Have/Old Beta/
+Things To Have/Old Stable/
+Things To Have/VideoToClip/
+Things To Have/**/*.7z
+Things To Have/**/Past Build/
+Things To Have/**/Personal/
+Things To Have/**/Public/
+AfterProhibitionAssets/Generated/

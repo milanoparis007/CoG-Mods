@@ -8,9 +8,12 @@ using Game.Core;
 using Game.Services;
 using Game.Session;
 using Game.Session.Assets;
+using Game.Session.Board;
 using Game.Session.Data;
 using Game.Session.Entities;
 using Game.Session.Player;
+using Game.Session.Player.AI;
+using Game.Session.Player.Commands;
 using Game.Session.Sim;
 using Game.Session.Sim.Modules;
 using Game.UI.Session;
@@ -58,6 +61,10 @@ public partial class GameplayTweaksPlugin
 	private static readonly List<ulong> _activeGroupedCombatAttackerPeepIds = new List<ulong>();
 
 	private static string _activeGroupedCombatAttackerSnapshotSource = string.Empty;
+
+	private static readonly HashSet<string> _humanCopCombatIncidentKeys = new HashSet<string>(StringComparer.Ordinal);
+
+	private static int _humanCopCombatIncidentDay = -1;
 
 	private static MethodInfo _copWarShouldSuppressIncomingAiCopCombatMethod;
 
@@ -245,7 +252,7 @@ public partial class GameplayTweaksPlugin
 	}
 
 
-	private static class VehicleGroupCombatPatch
+	internal static class VehicleGroupCombatPatch
 	{
 		private sealed class WeaponPoolEntry
 		{
@@ -286,6 +293,14 @@ public partial class GameplayTweaksPlugin
 			public float? FocusShare;
 
 			public string DistributionFallbackReason;
+
+			public List<CrewAssignment> CounterResponders;
+
+			public Dictionary<ulong, WeaponConfig> CounterResponderWeapons;
+
+			public Fixnum CounterRawDamage;
+
+			public Fixnum CounterFinalDamage;
 		}
 
 		private sealed class PopupCombatAction
@@ -322,6 +337,14 @@ public partial class GameplayTweaksPlugin
 		{
 			FocusOne,
 			SpreadAll
+		}
+
+		private const int OnFootSpreadMaxTargets = 3;
+
+		private enum VehicleCombatOccupantMode
+		{
+			StrictPhysical,
+			ConfirmedVehicleCrew
 		}
 
 		private static readonly MethodInfo PopupFindTargetForMethod = typeof(CombatPopupPlanning).GetMethod("FindTargetFor", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -387,6 +410,8 @@ public partial class GameplayTweaksPlugin
 		private static readonly Dictionary<int, Dictionary<ulong, string>> PopupSelectedWeaponIdsById = new Dictionary<int, Dictionary<ulong, string>>();
 
 		private static readonly HashSet<string> PopupVehicleCrewInfoLogKeys = new HashSet<string>(StringComparer.Ordinal);
+
+		private static readonly HashSet<string> VehicleCombatOccupantAcceptanceLogKeys = new HashSet<string>(StringComparer.Ordinal);
 
 		private static int _groupedCombatTransactionDepth;
 
@@ -903,7 +928,7 @@ public partial class GameplayTweaksPlugin
 				yield return enemy;
 				yield break;
 			}
-			List<CrewAssignment> occupants = GetVehicleCombatOccupants(crew)
+			List<CrewAssignment> occupants = GetVehicleCombatOccupants(crew, VehicleCombatOccupantMode.ConfirmedVehicleCrew)
 				.Where(item => item.IsValid && item.IsNotDead && item.peepId.IsValid)
 				.OrderBy(item => item.peepId == enemy.Id ? 0 : 1)
 				.ThenBy(item => item.peepId.id)
@@ -1053,6 +1078,39 @@ public partial class GameplayTweaksPlugin
 			return actions;
 		}
 
+		private static bool TryExecutePopupOnFootSpreadCombat(CombatPopupPlanning popup, PopupCombatAction action, List<CombatResults> results)
+		{
+			if (popup == null
+				|| action == null
+				|| results == null
+				|| GetPopupDriveByTargetMode(popup) != DriveByTargetMode.SpreadAll)
+			{
+				return false;
+			}
+			GroupedCombatMode mode = GetEffectiveCombatModeForCrew(popup, action.AttackerCrew, requireActionPoints: true);
+			if (mode != GroupedCombatMode.OnFoot)
+			{
+				return false;
+			}
+			List<CrewAssignment> spreadTargets = GetPopupSpreadTargetCrews(popup, action.Target)
+				.Where(item => item.IsValid
+					&& item.peepId.IsValid
+					&& item.peepId != action.AttackerCrew.peepId
+					&& item.GetPeep()?.components?.agent?.HasHealthPointsLeft == true)
+				.Take(OnFootSpreadMaxTargets)
+				.ToList();
+			if (spreadTargets.Count <= 1)
+			{
+				return false;
+			}
+			int requestedAttackerCount = action.IsGrouped
+				? GetRequestedOnFootAttackerCount(popup, action.AttackerCrew, requireActionPoints: true)
+				: 1;
+			int beforeCount = results.Count;
+			ExecuteOnFootSpreadCombat(global::Game.Game.ctx?.simman?.combat, action.AttackerCrew, action.Weapon, spreadTargets, requestedAttackerCount, consumeHumanAttackCost: true, results, observerSource: "CombatPopup");
+			return results.Count > beforeCount;
+		}
+
 		private static bool IsGroupedCombatTransactionActive()
 		{
 			return _groupedCombatTransactionDepth > 0;
@@ -1086,7 +1144,9 @@ public partial class GameplayTweaksPlugin
 			try
 			{
 				List<Entity> myCrew = PopupMyCrewField?.GetValue(__instance) as List<Entity>;
-				if (myCrew == null || myCrew.Count == 0 || !myCrew.Any(ShouldUseGroupedHumanVehicleCombat))
+				bool groupedVehiclePopup = myCrew != null && myCrew.Any(ShouldUseGroupedHumanVehicleCombat);
+				bool onFootSpreadPopup = GetPopupDriveByTargetMode(__instance) == DriveByTargetMode.SpreadAll && HasMultiplePopupSpreadTargets(__instance);
+				if (myCrew == null || myCrew.Count == 0 || (!groupedVehiclePopup && !onFootSpreadPopup))
 				{
 					return true;
 				}
@@ -1103,6 +1163,10 @@ public partial class GameplayTweaksPlugin
 				VerificationLog("VehicleGroupCombat", $"fight-commit token={popupToken} rawRows={myCrew.Count} dedupedActions={actions.Count} groupedActions={actions.Count(item => item.IsGrouped)}");
 				foreach (PopupCombatAction action in actions)
 				{
+					if (TryExecutePopupOnFootSpreadCombat(__instance, action, results))
+					{
+						continue;
+					}
 					if (action.IsGrouped)
 					{
 						GroupedCombatMode mode = GetEffectiveCombatModeForCrew(__instance, action.AttackerCrew, requireActionPoints: true);
@@ -1161,9 +1225,9 @@ public partial class GameplayTweaksPlugin
 		{
 			try
 			{
-				if (!attacker.IsValid || !target.IsValid)
+				if (!TryValidateAiCombatCrew(attacker, target, "PerformAICombat"))
 				{
-					return true;
+					return false;
 				}
 
 				Entity attackerPeep = attacker.GetPeep();
@@ -1245,7 +1309,46 @@ public partial class GameplayTweaksPlugin
 			}
 		}
 
-		private static bool ShouldSuppressIncomingAiCopCombat(PlayerID attackerPid, PlayerID targetPid)
+		private static bool TryValidateAiCombatCrew(CrewAssignment attacker, CrewAssignment target, string source)
+		{
+			if (!attacker.IsValid
+				|| !attacker.peepId.IsValid
+				|| !target.IsValid
+				|| !target.peepId.IsValid)
+			{
+				VerificationLog(
+					"VehicleGroupCombat.AI",
+					$"ai-combat-skipped source={source} reason=invalid-crew attacker={attacker.peepId.id} target={target.peepId.id}");
+				return false;
+			}
+
+			Entity attackerPeep = attacker.GetPeep();
+			Entity targetPeep = target.GetPeep();
+			if (attackerPeep?.components?.agent == null
+				|| targetPeep?.components?.agent == null
+				|| attackerPeep.data?.agent == null
+				|| targetPeep.data?.agent == null
+				|| !attackerPeep.components.agent.HasHealthPointsLeft
+				|| !targetPeep.components.agent.HasHealthPointsLeft)
+			{
+				VerificationLog(
+					"VehicleGroupCombat.AI",
+					$"ai-combat-skipped source={source} reason=stale-or-dead-peep attacker={attacker.peepId.id} target={target.peepId.id} attackerFound={attackerPeep != null} targetFound={targetPeep != null}");
+				return false;
+			}
+
+			if (global::Game.Game.ctx?.simman?.combat == null)
+			{
+				VerificationLog(
+					"VehicleGroupCombat.AI",
+					$"ai-combat-skipped source={source} reason=no-combat-manager attacker={attacker.peepId.id} target={target.peepId.id}");
+				return false;
+			}
+
+			return true;
+		}
+
+		internal static bool ShouldSuppressIncomingAiCopCombat(PlayerID attackerPid, PlayerID targetPid)
 		{
 			try
 			{
@@ -1281,7 +1384,7 @@ public partial class GameplayTweaksPlugin
 			{
 				return;
 			}
-			bool showToggle = IsGroupedHumanVehiclePopup(popup);
+			bool showToggle = ShouldShowCombatPopupAttackControls(popup);
 			GameObject anchor = panel.transform.Find(PopupRangedToggleAnchorName)?.gameObject;
 			if (!showToggle)
 			{
@@ -1301,6 +1404,7 @@ public partial class GameplayTweaksPlugin
 				return;
 			}
 			anchor.SetActive(true);
+			anchor.transform.SetAsLastSibling();
 			button.onClick.RemoveAllListeners();
 			button.onClick.AddListener(delegate
 			{
@@ -1316,7 +1420,7 @@ public partial class GameplayTweaksPlugin
 			{
 				return;
 			}
-			bool showToggle = IsGroupedHumanVehiclePopup(popup);
+			bool showToggle = ShouldShowCombatPopupAttackControls(popup);
 			GameObject anchor = panel.transform.Find(PopupOnFootCountAnchorName)?.gameObject;
 			if (!showToggle)
 			{
@@ -1336,6 +1440,7 @@ public partial class GameplayTweaksPlugin
 				return;
 			}
 			anchor.SetActive(true);
+			anchor.transform.SetAsLastSibling();
 			button.onClick.RemoveAllListeners();
 			button.onClick.AddListener(delegate
 			{
@@ -1351,7 +1456,7 @@ public partial class GameplayTweaksPlugin
 			{
 				return;
 			}
-			bool showToggle = IsGroupedHumanVehiclePopup(popup);
+			bool showToggle = ShouldShowCombatPopupAttackControls(popup);
 			GameObject anchor = panel.transform.Find(PopupOnFootFilterAnchorName)?.gameObject;
 			if (!showToggle)
 			{
@@ -1371,6 +1476,7 @@ public partial class GameplayTweaksPlugin
 				return;
 			}
 			anchor.SetActive(true);
+			anchor.transform.SetAsLastSibling();
 			button.onClick.RemoveAllListeners();
 			button.onClick.AddListener(delegate
 			{
@@ -1386,7 +1492,7 @@ public partial class GameplayTweaksPlugin
 			{
 				return;
 			}
-			bool showToggle = IsGroupedHumanVehiclePopup(popup);
+			bool showToggle = ShouldShowCombatPopupAttackControls(popup);
 			GameObject anchor = panel.transform.Find(PopupDriveByTargetAnchorName)?.gameObject;
 			if (!showToggle)
 			{
@@ -1406,6 +1512,7 @@ public partial class GameplayTweaksPlugin
 				return;
 			}
 			anchor.SetActive(true);
+			anchor.transform.SetAsLastSibling();
 			button.onClick.RemoveAllListeners();
 			button.onClick.AddListener(delegate
 			{
@@ -1441,6 +1548,7 @@ public partial class GameplayTweaksPlugin
 				return;
 			}
 			anchor.SetActive(true);
+			anchor.transform.SetAsLastSibling();
 			UpdateCombatPopupVehicleInfoLabel(popup, label);
 		}
 
@@ -1471,6 +1579,7 @@ public partial class GameplayTweaksPlugin
 				return;
 			}
 			anchor.SetActive(true);
+			anchor.transform.SetAsLastSibling();
 			UpdateCombatPopupTargetVehicleInfoLabel(popup, label);
 		}
 
@@ -1493,7 +1602,7 @@ public partial class GameplayTweaksPlugin
 			rect.anchorMax = new Vector2(0f, 0f);
 			rect.pivot = new Vector2(0f, 0f);
 			rect.anchoredPosition = new Vector2(12f, 52f);
-			rect.sizeDelta = new Vector2(122f, 24f);
+			rect.sizeDelta = new Vector2(170f, 24f);
 			return anchor;
 		}
 
@@ -1505,8 +1614,8 @@ public partial class GameplayTweaksPlugin
 			rect.anchorMin = new Vector2(0f, 1f);
 			rect.anchorMax = new Vector2(0f, 1f);
 			rect.pivot = new Vector2(0f, 1f);
-			rect.anchoredPosition = new Vector2(140f, -6f);
-			rect.sizeDelta = new Vector2(132f, 24f);
+			rect.anchoredPosition = new Vector2(12f, -14f);
+			rect.sizeDelta = new Vector2(150f, 24f);
 			return anchor;
 		}
 
@@ -1518,8 +1627,8 @@ public partial class GameplayTweaksPlugin
 			rect.anchorMin = new Vector2(0f, 1f);
 			rect.anchorMax = new Vector2(0f, 1f);
 			rect.pivot = new Vector2(0f, 1f);
-			rect.anchoredPosition = new Vector2(278f, -6f);
-			rect.sizeDelta = new Vector2(104f, 24f);
+			rect.anchoredPosition = new Vector2(170f, -14f);
+			rect.sizeDelta = new Vector2(150f, 24f);
 			return anchor;
 		}
 
@@ -1531,8 +1640,8 @@ public partial class GameplayTweaksPlugin
 			rect.anchorMin = new Vector2(0f, 0f);
 			rect.anchorMax = new Vector2(0f, 0f);
 			rect.pivot = new Vector2(0f, 0f);
-			rect.anchoredPosition = new Vector2(140f, 52f);
-			rect.sizeDelta = new Vector2(186f, 24f);
+			rect.anchoredPosition = new Vector2(190f, 52f);
+			rect.sizeDelta = new Vector2(176f, 24f);
 			return anchor;
 		}
 
@@ -1544,7 +1653,7 @@ public partial class GameplayTweaksPlugin
 			rect.anchorMin = new Vector2(0f, 1f);
 			rect.anchorMax = new Vector2(0f, 1f);
 			rect.pivot = new Vector2(0f, 1f);
-			rect.anchoredPosition = new Vector2(12f, -34f);
+			rect.anchoredPosition = new Vector2(12f, -42f);
 			rect.sizeDelta = new Vector2(260f, 18f);
 			return anchor;
 		}
@@ -1557,7 +1666,7 @@ public partial class GameplayTweaksPlugin
 			rect.anchorMin = new Vector2(0f, 1f);
 			rect.anchorMax = new Vector2(0f, 1f);
 			rect.pivot = new Vector2(0f, 1f);
-			rect.anchoredPosition = new Vector2(12f, -52f);
+			rect.anchoredPosition = new Vector2(12f, -60f);
 			rect.sizeDelta = new Vector2(300f, 18f);
 			return anchor;
 		}
@@ -1580,8 +1689,8 @@ public partial class GameplayTweaksPlugin
 				LayoutElement layout = ((Component)button).GetComponent<LayoutElement>();
 				if (layout != null)
 				{
-					layout.minWidth = 122f;
-					layout.preferredWidth = 122f;
+					layout.minWidth = 170f;
+					layout.preferredWidth = 170f;
 					layout.flexibleWidth = 0f;
 					layout.minHeight = 24f;
 					layout.preferredHeight = 24f;
@@ -1589,9 +1698,10 @@ public partial class GameplayTweaksPlugin
 				Text text = ((Component)button).GetComponentInChildren<Text>(includeInactive: true);
 				if (text != null)
 				{
-					text.fontSize = Mathf.RoundToInt(11f * UiTextScale);
+					ConfigureCombatPopupButtonText(text);
 				}
 			}
+			ConfigureCombatPopupButtonText(((Component)button).GetComponentInChildren<Text>(includeInactive: true));
 			return button;
 		}
 
@@ -1613,8 +1723,8 @@ public partial class GameplayTweaksPlugin
 				LayoutElement layout = ((Component)button).GetComponent<LayoutElement>();
 				if (layout != null)
 				{
-					layout.minWidth = 132f;
-					layout.preferredWidth = 132f;
+					layout.minWidth = 150f;
+					layout.preferredWidth = 150f;
 					layout.flexibleWidth = 0f;
 					layout.minHeight = 24f;
 					layout.preferredHeight = 24f;
@@ -1622,9 +1732,10 @@ public partial class GameplayTweaksPlugin
 				Text text = ((Component)button).GetComponentInChildren<Text>(includeInactive: true);
 				if (text != null)
 				{
-					text.fontSize = Mathf.RoundToInt(11f * UiTextScale);
+					ConfigureCombatPopupButtonText(text);
 				}
 			}
+			ConfigureCombatPopupButtonText(((Component)button).GetComponentInChildren<Text>(includeInactive: true));
 			return button;
 		}
 
@@ -1646,8 +1757,8 @@ public partial class GameplayTweaksPlugin
 				LayoutElement layout = ((Component)button).GetComponent<LayoutElement>();
 				if (layout != null)
 				{
-					layout.minWidth = 104f;
-					layout.preferredWidth = 104f;
+					layout.minWidth = 150f;
+					layout.preferredWidth = 150f;
 					layout.flexibleWidth = 0f;
 					layout.minHeight = 24f;
 					layout.preferredHeight = 24f;
@@ -1655,9 +1766,10 @@ public partial class GameplayTweaksPlugin
 				Text text = ((Component)button).GetComponentInChildren<Text>(includeInactive: true);
 				if (text != null)
 				{
-					text.fontSize = Mathf.RoundToInt(11f * UiTextScale);
+					ConfigureCombatPopupButtonText(text);
 				}
 			}
+			ConfigureCombatPopupButtonText(((Component)button).GetComponentInChildren<Text>(includeInactive: true));
 			return button;
 		}
 
@@ -1679,8 +1791,8 @@ public partial class GameplayTweaksPlugin
 				LayoutElement layout = ((Component)button).GetComponent<LayoutElement>();
 				if (layout != null)
 				{
-					layout.minWidth = 186f;
-					layout.preferredWidth = 186f;
+					layout.minWidth = 176f;
+					layout.preferredWidth = 176f;
 					layout.flexibleWidth = 0f;
 					layout.minHeight = 24f;
 					layout.preferredHeight = 24f;
@@ -1688,10 +1800,27 @@ public partial class GameplayTweaksPlugin
 				Text text = ((Component)button).GetComponentInChildren<Text>(includeInactive: true);
 				if (text != null)
 				{
-					text.fontSize = Mathf.RoundToInt(11f * UiTextScale);
+					ConfigureCombatPopupButtonText(text);
 				}
 			}
+			ConfigureCombatPopupButtonText(((Component)button).GetComponentInChildren<Text>(includeInactive: true));
 			return button;
+		}
+
+		private static void ConfigureCombatPopupButtonText(Text text)
+		{
+			if (text == null)
+			{
+				return;
+			}
+			int maxSize = Mathf.RoundToInt(11f * UiTextScale);
+			text.fontSize = maxSize;
+			text.alignment = TextAnchor.MiddleCenter;
+			text.horizontalOverflow = HorizontalWrapMode.Overflow;
+			text.verticalOverflow = VerticalWrapMode.Truncate;
+			text.resizeTextForBestFit = true;
+			text.resizeTextMinSize = Math.Max(7, Mathf.RoundToInt(8f * UiTextScale));
+			text.resizeTextMaxSize = maxSize;
 		}
 
 		private static Text GetOrCreateCombatPopupVehicleInfoLabel(Transform parent)
@@ -1758,7 +1887,7 @@ public partial class GameplayTweaksPlugin
 			Text text = ((Component)button).GetComponentInChildren<Text>(includeInactive: true);
 			if (text != null)
 			{
-				string modeLabel = mode == GroupedCombatMode.DriveBy ? "Mode: Drive-By" : "Mode: On-Foot";
+				string modeLabel = mode == GroupedCombatMode.DriveBy ? "Attack Type: Drive-By" : "Attack Type: On Foot";
 				text.text = modeLabel;
 			}
 			button.interactable = driveByAvailable;
@@ -1802,11 +1931,12 @@ public partial class GameplayTweaksPlugin
 			Text text = ((Component)button).GetComponentInChildren<Text>(includeInactive: true);
 			if (text != null)
 			{
-				text.text = $"On-Foot Crew: {count} of {max}";
+				text.text = $"On-Foot Crew: {count}/{max}";
 			}
-			bool enabled = GetPopupCombatMode(popup) == GroupedCombatMode.OnFoot && max > 1;
-			button.interactable = enabled;
-			CrewRelationshipHandlerPatch.ApplyStandardButtonTheme(button, enabled ? UiButtonVariant.Accent : UiButtonVariant.Default);
+			bool canSelect = max > 1;
+			bool active = GetPopupCombatMode(popup) == GroupedCombatMode.OnFoot;
+			button.interactable = canSelect;
+			CrewRelationshipHandlerPatch.ApplyStandardButtonTheme(button, active && canSelect ? UiButtonVariant.Accent : UiButtonVariant.Default);
 		}
 
 		private static void UpdateCombatPopupOnFootFilterVisual(CombatPopupPlanning popup, Button button)
@@ -1819,11 +1949,11 @@ public partial class GameplayTweaksPlugin
 			Text text = ((Component)button).GetComponentInChildren<Text>(includeInactive: true);
 			if (text != null)
 			{
-				text.text = "On-Foot Weapons: " + FormatOnFootWeaponFilter(filter);
+				text.text = "Range: " + FormatOnFootWeaponFilter(filter);
 			}
-			bool enabled = GetPopupCombatMode(popup) == GroupedCombatMode.OnFoot;
-			button.interactable = enabled;
-			CrewRelationshipHandlerPatch.ApplyStandardButtonTheme(button, enabled ? UiButtonVariant.Accent : UiButtonVariant.Default);
+			bool active = GetPopupCombatMode(popup) == GroupedCombatMode.OnFoot;
+			button.interactable = true;
+			CrewRelationshipHandlerPatch.ApplyStandardButtonTheme(button, active ? UiButtonVariant.Accent : UiButtonVariant.Default);
 		}
 
 		private static void UpdateCombatPopupDriveByTargetVisual(CombatPopupPlanning popup, Button button)
@@ -1836,14 +1966,30 @@ public partial class GameplayTweaksPlugin
 			Text text = ((Component)button).GetComponentInChildren<Text>(includeInactive: true);
 			if (text != null)
 			{
-				text.text = "Drive-By Target: " + FormatDriveByTargetMode(mode);
+				text.text = "Targets: " + FormatDriveByTargetMode(mode);
 			}
-			bool enabled = GetPopupCombatMode(popup) == GroupedCombatMode.DriveBy && HasMultipleDriveByTargets(popup);
+			bool enabled = HasMultiplePopupSpreadTargets(popup);
+			bool active = enabled && mode == DriveByTargetMode.SpreadAll;
 			button.interactable = enabled;
 			UiButtonVariant variant = !enabled
 				? UiButtonVariant.Default
-				: (mode == DriveByTargetMode.FocusOne ? UiButtonVariant.Success : UiButtonVariant.Accent);
+				: (active ? UiButtonVariant.Accent : UiButtonVariant.Default);
 			CrewRelationshipHandlerPatch.ApplyStandardButtonTheme(button, variant);
+		}
+
+		private static void RefreshCombatPopupControls(CombatPopupPlanning popup, bool refreshWeapons = false)
+		{
+			EnsureCombatPopupRangedToggle(popup);
+			EnsureCombatPopupOnFootCountToggle(popup);
+			EnsureCombatPopupOnFootFilterToggle(popup);
+			EnsureCombatPopupDriveByTargetToggle(popup);
+			EnsureCombatPopupVehicleInfoLabel(popup);
+			EnsureCombatPopupTargetVehicleInfoLabel(popup);
+			LogPopupVehicleCrewInfo(popup);
+			if (refreshWeapons)
+			{
+				RefreshGroupedPopupWeaponRows(popup);
+			}
 		}
 
 		private static void OnCombatPopupRangedToggleClicked(CombatPopupPlanning popup)
@@ -1857,14 +2003,7 @@ public partial class GameplayTweaksPlugin
 				: GroupedCombatMode.DriveBy;
 			SetPopupCombatMode(popup, nextMode);
 			VerificationLog("VehicleGroupCombat", $"ui-toggle popup=CombatPopupPlanning mode={FormatCombatMode(nextMode)}");
-			EnsureCombatPopupRangedToggle(popup);
-			EnsureCombatPopupOnFootCountToggle(popup);
-			EnsureCombatPopupOnFootFilterToggle(popup);
-			EnsureCombatPopupDriveByTargetToggle(popup);
-			EnsureCombatPopupVehicleInfoLabel(popup);
-			EnsureCombatPopupTargetVehicleInfoLabel(popup);
-			LogPopupVehicleCrewInfo(popup);
-			RefreshGroupedPopupWeaponRows(popup);
+			RefreshCombatPopupControls(popup, refreshWeapons: true);
 		}
 
 		private static void OnCombatPopupOnFootCountClicked(CombatPopupPlanning popup)
@@ -1876,12 +2015,10 @@ public partial class GameplayTweaksPlugin
 			}
 			int current = Mathf.Clamp(GetPopupOnFootCount(popup), 1, max);
 			int next = current >= max ? 1 : current + 1;
+			SetPopupCombatMode(popup, GroupedCombatMode.OnFoot);
 			SetPopupOnFootCount(popup, next);
 			VerificationLog("VehicleGroupCombat", $"onfoot-count popup=CombatPopupPlanning selected={next} max={max}");
-			EnsureCombatPopupOnFootCountToggle(popup);
-			EnsureCombatPopupOnFootFilterToggle(popup);
-			EnsureCombatPopupVehicleInfoLabel(popup);
-			EnsureCombatPopupTargetVehicleInfoLabel(popup);
+			RefreshCombatPopupControls(popup, refreshWeapons: true);
 		}
 
 		private static void OnCombatPopupOnFootFilterClicked(CombatPopupPlanning popup)
@@ -1890,29 +2027,45 @@ public partial class GameplayTweaksPlugin
 			OnFootWeaponFilter next = current == OnFootWeaponFilter.Any
 				? OnFootWeaponFilter.Melee
 				: (current == OnFootWeaponFilter.Melee ? OnFootWeaponFilter.Ranged : OnFootWeaponFilter.Any);
+			SetPopupCombatMode(popup, GroupedCombatMode.OnFoot);
 			SetPopupOnFootWeaponFilter(popup, next);
 			VerificationLog("VehicleGroupCombat", $"onfoot-filter popup=CombatPopupPlanning filter={FormatOnFootWeaponFilter(next)}");
-			EnsureCombatPopupOnFootFilterToggle(popup);
-			RefreshGroupedPopupWeaponRows(popup);
+			RefreshCombatPopupControls(popup, refreshWeapons: true);
 		}
 
 		private static void OnCombatPopupDriveByTargetClicked(CombatPopupPlanning popup)
 		{
+			if (!HasMultiplePopupSpreadTargets(popup))
+			{
+				return;
+			}
 			DriveByTargetMode current = GetPopupDriveByTargetMode(popup);
 			DriveByTargetMode next = current == DriveByTargetMode.FocusOne
 				? DriveByTargetMode.SpreadAll
 				: DriveByTargetMode.FocusOne;
 			SetPopupDriveByTargetMode(popup, next);
-			VerificationLog("VehicleGroupCombat", $"driveby-target-mode popup=CombatPopupPlanning mode={FormatDriveByTargetMode(next)}");
-			EnsureCombatPopupDriveByTargetToggle(popup);
-			EnsureCombatPopupRangedToggle(popup);
-			RefreshPopupVehicleLabels(popup);
+			VerificationLog("VehicleGroupCombat", $"target-spread-mode popup=CombatPopupPlanning mode={FormatDriveByTargetMode(next)} combatMode={FormatCombatMode(GetPopupCombatMode(popup))}");
+			RefreshCombatPopupControls(popup, refreshWeapons: true);
 		}
 
 		private static bool IsGroupedHumanVehiclePopup(CombatPopupPlanning popup)
 		{
 			List<Entity> myCrew = PopupMyCrewField?.GetValue(popup) as List<Entity>;
 			return myCrew != null && myCrew.Any(ShouldUseGroupedHumanVehicleCombat);
+		}
+
+		private static bool ShouldShowCombatPopupAttackControls(CombatPopupPlanning popup)
+		{
+			List<Entity> myCrew = PopupMyCrewField?.GetValue(popup) as List<Entity>;
+			return myCrew != null && myCrew.Any(IsHumanPopupCombatPeep);
+		}
+
+		private static bool IsHumanPopupCombatPeep(Entity peep)
+		{
+			return peep != null
+				&& peep.Id.IsValid
+				&& peep.data?.agent?.pid.IsHumanPlayer == true
+				&& TryFindCrewForPeep(peep).IsValid;
 		}
 
 		private static bool HasMultipleDriveByTargets(CombatPopupPlanning popup)
@@ -1922,6 +2075,42 @@ public partial class GameplayTweaksPlugin
 				return false;
 			}
 			return GetEligibleDefendersForVehicle(crew).Count > 1;
+		}
+
+		private static bool HasMultiplePopupSpreadTargets(CombatPopupPlanning popup)
+		{
+			if (!TryGetPrimaryPopupTargetEntity(popup, out Entity focusedTarget))
+			{
+				return false;
+			}
+			return GetPopupSpreadTargetCrews(popup, focusedTarget).Count > 1;
+		}
+
+		private static List<CrewAssignment> GetPopupSpreadTargetCrews(CombatPopupPlanning popup, Entity focusedTarget)
+		{
+			var targets = new List<CrewAssignment>();
+			var seen = new HashSet<ulong>();
+			void AddTarget(Entity target)
+			{
+				if (target == null || !target.Id.IsValid || !target.components.agent.HasHealthPointsLeft)
+				{
+					return;
+				}
+				CrewAssignment crew = TryFindCrewForPeep(target);
+				if (!crew.IsValid || !crew.peepId.IsValid || !seen.Add(crew.peepId.id))
+				{
+					return;
+				}
+				targets.Add(crew);
+			}
+
+			AddTarget(focusedTarget);
+			List<Entity> enemies = PopupEnemiesField?.GetValue(popup) as List<Entity>;
+			foreach (Entity enemy in enemies ?? Enumerable.Empty<Entity>())
+			{
+				AddTarget(enemy);
+			}
+			return targets;
 		}
 
 		private static bool TryGetPrimaryPopupVehicleCrew(CombatPopupPlanning popup, out CrewAssignment crew)
@@ -2121,7 +2310,7 @@ Target:
 			{
 				GameObject card = child.gameObject;
 				CombatCardContext ctx = card.GetComponent<CombatCardContext>();
-				if (ctx == null || ctx.peep == null || !ShouldUseGroupedHumanVehicleCombat(ctx.peep))
+				if (ctx == null || ctx.peep == null || !IsHumanPopupCombatPeep(ctx.peep))
 				{
 					continue;
 				}
@@ -2430,7 +2619,7 @@ Target:
 			}
 		}
 
-		private static List<CrewAssignment> GetVehicleCombatOccupants(CrewAssignment crew)
+		private static List<CrewAssignment> GetVehicleCombatOccupants(CrewAssignment crew, VehicleCombatOccupantMode mode = VehicleCombatOccupantMode.StrictPhysical)
 		{
 			if (!crew.IsValid)
 				return new List<CrewAssignment>();
@@ -2440,14 +2629,94 @@ Target:
 			PlayerCrew playerCrew = player?.crew;
 			if (playerCrew == null)
 				return new List<CrewAssignment> { crew };
-			return MultiCrewVehicleHelper.GetAllCrewInVehicle(playerCrew, crew.VehicleID)
-				.Where(item => item.IsValid && item.IsNotDead && item.GetPeep() != null)
+			List<CrewAssignment> occupants = MultiCrewVehicleHelper.GetAllCrewInVehicle(playerCrew, crew.VehicleID)
+				.Where(item => item.IsValid
+					&& item.IsNotDead
+					&& item.peepId.IsValid
+					&& playerCrew.IsOnBoard(item.peepId)
+					&& item.GetPeep() != null
+					&& IsCombatVehicleOccupant(playerCrew, item, crew.VehicleID, mode))
+				.GroupBy(item => item.peepId.id)
+				.Select(group => group.First())
 				.ToList();
+			return occupants.Count > 0 ? occupants : new List<CrewAssignment> { crew };
+		}
+
+		private static bool IsCombatVehicleOccupant(PlayerCrew playerCrew, CrewAssignment crew, EntityID vehicleId, VehicleCombatOccupantMode mode)
+		{
+			if (IsPhysicallyInCombatVehicle(playerCrew, crew, vehicleId, logFiltered: mode == VehicleCombatOccupantMode.StrictPhysical))
+			{
+				return true;
+			}
+			if (mode != VehicleCombatOccupantMode.ConfirmedVehicleCrew)
+			{
+				return false;
+			}
+			if (!MultiCrewVehicleHelper.IsActiveVehicleOccupant(playerCrew, crew))
+			{
+				return false;
+			}
+			LogConfirmedCombatVehicleOccupant(crew, vehicleId);
+			return true;
+		}
+
+		private static void LogConfirmedCombatVehicleOccupant(CrewAssignment crew, EntityID vehicleId)
+		{
+			if (!crew.IsValid || !crew.peepId.IsValid || !vehicleId.IsValid)
+			{
+				return;
+			}
+			int day = G.GetNow().days;
+			string key = $"{day}:{vehicleId.id}:{crew.peepId.id}";
+			if (VehicleCombatOccupantAcceptanceLogKeys.Add(key))
+			{
+				VerificationLog("VehicleGroupCombat", $"vehicle-occupant-confirmed peep={crew.peepId.id} vehicle={vehicleId.id} reason=assigned-target-vehicle");
+			}
+		}
+
+		private static bool IsPhysicallyInCombatVehicle(PlayerCrew playerCrew, CrewAssignment crew, EntityID vehicleId, bool logFiltered = true)
+		{
+			if (playerCrew == null || !crew.IsValid || !vehicleId.IsValid || !crew.IsInVehicle || crew.VehicleID != vehicleId)
+			{
+				return false;
+			}
+			try
+			{
+				Entity peep = crew.GetPeep();
+				NodeID peepNodeId = peep?.data?.agent?.nid ?? NodeID.INVALID;
+				if (!peepNodeId.IsValid)
+				{
+					return false;
+				}
+				if (MultiCrewVehicleHelper.TryGetVehicleLiveAuthorityNodeId(vehicleId, out NodeID liveNodeId, out string liveSource) && liveNodeId.IsValid)
+				{
+					bool sameNode = peepNodeId == liveNodeId;
+					if (!sameNode && logFiltered)
+					{
+						VerificationLog("VehicleGroupCombat", $"vehicle-occupant-filtered peep={crew.peepId.id} vehicle={vehicleId.id} peepNode={peepNodeId} vehicleNode={liveNodeId} source={liveSource} reason=future-passenger-or-stale-assignment");
+					}
+					return sameNode;
+				}
+				if (MultiCrewVehicleHelper.TryGetAuthoritativeVehicleNodeId(vehicleId, out NodeID authoritativeNodeId, out string authoritativeSource) && authoritativeNodeId.IsValid)
+				{
+					bool sameNode = peepNodeId == authoritativeNodeId;
+					if (!sameNode && logFiltered)
+					{
+						VerificationLog("VehicleGroupCombat", $"vehicle-occupant-filtered peep={crew.peepId.id} vehicle={vehicleId.id} peepNode={peepNodeId} vehicleNode={authoritativeNodeId} source={authoritativeSource} reason=future-passenger-or-stale-assignment");
+					}
+					return sameNode;
+				}
+			}
+			catch (Exception ex)
+			{
+				VerificationLog("VehicleGroupCombat", $"vehicle-occupant-physical-check-failed peep={crew.peepId.id} vehicle={vehicleId.id} reason={ex.GetType().Name}:{ex.Message}");
+			}
+			return true;
 		}
 
 		private static List<CrewAssignment> GetEligibleAttackersForVehicle(CrewAssignment crew, bool requireActionPoints, GroupedCombatMode mode = GroupedCombatMode.OnFoot)
 		{
-			IEnumerable<CrewAssignment> occupants = GetVehicleCombatOccupants(crew)
+			IEnumerable<CrewAssignment> occupants = GetVehicleCombatOccupants(crew, VehicleCombatOccupantMode.StrictPhysical)
 				.Where(item => IsEligibleAttacker(item, requireActionPoints));
 			EntityID driverPeepId = GetDriverPeepId(crew);
 			if (mode == GroupedCombatMode.DriveBy)
@@ -2460,9 +2729,9 @@ Target:
 				.ToList();
 		}
 
-		private static List<CrewAssignment> GetEligibleDefendersForVehicle(CrewAssignment crew)
+		private static List<CrewAssignment> GetEligibleDefendersForVehicle(CrewAssignment crew, VehicleCombatOccupantMode mode = VehicleCombatOccupantMode.ConfirmedVehicleCrew)
 		{
-			return GetVehicleCombatOccupants(crew)
+			return GetVehicleCombatOccupants(crew, mode)
 				.Where(item => item.IsValid && item.IsNotDead && item.GetPeep()?.components?.agent?.HasHealthPointsLeft == true)
 				.ToList();
 		}
@@ -2713,6 +2982,7 @@ Target:
 					if (logCombatDetails)
 					{
 						LogVehicleDamageSplit(observerSource, currentTargetCrew, debugInfo, combatMode);
+						LogVehicleDefenderResponse(observerSource, currentTargetCrew, attacker, debugInfo, combatMode);
 						if (IsAiVehicleGroupCombatSource(observerSource))
 						{
 							LogAiCombatResult(observerSource, result);
@@ -2738,6 +3008,176 @@ Target:
 			{
 				EndGroupedCombatTransaction();
 			}
+		}
+
+		private static void ExecuteOnFootSpreadCombat(CombatManager combatManager, CrewAssignment rootAttacker, WeaponConfig selectedAttackWeapon, List<CrewAssignment> spreadTargets, int requestedAttackerCount, bool consumeHumanAttackCost, List<CombatResults> results, string observerSource)
+		{
+			if (combatManager == null || !rootAttacker.IsValid || spreadTargets == null || spreadTargets.Count <= 1 || results == null)
+			{
+				return;
+			}
+			Entity rootAttackerPeep = rootAttacker.GetPeep();
+			if (rootAttackerPeep == null || !rootAttackerPeep.components.agent.HasHealthPointsLeft)
+			{
+				return;
+			}
+			List<CrewAssignment> attackers = GetEligibleAttackersForVehicle(rootAttacker, requireActionPoints: consumeHumanAttackCost, GroupedCombatMode.OnFoot);
+			if (attackers.Count == 0 && IsEligibleAttacker(rootAttacker, consumeHumanAttackCost))
+			{
+				attackers.Add(rootAttacker);
+			}
+			if (attackers.Count == 0)
+			{
+				return;
+			}
+			attackers = attackers
+				.Take(Mathf.Clamp(requestedAttackerCount, 1, attackers.Count))
+				.ToList();
+			spreadTargets = spreadTargets
+				.Where(item => item.IsValid && item.peepId.IsValid && item.GetPeep()?.components?.agent?.HasHealthPointsLeft == true)
+				.Take(OnFootSpreadMaxTargets)
+				.ToList();
+			if (spreadTargets.Count <= 1)
+			{
+				return;
+			}
+
+			BeginGroupedCombatTransaction(observerSource + "-onfoot-spread", rootAttacker, spreadTargets[0]);
+			try
+			{
+				Dictionary<ulong, string> assignmentSources;
+				Dictionary<ulong, WeaponConfig> assignedWeapons = BuildRoundWeaponAssignments(combatManager, rootAttacker, attackers, selectedAttackWeapon, GroupedCombatMode.OnFoot, out assignmentSources);
+				bool logCombatDetails = ShouldLogVehicleCombatDetails(observerSource, rootAttacker, spreadTargets[0]);
+				if (logCombatDetails)
+				{
+					LogWeaponAssignments(observerSource, rootAttackerPeep, rootAttacker, attackers, assignedWeapons, assignmentSources, selectedAttackWeapon, GroupedCombatMode.OnFoot);
+				}
+				SetActiveGroupedCombatAttackerSnapshot(_groupedCombatTransactionSource, attackers);
+				var targetAssignments = new Dictionary<ulong, ulong>();
+				for (int attackerIndex = 0; attackerIndex < attackers.Count; attackerIndex++)
+				{
+					CrewAssignment attacker = attackers[attackerIndex];
+					Entity attackerPeep = attacker.GetPeep();
+					if (attackerPeep == null || !attackerPeep.components.agent.HasHealthPointsLeft)
+					{
+						continue;
+					}
+					WeaponConfig attackerWeapon = ResolveAssignedWeapon(assignedWeapons, attacker.peepId, combatManager);
+					if (attackerWeapon == null)
+					{
+						continue;
+					}
+					List<CrewAssignment> targetsForAttacker = attackers.Count == 1
+						? spreadTargets
+						: new List<CrewAssignment> { ChooseOnFootSpreadTarget(spreadTargets, attackerIndex) ?? spreadTargets[0] };
+					int damagePercent = attackers.Count == 1 ? GetOnFootSpreadDamagePercent(targetsForAttacker.Count) : 100;
+					if (consumeHumanAttackCost)
+					{
+						InvokeAttackCost(combatManager, attackerPeep);
+					}
+					foreach (CrewAssignment target in targetsForAttacker)
+					{
+						if (attackerPeep == null || !attackerPeep.components.agent.HasHealthPointsLeft)
+						{
+							break;
+						}
+						Entity targetPeep = target.GetPeep();
+						if (!target.IsValid || targetPeep == null || !targetPeep.components.agent.HasHealthPointsLeft)
+						{
+							continue;
+						}
+						WeaponConfig defenderWeapon = combatManager.FindBestWeapon(target) ?? attackerWeapon;
+						CombatResults result = ResolveOnFootSpreadExchange(combatManager, attacker, target, attackerWeapon, defenderWeapon, damagePercent, observerSource);
+						if (result == null)
+						{
+							continue;
+						}
+						results.Add(result);
+						DispatchCombatObservers(result, observerSource);
+						if (attacker.peepId.IsValid && target.peepId.IsValid)
+						{
+							targetAssignments[attacker.peepId.id] = target.peepId.id;
+						}
+					}
+				}
+				if (logCombatDetails)
+				{
+					string targets = string.Join(",", spreadTargets
+						.Where(item => item.peepId.IsValid)
+						.Select(item => item.peepId.id.ToString(CultureInfo.InvariantCulture)));
+					VerificationLog("VehicleGroupCombat", $"onfoot-spread source={observerSource} attackers={attackers.Count} targets={spreadTargets.Count} targetPeeps={targets} maxTargets={OnFootSpreadMaxTargets}");
+					LogOnFootTargetAssignments(observerSource, rootAttacker, spreadTargets[0], targetAssignments, assignedWeapons);
+				}
+			}
+			finally
+			{
+				EndGroupedCombatTransaction();
+			}
+		}
+
+		private static CrewAssignment? ChooseOnFootSpreadTarget(List<CrewAssignment> spreadTargets, int attackerIndex)
+		{
+			if (spreadTargets == null || spreadTargets.Count == 0)
+			{
+				return null;
+			}
+			for (int offset = 0; offset < spreadTargets.Count; offset++)
+			{
+				CrewAssignment target = spreadTargets[(attackerIndex + offset) % spreadTargets.Count];
+				if (target.IsValid && target.peepId.IsValid && target.GetPeep()?.components?.agent?.HasHealthPointsLeft == true)
+				{
+					return target;
+				}
+			}
+			return null;
+		}
+
+		private static int GetOnFootSpreadDamagePercent(int targetCount)
+		{
+			if (targetCount <= 1)
+			{
+				return 100;
+			}
+			if (targetCount == 2)
+			{
+				return 70;
+			}
+			return 55;
+		}
+
+		private static CombatResults ResolveOnFootSpreadExchange(CombatManager combatManager, CrewAssignment attacker, CrewAssignment target, WeaponConfig attackerWeapon, WeaponConfig defenderWeapon, int attackDamagePercent, string observerSource)
+		{
+			Entity attackerPeep = attacker.GetPeep();
+			Entity targetPeep = target.GetPeep();
+			if (attackerPeep == null || targetPeep == null)
+			{
+				return null;
+			}
+			Node node = attackerPeep.components.agent.GetNode();
+			if (node == null)
+			{
+				return null;
+			}
+			PlayerID attackerPid = attackerPeep.data.agent.pid;
+			PlayerID targetPid = targetPeep.data.agent.pid;
+			Fixnum attackDamage = CombatManager.CalculateDamage(attackerPeep, attackerWeapon, targetPeep);
+			attackDamage = attackDamage * Mathf.Clamp(attackDamagePercent, 1, 100) / 100;
+			Fixnum counterDamage = CombatManager.CalculateDamage(targetPeep, defenderWeapon, attackerPeep);
+			var vehicleDamageReduction = global::Game.Game.serv.globals.settings.people.combatSettings.vehicleDamageReduction;
+			Fixnum attackerDefended = MathUtil.ClampMax(vehicleDamageReduction.Evaluate(new ModQuery(attackerPid, attackerPeep.Id, attackerPeep.Id)), counterDamage);
+			Fixnum targetDefended = MathUtil.ClampMax(vehicleDamageReduction.Evaluate(new ModQuery(targetPid, targetPeep.Id, targetPeep.Id)), attackDamage);
+			attackDamage -= targetDefended;
+			counterDamage -= attackerDefended;
+			var attackerRecipients = new List<CrewAssignment> { attacker };
+			var defenderRecipients = new List<CrewAssignment> { target };
+			var attackerDamageMap = new Dictionary<EntityID, Fixnum> { [attacker.peepId] = counterDamage };
+			var defenderDamageMap = new Dictionary<EntityID, Fixnum> { [target.peepId] = attackDamage };
+			Dictionary<EntityID, AppliedDamageInfo> defenderApplied = ApplyDistributedDamage(attackerPeep, defenderRecipients, defenderDamageMap);
+			Dictionary<EntityID, AppliedDamageInfo> attackerApplied = ApplyDistributedDamage(targetPeep, attackerRecipients, attackerDamageMap);
+			CombatResults result = BuildCombatResult(attacker, target, attackerWeapon, defenderWeapon, attackerDefended, targetDefended, attackerApplied, defenderApplied, node.id);
+			ApplyCombatAftermath(result, attacker, target, attackerWeapon, defenderWeapon, attackerApplied, defenderApplied, node);
+			VerificationLog("VehicleGroupCombat", $"onfoot-spread-exchange source={observerSource} attacker={attacker.peepId.id} target={target.peepId.id} damagePercent={attackDamagePercent} attackDamage={attackDamage} counterDamage={counterDamage}");
+			return result;
 		}
 
 		private static bool ShouldUseDriveByTargetReassignment(CrewAssignment rootAttacker, WeaponConfig attackerWeapon, List<CrewAssignment> driveByTargetRotation)
@@ -3203,6 +3643,25 @@ Target:
 			}
 		}
 
+		private static void LogVehicleDefenderResponse(string observerSource, CrewAssignment target, CrewAssignment attacker, CombatExchangeDebugInfo debugInfo, GroupedCombatMode combatMode)
+		{
+			if (!target.IsValid || !target.IsInVehicle || debugInfo?.CounterResponders == null || debugInfo.CounterResponders.Count <= 1)
+			{
+				return;
+			}
+
+			string responders = BuildWeaponAllocationSummary(debugInfo.CounterResponders, debugInfo.CounterResponderWeapons, null);
+			VerificationLog(
+				"VehicleGroupCombat",
+				$"defender-response source={observerSource} mode={FormatCombatMode(combatMode)} targetVehicle={target.VehicleID.id} attackerVehicle={attacker.VehicleID.id} responders={debugInfo.CounterResponders.Count} rawCounterDamage={debugInfo.CounterRawDamage} finalCounterDamage={debugInfo.CounterFinalDamage} weapons={responders}");
+			if (IsAiVehicleGroupCombatSource(observerSource))
+			{
+				VerificationLog(
+					"VehicleGroupCombat.AI",
+					$"defender-response source={observerSource} targetVehicle={target.VehicleID.id} attackerVehicle={attacker.VehicleID.id} responders={debugInfo.CounterResponders.Count} finalCounterDamage={debugInfo.CounterFinalDamage} weapons={responders}");
+			}
+		}
+
 		private static string BuildDamageSplitSummary(List<CrewAssignment> recipients, Dictionary<EntityID, Fixnum> plannedDamage, Dictionary<EntityID, AppliedDamageInfo> appliedDamage)
 		{
 			if (recipients == null || recipients.Count == 0)
@@ -3313,21 +3772,41 @@ Target:
 				return null;
 
 			Fixnum attackDamage = CombatManager.CalculateDamage(attackerPeep, attackerWeapon, targetPeep);
-			Fixnum counterDamage = CombatManager.CalculateDamage(targetPeep, defenderWeapon, attackerPeep);
+			Fixnum counterDamage = Fixnum.ZERO;
 			var vehicleDamageReduction = global::Game.Game.serv.globals.settings.people.combatSettings.vehicleDamageReduction;
-			Fixnum attackerDefended = MathUtil.ClampMax(vehicleDamageReduction.Evaluate(new ModQuery(attackerPid, attackerPeep.Id, attackerPeep.Id)), counterDamage);
+			Fixnum attackerDefended = Fixnum.ZERO;
 			Fixnum targetDefended = MathUtil.ClampMax(vehicleDamageReduction.Evaluate(new ModQuery(targetPid, targetPeep.Id, targetPeep.Id)), attackDamage);
 			attackDamage -= targetDefended;
-			counterDamage -= attackerDefended;
 
 			List<CrewAssignment> defenderRecipients = GetEligibleDefendersForVehicle(target);
 			if (defenderRecipients.Count == 0)
 				defenderRecipients.Add(target);
 			List<CrewAssignment> attackerRecipients = combatMode == GroupedCombatMode.DriveBy
 				? new List<CrewAssignment> { attacker }
-				: GetEligibleDefendersForVehicle(attacker);
+				: GetEligibleDefendersForVehicle(attacker, VehicleCombatOccupantMode.StrictPhysical);
 			if (attackerRecipients.Count == 0)
 				attackerRecipients.Add(attacker);
+
+			List<CrewAssignment> counterResponders = defenderRecipients
+				.Where(item => item.IsValid && item.peepId.IsValid && item.GetPeep()?.components?.agent?.HasHealthPointsLeft == true)
+				.OrderBy(item => item.peepId == target.peepId ? 0 : 1)
+				.ThenBy(item => item.peepId.id)
+				.ToList();
+			if (counterResponders.Count == 0)
+			{
+				counterResponders.Add(target);
+			}
+			Dictionary<ulong, string> counterWeaponSources;
+			Dictionary<ulong, WeaponConfig> counterWeapons = BuildRoundWeaponAssignments(combatManager, target, counterResponders, defenderWeapon, GroupedCombatMode.OnFoot, out counterWeaponSources);
+			WeaponConfig focusedDefenderWeapon = ResolveAssignedWeapon(counterWeapons, target.peepId, combatManager);
+			if (focusedDefenderWeapon != null)
+			{
+				defenderWeapon = focusedDefenderWeapon;
+			}
+			Fixnum rawCounterDamage = CalculateVehicleDefenderCounterDamage(combatManager, counterResponders, counterWeapons, attackerPeep);
+			attackerDefended = MathUtil.ClampMax(vehicleDamageReduction.Evaluate(new ModQuery(attackerPid, attackerPeep.Id, attackerPeep.Id)), rawCounterDamage);
+			counterDamage = rawCounterDamage;
+			counterDamage -= attackerDefended;
 
 			Dictionary<EntityID, Fixnum> splitAttackDamage;
 			string defenderDistributionMode = "even";
@@ -3365,11 +3844,40 @@ Target:
 				debugInfo.FocusedDefenderPeepId = focusedDefenderPeepId;
 				debugInfo.FocusShare = focusShare;
 				debugInfo.DistributionFallbackReason = distributionFallbackReason;
+				debugInfo.CounterResponders = counterResponders;
+				debugInfo.CounterResponderWeapons = counterWeapons;
+				debugInfo.CounterRawDamage = rawCounterDamage;
+				debugInfo.CounterFinalDamage = counterDamage;
 			}
 
 			CombatResults result = BuildCombatResult(attacker, target, attackerWeapon, defenderWeapon, attackerDefended, targetDefended, attackerApplied, defenderApplied, node.id);
 			ApplyCombatAftermath(result, attacker, target, attackerWeapon, defenderWeapon, attackerApplied, defenderApplied, node);
 			return result;
+		}
+
+		private static Fixnum CalculateVehicleDefenderCounterDamage(CombatManager combatManager, List<CrewAssignment> responders, Dictionary<ulong, WeaponConfig> assignedWeapons, Entity attackerPeep)
+		{
+			if (combatManager == null || responders == null || responders.Count == 0 || attackerPeep == null)
+			{
+				return Fixnum.ZERO;
+			}
+
+			Fixnum total = Fixnum.ZERO;
+			foreach (CrewAssignment responder in responders)
+			{
+				Entity responderPeep = responder.GetPeep();
+				if (responderPeep == null || responderPeep.components?.agent?.HasHealthPointsLeft != true)
+				{
+					continue;
+				}
+				WeaponConfig weapon = ResolveAssignedWeapon(assignedWeapons, responder.peepId, combatManager);
+				if (weapon == null)
+				{
+					continue;
+				}
+				total += CombatManager.CalculateDamage(responderPeep, weapon, attackerPeep);
+			}
+			return total;
 		}
 
 		private static Dictionary<EntityID, Fixnum> DistributeSpreadAllDamageAcrossOccupants(List<CrewAssignment> occupants, EntityID preferredPeepId, Fixnum totalDamage, out string fallbackReason)
@@ -3789,10 +4297,108 @@ Target:
 
 		private static void DispatchCombatObservers(CombatResults result, string observerSource)
 		{
+			ProcessHumanCopCombatConsequences(result, observerSource);
 			PactOpsCombatPatch.ProcessCombatResult(result, observerSource);
 			RealCombatGrapevinePatch.ProcessCombatResult(result);
 			BossMurderWarrantPatch.ProcessCombatResult(result);
 			CombatObserverBridge.Publish(result, observerSource);
+		}
+
+		internal static void ProcessHumanCopCombatConsequences(CombatResults result, string observerSource)
+		{
+			if (result == null || result.attacker.peep == null || result.target.peep == null)
+			{
+				return;
+			}
+
+			TryApplyHumanCopCombatConsequence(result.attacker, result.target, observerSource, "attack");
+			TryApplyHumanCopCombatConsequence(result.target, result.attacker, observerSource, "counter");
+		}
+
+		private static void TryApplyHumanCopCombatConsequence(CombatResults.Entry humanEntry, CombatResults.Entry copEntry, string observerSource, string direction)
+		{
+			try
+			{
+				Entity offenderPeep = humanEntry.peep;
+				Entity copPeep = copEntry.peep;
+				if (offenderPeep?.data?.agent == null || copPeep?.data?.agent == null || offenderPeep.Id.IsNotValid || copPeep.Id.IsNotValid)
+				{
+					return;
+				}
+
+				PlayerID offenderPid = offenderPeep.data.agent.pid;
+				PlayerID copPid = copPeep.data.agent.pid;
+				if (!offenderPid.IsHumanPlayer)
+				{
+					return;
+				}
+
+				PlayerInfo copPlayer = copPid.FindPlayer();
+				if (copPlayer == null || (!copPlayer.IsCopOrFed && !copPlayer.IsJustCop))
+				{
+					return;
+				}
+
+				bool lethal = copEntry.IsDead;
+				bool hurt = copEntry.wasHurt || lethal;
+				if (!hurt)
+				{
+					return;
+				}
+
+				int sourceType = lethal ? NATIONAL_HEAT_SOURCE_COP_KILL : NATIONAL_HEAT_SOURCE_COP_ASSAULT;
+				if (!TryMarkHumanCopCombatIncident(copPeep.Id, sourceType, out string incidentKey))
+				{
+					return;
+				}
+
+				int nowDay = G.GetNow().days;
+				int arrestDueDay = GetImportantWitnessArrestDueDay(sourceType, nowDay);
+				List<EntityID> companionIds = GetActiveHumanCopCombatCompanionIds(offenderPeep.Id);
+				if (lethal)
+				{
+					ForceHardMaxLocalHeatAndFeds(offenderPeep.Id, minWitnessCount: 3, fedArrivalCountdown: FED_SEARCH_TURNS);
+					SpreadLowLocalHeatToCrew(G.GetHumanPlayer(), offenderPeep.Id);
+					RegisterGroupedCopKillWitness(offenderPeep.Id, arrestDueDay, incidentKey, companionIds);
+				}
+				else
+				{
+					RaiseLocalHeatFloor(offenderPeep.Id, HIDEOUT_ACTION_MIN_HEAT_PROGRESS);
+					RegisterGroupedCopAssaultWitness(offenderPeep.Id, arrestDueDay, incidentKey, companionIds);
+				}
+
+				VerificationLog("NationalHeat", $"human-cop-combat-consequence source={observerSource} direction={direction} offender={offenderPeep.Id.id} cop={copPeep.Id.id} sourceType={sourceType} lethal={lethal} dueDay={arrestDueDay} companions={companionIds.Count} incident={incidentKey}");
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Human cop combat consequence failed: " + ex.Message);
+			}
+		}
+
+		private static bool TryMarkHumanCopCombatIncident(EntityID copPeepId, int sourceType, out string incidentKey)
+		{
+			int day = G.GetNow().days;
+			if (_humanCopCombatIncidentDay != day)
+			{
+				_humanCopCombatIncidentDay = day;
+				_humanCopCombatIncidentKeys.Clear();
+			}
+
+			incidentKey = day.ToString(CultureInfo.InvariantCulture) + ":cop-combat:" + sourceType.ToString(CultureInfo.InvariantCulture) + ":" + copPeepId.id.ToString(CultureInfo.InvariantCulture);
+			return _humanCopCombatIncidentKeys.Add(incidentKey);
+		}
+
+		private static List<EntityID> GetActiveHumanCopCombatCompanionIds(EntityID offenderPeepId)
+		{
+			if (!TryGetActiveGroupedCombatAttackerSnapshot(out List<EntityID> attackerIds, out _))
+			{
+				return new List<EntityID>();
+			}
+
+			return attackerIds
+				.Where(id => id.IsValid && id != offenderPeepId)
+				.Distinct()
+				.ToList();
 		}
 
 		private static List<CombatResults> NormalizeCombatResultsForDisplay(List<CombatResults> results, bool isAttackerAI)
@@ -3892,6 +4498,234 @@ Target:
 	}
 
 
+	private static class CommandAttackRouteAuthorityPatch
+	{
+		public static void ApplyPatch(Harmony harmony)
+		{
+			try
+			{
+				MethodInfo canStart = typeof(CommandAttack).GetMethod("CanStart", BindingFlags.Instance | BindingFlags.NonPublic);
+				if (canStart != null)
+				{
+					harmony.Patch(canStart, prefix: new HarmonyMethod(typeof(CommandAttackRouteAuthorityPatch), nameof(CanStartPrefix)));
+					VerificationLog("PactRetaliation", "hooked CommandAttack.CanStart route-authority guard");
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] CommandAttackRouteAuthorityPatch failed: " + ex.Message);
+			}
+		}
+
+		private static bool CanStartPrefix(CommandAttack __instance, ref Command.StartStatus __result)
+		{
+			try
+			{
+				if (__instance == null || !__instance.target.IsValid)
+				{
+					return true;
+				}
+
+				Entity attackerPeep = __instance.peepId.FindEntity();
+				Entity targetPeep = __instance.target.GetPeep();
+				if (attackerPeep?.data?.agent == null || targetPeep?.data?.agent == null)
+				{
+					return true;
+				}
+
+				PlayerID? attackerPid = attackerPeep.data.agent.pid;
+				PlayerID? targetPid = targetPeep.data.agent.pid;
+				if (!targetPid.HasValue || !targetPid.Value.IsHumanPlayer)
+				{
+					return true;
+				}
+				if (attackerPid.HasValue && VehicleGroupCombatPatch.ShouldSuppressIncomingAiCopCombat(attackerPid.Value, targetPid.Value))
+				{
+					__result = Command.StartStatus.Failed;
+					VerificationLog("PactRetaliation", $"command-attack-blocked-cop-suppressed attacker={__instance.peepId.id} target={targetPeep.Id.id} attackerPid={attackerPid.Value.id} targetPid={targetPid.Value.id}");
+					return false;
+				}
+
+				PlayerInfo targetPlayer = targetPid.Value.FindPlayer();
+				CrewAssignment targetCrew = targetPlayer?.crew != null
+					? targetPlayer.crew.GetCrewForPeep(targetPeep.Id)
+					: default(CrewAssignment);
+				if (!targetCrew.IsValid
+					|| !targetCrew.IsInVehicle
+					|| !targetCrew.VehicleID.IsValid
+					|| !MultiCrewVehicleHelper.TryGetHumanVehicleCombatTargetNodeId(targetCrew.VehicleID, out NodeID targetAuthorityNodeId, out string source)
+					|| !targetAuthorityNodeId.IsValid)
+				{
+					return true;
+				}
+
+				NodeID attackerNodeId = attackerPeep.data.agent.nid;
+				NodeID targetLiveNodeId = targetPeep.data.agent.nid;
+				if (attackerNodeId == targetAuthorityNodeId)
+				{
+					__result = Command.StartStatus.OK;
+					VerificationLog("PactRetaliation", $"command-attack-authorized-route-node attacker={__instance.peepId.id} target={targetPeep.Id.id} node={targetAuthorityNodeId} liveTargetNode={targetLiveNodeId} source={source}");
+					return false;
+				}
+
+				if (targetLiveNodeId.IsValid && targetLiveNodeId != targetAuthorityNodeId && attackerNodeId == targetLiveNodeId)
+				{
+					__result = Command.StartStatus.Failed;
+					VerificationLog("PactRetaliation", $"command-attack-blocked-stale-node attacker={__instance.peepId.id} target={targetPeep.Id.id} attackerNode={attackerNodeId} liveTargetNode={targetLiveNodeId} routeNode={targetAuthorityNodeId} source={source}");
+					return false;
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] CommandAttackRouteAuthorityPatch.CanStartPrefix: " + ex.Message);
+			}
+
+			return true;
+		}
+
+	}
+
+	private static class ScriptDispatcherAttackTargetRouteAuthorityPatch
+	{
+		public static void ApplyPatch(Harmony harmony)
+		{
+			try
+			{
+				MethodInfo runScript = typeof(ScriptDispatcher).GetMethod("RunScript", BindingFlags.Static | BindingFlags.Public, null, new[] { typeof(Label), typeof(PlayerID), typeof(Entity), typeof(Deictics) }, null);
+				if (runScript != null)
+				{
+					harmony.Patch(runScript, prefix: new HarmonyMethod(typeof(ScriptDispatcherAttackTargetRouteAuthorityPatch), nameof(RunScriptPrefix)));
+					VerificationLog("PactRetaliation", "hooked ScriptDispatcher.RunScript attack-target route-authority guard");
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] ScriptDispatcherAttackTargetRouteAuthorityPatch failed: " + ex.Message);
+			}
+		}
+
+		private static bool RunScriptPrefix(Label scriptLabel, PlayerID pid, Entity peep, Deictics vars, ref bool __result)
+		{
+			try
+			{
+				if (scriptLabel != ScriptNames.ATTACK_TARGET
+					|| pid.IsHumanPlayer
+					|| peep?.Id.IsValid != true
+					|| vars?.targetPeep.IsValid != true)
+				{
+					return true;
+				}
+
+				PlayerInfo attacker = pid.FindPlayer();
+				Entity targetPeep = vars.targetPeep.FindEntity();
+				if (attacker?.commands == null || targetPeep?.data?.agent == null)
+				{
+					return true;
+				}
+
+				PlayerID? targetPid = targetPeep.data.agent.pid;
+				if (!targetPid.HasValue || !targetPid.Value.IsHumanPlayer)
+				{
+					return true;
+				}
+				if (VehicleGroupCombatPatch.ShouldSuppressIncomingAiCopCombat(pid, targetPid.Value))
+				{
+					VerificationLog("PactRetaliation", $"script-attack-blocked-cop-suppressed attacker={pid.id} peep={peep.Id.id} target={targetPeep.Id.id} targetPid={targetPid.Value.id}");
+					__result = false;
+					return false;
+				}
+
+				PlayerInfo targetPlayer = targetPid.Value.FindPlayer();
+				CrewAssignment targetCrew = targetPlayer?.crew != null
+					? targetPlayer.crew.GetCrewForPeep(targetPeep.Id)
+					: default(CrewAssignment);
+				if (!targetCrew.IsValid
+					|| !targetCrew.IsInVehicle
+					|| !targetCrew.VehicleID.IsValid
+					|| !MultiCrewVehicleHelper.TryGetHumanVehicleCombatTargetNodeId(targetCrew.VehicleID, out NodeID targetAuthorityNodeId, out string source)
+					|| !targetAuthorityNodeId.IsValid)
+				{
+					return true;
+				}
+
+				Node targetNode = targetAuthorityNodeId.FindNode();
+				if (targetNode == null)
+				{
+					return true;
+				}
+
+				NodeID attackerNodeId = peep.data?.agent?.nid ?? NodeID.INVALID;
+				CommandAttack attack = new CommandAttack(pid, peep.Id, targetPeep.Id);
+				if (attackerNodeId.IsValid && attackerNodeId == targetAuthorityNodeId)
+				{
+					attacker.commands.AddCommandImmediate(attack);
+					VerificationLog("PactRetaliation", $"script-attack-route-authority attacker={pid.id} peep={peep.Id.id} target={targetPeep.Id.id} targetNode={targetAuthorityNodeId} attackerNode={attackerNodeId} source={source} mode=attack-now");
+				}
+				else if (TryBuildSameTurnAttackRoute(pid, peep, targetNode, out PathData path, out string routeReason))
+				{
+					attacker.commands.AddCommandImmediate(new CommandGoto(pid, peep.Id, targetNode), attack);
+					VerificationLog("PactRetaliation", $"script-attack-route-authority attacker={pid.id} peep={peep.Id.id} target={targetPeep.Id.id} targetNode={targetAuthorityNodeId} attackerNode={attackerNodeId} source={source} mode=goto-attack-now reason={routeReason} cost={path.cost}");
+				}
+				else
+				{
+					attacker.commands.AddCommandImmediate(new CommandGoto(pid, peep.Id, targetNode));
+					VerificationLog("PactRetaliation", $"script-attack-route-authority-deferred attacker={pid.id} peep={peep.Id.id} target={targetPeep.Id.id} targetNode={targetAuthorityNodeId} attackerNode={attackerNodeId} source={source} reason={routeReason}");
+				}
+
+				__result = true;
+				return false;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] ScriptDispatcherAttackTargetRouteAuthorityPatch.RunScriptPrefix: " + ex.Message);
+				return true;
+			}
+		}
+
+		private static bool TryBuildSameTurnAttackRoute(PlayerID pid, Entity peep, Node targetNode, out PathData path, out string reason)
+		{
+			path = null;
+			reason = "none";
+			try
+			{
+				if (peep?.components?.agent == null || targetNode == null || !targetNode.id.IsValid)
+				{
+					reason = "missing-route-context";
+					return false;
+				}
+
+				int movesRemaining = peep.components.agent.MovesRemaining;
+				if (movesRemaining <= 0)
+				{
+					reason = "no-moves";
+					return false;
+				}
+
+				path = CommandGoto.MakePath(pid, peep, targetNode, new Fixnum(movesRemaining));
+				if (path == null || path.world == null || path.world.Count <= 1 || path.nodes == null || path.nodes.Count == 0)
+				{
+					reason = $"no-path-within-moves moves={movesRemaining}";
+					return false;
+				}
+
+				NodeID lastNodeId = path.nodes.LastOrDefault()?.node?.id ?? NodeID.INVALID;
+				if (lastNodeId == targetNode.id && path.cost <= movesRemaining)
+				{
+					reason = $"reachable moves={movesRemaining}";
+					return true;
+				}
+
+				reason = $"insufficient-moves moves={movesRemaining} cost={path.cost} lastNode={lastNodeId}";
+				return false;
+			}
+			catch (Exception ex)
+			{
+				reason = "route-check-failed-" + ex.GetType().Name;
+				return false;
+			}
+		}
+	}
+
 	private static class PactOpsCombatPatch
 	{
 		private static readonly HashSet<string> _patchedSignatures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -3936,7 +4770,9 @@ Target:
 		{
 			try
 			{
-				ProcessCombatResult(__result as CombatResults, __originalMethod?.Name ?? "PerformCombat");
+				string source = __originalMethod?.Name ?? "PerformCombat";
+				VehicleGroupCombatPatch.ProcessHumanCopCombatConsequences(__result as CombatResults, source);
+				ProcessCombatResult(__result as CombatResults, source);
 			}
 			catch (Exception ex)
 			{

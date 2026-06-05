@@ -36,7 +36,7 @@ Goal: add an optional route-step toggle for `Collect front` automation. When ena
 
 2. Patch the delivery editor checkbox for `AutoAction.FrontVisit`.
    - Reuse `Edit Panel/Dest/Checkbox`.
-   - Label: "Expand fronts".
+   - Label: compact `+` marker in the stock checkbox slot; the full "expand fronts" wording is too wide for this UI.
    - Mouseover: "When this route collects from a paid front, also start expansion for selected route fronts when possible."
    - Existing Buy/Sell skip behavior remains unchanged.
 
@@ -76,3 +76,30 @@ Goal: add an optional route-step toggle for `Collect front` automation. When ena
 5. Toggle enabled: collecting A starts expansion for A, skips B/C with clear `FrontRouteExpand` logs, and grants `FromSocial` XP for started expansions.
 6. Toggle disabled: collection behavior is unchanged and no expansion XP is awarded.
 7. Reorder and delete route steps, then confirm sidecar state follows or cleans up.
+
+## First Pass Status - 2026-04-30
+
+Implemented in `GameplayTweaks`:
+
+- Added persisted sidecar keys in `ModSaveData.FrontRouteExpansionKeys`.
+- Patched the delivery editor checkbox for `Collect front` steps with a compact `+` label and a vanilla collect-front tooltip key so it does not overflow or show a missing-localization `?`.
+- Patched `AutomationExecutor.DoFrontVisit()` so a successful positive front collection can trigger native expansion attempts for enabled front steps in that same route.
+- Expansion uses native `PlayerOutposts.CanStartNewOutpostExpansion()`, `PickBestExpansion()`, and `DoStartNewOutpostExpansion()`.
+- Expansion payment uses the route crew vehicle via `PlayerFinances.DoChangeMoneyOnCrew(..., MoneyReason.FrontMaintenance, frontBuilding.Id)`.
+- Successful expansions award `XPSource.FromSocial` once each.
+- Added `FrontRouteExpand` verification logs for toggle, cleanup, collection rejection, and route execution summary.
+- Route-side cleanup removes sidecar keys when routes are destroyed or front steps are removed/replaced.
+- Follow-up pass allowed same-route delivery movement commands to continue during active final-goal travel instead of being blocked as stale.
+- Follow-up pass preserved normal business building picks during travel UI cleanup while still clearing stale corner/summary picks.
+
+Validated:
+
+- `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passes with 0 warnings and 0 errors.
+- Updated public package DLL at `Things To Have\Current After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`.
+
+Still needs in-game verification:
+
+- Confirm the `Expand fronts` checkbox appears only for `Collect front`.
+- Confirm toggle state survives save/load.
+- Confirm one paid front collection expands enabled route fronts, skips no-corner/no-money fronts, and emits the expected `FrontRouteExpand` summary.
+- Confirm route step reorder/delete cleanup in the live delivery editor.

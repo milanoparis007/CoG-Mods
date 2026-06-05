@@ -60,6 +60,7 @@ public partial class GameplayTweaksPlugin : BaseUnityPlugin
 		EnableCombatAndGangOpsFeatures = ((BaseUnityPlugin)this).Config.Bind<bool>("FeatureGates", "EnableCombatAndGangOpsFeatures", true, "Enable the combat and gang-ops patch set. Stable profile default: true.");
 		EnableVehicleAndPoliticsFeatures = ((BaseUnityPlugin)this).Config.Bind<bool>("FeatureGates", "EnableVehicleAndPoliticsFeatures", true, "Enable the multi-crew vehicle and politics patch set. Stable profile default: true.");
 		EnableCompatibilityAndWorldFeatures = ((BaseUnityPlugin)this).Config.Bind<bool>("FeatureGates", "EnableCompatibilityAndWorldFeatures", true, "Enable the compatibility and world patch set. Stable profile default: true.");
+		EnableRouteSimulatedConvenienceActions = ((BaseUnityPlugin)this).Config.Bind<bool>("VehicleRouteSimulation", "EnableRouteSimulatedConvenienceActions", true, "Allow selected human vehicles that are actively routed to a friendly/neutral business or civic destination to open route-simulated conversations and stage shop buy/sell before physical arrival. Physical arrival remains required for inventory mutation.");
 		EnableCrewOddJobs = ((BaseUnityPlugin)this).Config.Bind<bool>("CrewRelations", "EnableOddJobs", true, "Enable the Crew Relations odd job button. Odd jobs consume half of a crew member's current action points and pay a small weekly clean-cash wage.");
 		VehicleGroupCombatAllowRangedWeapons = ((BaseUnityPlugin)this).Config.Bind<bool>("VehicleGroupCombat", "AllowRangedWeapons", true, "Allow grouped player vehicle attacks to use ranged/firearm weapons from inventory.");
 		VehicleGroupCombatAllowMeleeWeapons = ((BaseUnityPlugin)this).Config.Bind<bool>("VehicleGroupCombat", "AllowMeleeWeapons", true, "Allow grouped player vehicle attacks to use melee weapons from inventory. If both melee and ranged are disabled, grouped attacks fall back to fists.");
@@ -104,6 +105,7 @@ public partial class GameplayTweaksPlugin : BaseUnityPlugin
 		FakeTrafficDiagnosticsEnabled = ((BaseUnityPlugin)this).Config.Bind<bool>("FakeTraffic", "DiagnosticsEnabled", false, "Emit periodic fake-traffic runtime counters to the verification log.");
 		FakeTrafficDiagnosticsLogInterval = ((BaseUnityPlugin)this).Config.Bind<float>("FakeTraffic", "DiagnosticsLogInterval", 8f, "Seconds between fake-traffic diagnostics log lines while the system is active.");
 		CrewHiringAllowBusinessAssignedCandidates = ((BaseUnityPlugin)this).Config.Bind<bool>("CrewHiring", "AllowBusinessAssignedCandidates", false, "Allow hiring candidates even if currently business- or residence-assigned. Disabled by default because business-assigned NPCs can break hostile inspect/workplace/convo targeting.");
+		BusinessOwnerEnforceAfterProhibitionFamilySafety = ((BaseUnityPlugin)this).Config.Bind<bool>("BusinessOwners", "EnforceAfterProhibitionFamilySafety", false, "Use AfterProhibitionFamily's family-safety classifier to reject automatic business-owner candidates. Default false because strict family rejection can exhaust vanilla owner pools during new-game map setup.");
 		PactOpsDefaultsEnabled = ((BaseUnityPlugin)this).Config.Bind<bool>("PactOpsDefaults", "Enabled", true, "Enable native pact automation systems by default for this save.");
 		PactOpsDefaultsAutoProtectEnabled = ((BaseUnityPlugin)this).Config.Bind<bool>("PactOpsDefaults", "AutoProtectEnabled", true, "Enable AutoProtect turf behavior for AI pact gangs.");
 		PactOpsDefaultsAutoProtectIntervalDays = ((BaseUnityPlugin)this).Config.Bind<int>("PactOpsDefaults", "AutoProtectIntervalDays", 3, "Days between AutoProtect passes.");
@@ -212,9 +214,10 @@ public partial class GameplayTweaksPlugin : BaseUnityPlugin
 			bool combatEnabled = EnableCombatAndGangOpsFeatures?.Value ?? false;
 			bool compatEnabled = EnableCompatibilityAndWorldFeatures?.Value ?? false;
 			bool vehicleAndPoliticsEnabled = EnableVehicleAndPoliticsFeatures?.Value ?? false;
-			string message = $"Gameplay Tweaks Extended loaded version={version} file={fileName} built={builtAt} path={normalizedPath} coreEnabled={coreEnabled} crewRelationsEnabled={crewRelationsEnabled} uiEnabled={uiEnabled} combatEnabled={combatEnabled} compatEnabled={compatEnabled} vehiclePoliticsEnabled={vehicleAndPoliticsEnabled}";
+			bool routeSimConvenienceEnabled = EnableRouteSimulatedConvenienceActions?.Value ?? true;
+			string message = $"Gameplay Tweaks Extended loaded version={version} file={fileName} built={builtAt} path={normalizedPath} coreEnabled={coreEnabled} crewRelationsEnabled={crewRelationsEnabled} uiEnabled={uiEnabled} combatEnabled={combatEnabled} compatEnabled={compatEnabled} vehiclePoliticsEnabled={vehicleAndPoliticsEnabled} routeSimConvenienceEnabled={routeSimConvenienceEnabled}";
 			Debug.Log("[GameplayTweaks] " + message);
-			VerificationLog("Compat", $"loaded version={version} file={fileName} built={builtAt} path={normalizedPath} coreEnabled={coreEnabled} crewRelationsEnabled={crewRelationsEnabled} uiEnabled={uiEnabled} combatEnabled={combatEnabled} compatEnabled={compatEnabled} vehiclePoliticsEnabled={vehicleAndPoliticsEnabled}");
+			VerificationLog("Compat", $"loaded version={version} file={fileName} built={builtAt} path={normalizedPath} coreEnabled={coreEnabled} crewRelationsEnabled={crewRelationsEnabled} uiEnabled={uiEnabled} combatEnabled={combatEnabled} compatEnabled={compatEnabled} vehiclePoliticsEnabled={vehicleAndPoliticsEnabled} routeSimConvenienceEnabled={routeSimConvenienceEnabled}");
 		}
 		catch (Exception ex)
 		{

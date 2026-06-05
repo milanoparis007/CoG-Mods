@@ -1,0 +1,130 @@
+PIA DLL COMPATIBILITY LIST
+==========================
+
+This is a small compatibility guide for using PIA BepInEx plugin DLLs with
+the After Prohibition release.
+
+Use the DLLs from your City of Gangsters BepInEx\plugins folder or from the
+PIA plugin folders you already keep. Only install one copy of each DLL.
+
+
+INCLUDED AFTER PROHIBITION DLLS
+-------------------------------
+
+These are the release DLLs staged with this package:
+
+- AutoLevelup.dll
+- BossBuildings.dll
+- BossDeath.dll
+- CopKilling.dll
+- EthnicityPlacementFix.dll
+- GameOptimizer.dll
+- GameplayTweaks.dll
+- OrgChartMod.dll
+- ProhibitionLauncher.dll
+
+
+PIA DLLS THAT SHOULD BE SAFE EXAMPLES
+-------------------------------------
+
+These are good first choices from the PIA plugin set:
+
+- 10K Button & Input.dll
+- UIEnhancer.dll
+- Tickerenhancer.dll
+- OutpostTickerMod.dll
+- DirtyCashEconomy.dll
+- DirtyCashVolumeFix.dll
+- InputBlocker.dll
+- Traiticonlimitplugin.dll
+- WarehouseExpander.dll
+- ListGrouper.dll
+
+Notes:
+
+- Keep only one optimizer active. Use either GameOptimizer.dll or
+  CityOfGangstersOptimizer.dll, not both.
+- Keep only one ticker-style helper active if duplicate ticker text or buttons
+  appear.
+- DirtyCashEconomy.dll is expected to work with the current GameplayTweaks
+  compatibility layer, but it still changes economy behavior.
+
+
+PIA DLLS THAT CAN WORK WITH GUARDS
+----------------------------------
+
+These can be compatible, but they touch bigger gameplay systems:
+
+- GangWars.dll
+- MafiaHierarchy.dll
+- TerritoryExpansionPatch.dll
+- TerritoryIntimidation.dll
+- BossSwapFix.dll
+- Bossswapfixplugin.dll
+- CrewHireManager.dll
+- Creweditorenhanced.dll
+- BusinessStatusManager.dll
+- Buildinginventoryhelper.dll
+- Buildingeditor.dll
+- RemoteInteraction.dll
+- Safebox.dll
+- SafehouseRelocator.dll
+- Person Creator Man.dll
+
+Notes:
+
+- GangWars.dll and territory-related DLLs can overlap with After Prohibition's
+  pact, gang war, territory, and retaliation systems.
+- After Prohibition's native pact and gang operations should stay authoritative
+  unless you intentionally change compatibility settings.
+- If gang colors, territory expansion, revenge attacks, or pact behavior look
+  strange, remove the gang/territory DLLs first and test again.
+- Crew, building, storage, and remote interaction helpers may overlap with
+  safehouse access, owned-building storage, hiring, and UI patches.
+
+
+TRY AT YOUR OWN RISK
+--------------------
+
+These DLLs may load, but they are more likely to change balance, UI flow, or
+core gameplay assumptions. Players can try them, but they should test on a
+backup save.
+
+- Boss Manager.dll
+- Cog Ultimate Cheat.dll
+- ElectionVoteCheat.dll
+- ExclusiveTraitsPlugin.dll
+- Field auto heal.dll
+- Gameplay Enhancer.dll
+- Levelupqolplugin.dll
+- Orgchartexpanderplugin.dll
+- QuestTooltipPatcher.dll
+- StockMarketMod.dll
+- StockMarketMod_new.dll
+- CrewListSorter.dll
+- Copdeathrelationresetplugin.dll
+- CityOfGangstersOptimizer.dll
+- ModLauncher.dll
+
+Notes:
+
+- Cheat and manager DLLs can bypass or overwrite After Prohibition balance.
+- Stock market, boss manager, election, and gameplay enhancer DLLs may be fun,
+  but they should be treated as personal-addon mods, not guaranteed release
+  dependencies.
+- If using ModLauncher.dll from PIA, keep ProhibitionLauncher.dll from this
+  release installed too.
+
+
+TROUBLESHOOTING
+---------------
+
+If the game does not load or a save behaves oddly:
+
+1. Start with only the After Prohibition release DLLs.
+2. Add PIA DLLs back in small groups.
+3. Test on a backup save.
+4. If the problem returns, remove the last DLLs added.
+5. Check BepInEx\LogOutput.log and the City of Gangsters Player.log.
+
+The safest rule is simple: fewer DLLs means fewer overlaps.

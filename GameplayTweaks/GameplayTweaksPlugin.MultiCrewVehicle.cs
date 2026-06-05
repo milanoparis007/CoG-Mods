@@ -45,9 +45,12 @@ namespace GameplayTweaks
 		private static readonly Dictionary<string, int> VehicleCrewSlots = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
 		{
 			{ "vehicle-car", 4 },
+			{ "vehicle-town-car", 4 },
+			{ "vehicle-car-preorder", 4 },
 			{ "vehicle-sedan", 4 },
 			{ "vehicle-sports-car", 2 },
 			{ "vehicle-sportsbenz", 4 },
+			{ "vehicle-bulletproof-car", 4 },
 			{ "vehicle-bulletproof-sports-car", 4 },
 			{ "vehicle-transit", 1 },
 			{ "vehicle-lseries", 4 },
@@ -56,6 +59,7 @@ namespace GameplayTweaks
 			{ "vehicle-benz-ssk", 4 },
 			{ "vehicle-jaguarm", 2 },
 			{ "vehicle-bulletproof-independence", 4 },
+			{ "vehicle-bulletproof-jaguar", 2 },
 			{ "vehicle-lancer", 4 },
 			{ "vehicle-customline", 4 },
 			{ "vehicle-skylark", 4 },
@@ -147,6 +151,7 @@ namespace GameplayTweaks
 		{
 			Invalid,
 			NoMovesYet,
+			InsufficientMovesForSegment,
 			BuiltEmpty,
 			BuiltValid
 		}
@@ -163,6 +168,46 @@ namespace GameplayTweaks
 		private static MethodInfo _getControlledBuildingsMethod;
 
 		private static MethodInfo _getNodeIdMethod;
+
+		private static Type _afterProhibitionRoutesPluginType;
+
+		private static MethodInfo _afterProhibitionRoutesOwnsTravelContinuationDecisionMethod;
+
+		private static MethodInfo _afterProhibitionRoutesLogTravelContinuationDecisionMethod;
+
+		private static MethodInfo _afterProhibitionRoutesOwnsVehicleNodeAuthorityDecisionMethod;
+
+		private static MethodInfo _afterProhibitionRoutesLogVehicleNodeAuthorityDecisionMethod;
+
+		private static MethodInfo _afterProhibitionRoutesOwnsDeliveryPumpDecisionMethod;
+
+		private static MethodInfo _afterProhibitionRoutesLogDeliveryPumpDecisionMethod;
+
+		private static MethodInfo _afterProhibitionRoutesOwnsRouteSimAccessDecisionMethod;
+
+		private static MethodInfo _afterProhibitionRoutesLogRouteSimAccessDecisionMethod;
+
+		private static MethodInfo _afterProhibitionRoutesOwnsRouteBehaviorSliceMethod;
+
+		private static bool _loggedAfterProhibitionRoutesTravelContinuationDelegated;
+
+		private static bool _loggedAfterProhibitionRoutesTravelContinuationFallback;
+
+		private static bool _loggedAfterProhibitionRoutesVehicleNodeAuthorityDelegated;
+
+		private static bool _loggedAfterProhibitionRoutesVehicleNodeAuthorityFallback;
+
+		private static bool _loggedAfterProhibitionRoutesDeliveryPumpDelegated;
+
+		private static bool _loggedAfterProhibitionRoutesDeliveryPumpFallback;
+
+		private static bool _loggedAfterProhibitionRoutesRouteSimAccessDelegated;
+
+		private static bool _loggedAfterProhibitionRoutesRouteSimAccessFallback;
+
+		private static readonly HashSet<string> _loggedAfterProhibitionRoutesBehaviorDelegatedSlices = new HashSet<string>(StringComparer.Ordinal);
+
+		private static readonly HashSet<string> _loggedAfterProhibitionRoutesBehaviorFallbackSlices = new HashSet<string>(StringComparer.Ordinal);
 
 		private static readonly FieldInfo _playerCrewDataField = typeof(PlayerCrew).GetField("_crewdata", BindingFlags.Instance | BindingFlags.NonPublic);
 
@@ -196,7 +241,36 @@ namespace GameplayTweaks
 
 		private static readonly HashSet<string> _loggedVehicleAuthorityKeys = new HashSet<string>(StringComparer.Ordinal);
 
+		private static readonly HashSet<string> _loggedAfterProhibitionRoutesTravelContinuationDecisionKeys = new HashSet<string>(StringComparer.Ordinal);
+
+		private static readonly HashSet<string> _loggedAfterProhibitionRoutesVehicleAuthorityDecisionKeys = new HashSet<string>(StringComparer.Ordinal);
+
+		private static readonly HashSet<string> _loggedAfterProhibitionRoutesDeliveryPumpDecisionKeys = new HashSet<string>(StringComparer.Ordinal);
+
+		private static readonly HashSet<string> _loggedAfterProhibitionRoutesRouteSimAccessDecisionKeys = new HashSet<string>(StringComparer.Ordinal);
+
+		private static readonly Dictionary<string, bool> _afterProhibitionRoutesBehaviorOwnerBySlice = new Dictionary<string, bool>(StringComparer.Ordinal);
+
+		private static readonly string[] AfterProhibitionRoutesBehaviorOwnerWarmSlices =
+		{
+			"delivery-pump",
+			"vehicle-node-authority",
+			"route-sim-access",
+			"travel-continuation"
+		};
+
+		private static bool _afterProhibitionRoutesBehaviorOwnerWarmComplete;
+
+		private static int _afterProhibitionRoutesBehaviorOwnerWarmLastAttemptFrame = -100000;
+
+		private static int _afterProhibitionRoutesBehaviorOwnerWarmAttempts;
+
 		private static readonly bool _verboseVehicleAuthorityPreviewLogs = string.Equals(Environment.GetEnvironmentVariable("COG_VERBOSE_VEHICLE_AUTHORITY"), "1", StringComparison.Ordinal);
+
+		private static readonly bool _verboseAfterProhibitionRoutesDecisionBridge = string.Equals(Environment.GetEnvironmentVariable("COG_VERBOSE_ROUTES_BRIDGE"), "1", StringComparison.Ordinal)
+			|| string.Equals(Environment.GetEnvironmentVariable("COG_VERBOSE_VEHICLE_AUTHORITY"), "1", StringComparison.Ordinal);
+
+		private static readonly FieldInfo CrewDialogAllCardsField = typeof(CrewDialog).GetField("_allCards", BindingFlags.Instance | BindingFlags.NonPublic);
 
 		private static readonly Dictionary<long, PendingVehicleTravelState> _pendingVehicleTravelByVehicleId = new Dictionary<long, PendingVehicleTravelState>();
 
@@ -208,9 +282,43 @@ namespace GameplayTweaks
 
 		private static readonly Dictionary<long, NodeID> _queuedArrivalCommittedNodeByVehicleId = new Dictionary<long, NodeID>();
 
+		private static readonly Dictionary<long, NodeID> _observedHumanVehicleReachedNodeByVehicleId = new Dictionary<long, NodeID>();
+
+		private static readonly Dictionary<long, int> _observedHumanVehicleReachedFrameByVehicleId = new Dictionary<long, int>();
+
+		private static readonly Dictionary<long, string> _observedHumanVehicleReachedSourceByVehicleId = new Dictionary<long, string>();
+
+		private static readonly Dictionary<long, NodeID> _recentQueuedHumanVehicleDestinationPreviewByVehicleId = new Dictionary<long, NodeID>();
+
+		private static readonly Dictionary<long, NodeID> _recentQueuedHumanVehicleDestinationPreviewExpectedByVehicleId = new Dictionary<long, NodeID>();
+
+		private static readonly Dictionary<long, int> _recentQueuedHumanVehicleDestinationPreviewFrameByVehicleId = new Dictionary<long, int>();
+
+		private const int RecentQueuedHumanVehicleDestinationPreviewPreserveFrames = 45;
+
+		private struct CachedVehicleNodeAuthority
+		{
+			public int Frame;
+			public bool HasNode;
+			public NodeID NodeId;
+			public string Source;
+		}
+
+		private static readonly Dictionary<long, CachedVehicleNodeAuthority> _vehicleLiveAuthorityNodeCacheByVehicleId = new Dictionary<long, CachedVehicleNodeAuthority>();
+
+		private static readonly Dictionary<long, CachedVehicleNodeAuthority> _vehiclePhysicalNodeCacheByVehicleId = new Dictionary<long, CachedVehicleNodeAuthority>();
+
+		private static bool _deferredQueuedHumanVehicleRouteResumePending;
+
+		private static int _deferredQueuedHumanVehicleRouteResumeEarliestFrame;
+
+		private static string _deferredQueuedHumanVehicleRouteResumeSource = string.Empty;
+
 		private static readonly Dictionary<long, NodeID> _interruptExpectedStartNodeByVehicleId = new Dictionary<long, NodeID>();
 
 		private static readonly HashSet<long> _turnStartFinalizedQueuedRouteVehicleIds = new HashSet<long>();
+
+		private static readonly HashSet<long> _turnStartDeferredArrivalVehicleIds = new HashSet<long>();
 
 		private static readonly HashSet<long> _ambientTrafficVehicleIds = new HashSet<long>();
 
@@ -332,6 +440,10 @@ namespace GameplayTweaks
 
 		private static readonly Dictionary<long, NodeID> _recentFinalizedNodeByVehicleId = new Dictionary<long, NodeID>();
 
+		private static readonly Dictionary<long, int> _recentFinalizedFrameByVehicleId = new Dictionary<long, int>();
+
+		private const int RecentFinalizeStableBridgeMaxFrames = 8;
+
 		private static readonly Dictionary<long, AiRecentVehicleMoveState> _recentAiVehicleMoveByVehicleId = new Dictionary<long, AiRecentVehicleMoveState>();
 
 		private static readonly Dictionary<long, NodeID> _recentAiCommittedNodeByVehicleId = new Dictionary<long, NodeID>();
@@ -339,6 +451,12 @@ namespace GameplayTweaks
 		private static readonly Dictionary<long, HumanVehicleRequeueState> _recentHumanVehicleRequeueByVehicleId = new Dictionary<long, HumanVehicleRequeueState>();
 
 		private static readonly Dictionary<long, long> _lastEnemyVehicleRepresentativeByVehicleId = new Dictionary<long, long>();
+
+		private static int _enemyVehicleRepresentativeSwapSummaryDay = int.MinValue;
+
+		private static int _enemyVehicleRepresentativeSwapSummaryTotal;
+
+		private static readonly Dictionary<string, int> _enemyVehicleRepresentativeSwapSummaryBySource = new Dictionary<string, int>(StringComparer.Ordinal);
 
 		private static readonly Dictionary<long, int> _humanPassengerUncappedMovesByPeepId = new Dictionary<long, int>();
 
@@ -348,6 +466,7 @@ namespace GameplayTweaks
 
 		internal static void ResetTransientEnemyVehiclePresentationState(string sourceTag)
 		{
+			FlushEnemyVehicleRepresentativeSwapSummary("reset:" + sourceTag);
 			_vehicleSearchBlockedBySurvivors.Clear();
 			_recentEnemyVehicleDeathPeepByVehicleId.Clear();
 			_lastEnemyVehicleRepresentativeByVehicleId.Clear();
@@ -608,6 +727,45 @@ namespace GameplayTweaks
 			return node != null;
 		}
 
+		internal static bool TryGetHumanVehicleCombatTargetNodeId(EntityID vehicleId, out NodeID nodeId, out string source)
+		{
+			nodeId = NodeID.INVALID;
+			source = "none";
+			if (!vehicleId.IsValid)
+			{
+				return false;
+			}
+
+			TryNormalizeFreshStartupPendingVehicleTravelForUi(vehicleId, "combat-target");
+
+			if (TryGetPendingHumanVehicleTravelState(vehicleId, out PendingVehicleTravelState pendingState)
+				&& pendingState.ExpectedNodeID.IsValid
+				&& (IsHumanVehicleTravelActive(vehicleId) || pendingState.ResumeQueued || pendingState.GoalNodeID.IsValid))
+			{
+				nodeId = pendingState.ExpectedNodeID;
+				source = pendingState.ResumeQueued ? "combat-queued-expected" : "combat-expected";
+				LogVehicleAuthority(
+					"combat-target-node",
+					$"{vehicleId.id}:{nodeId}:{source}",
+					$"combat-target-node vehicle={vehicleId.id} node={nodeId} source={source} finalGoal={pendingState.GoalNodeID}",
+					dedupe: true);
+				return true;
+			}
+
+			if (TryGetVehicleLiveAuthorityNodeId(vehicleId, out nodeId, out string liveSource) && nodeId.IsValid)
+			{
+				source = "combat-" + liveSource;
+				LogVehicleAuthority(
+					"combat-target-node",
+					$"{vehicleId.id}:{nodeId}:{source}",
+					$"combat-target-node vehicle={vehicleId.id} node={nodeId} source={source}",
+					dedupe: true);
+				return true;
+			}
+
+			return false;
+		}
+
 		private static bool ShouldPreferCommittedHumanVehicleInteractiveNode()
 		{
 			return IsPendingPresenceSelectionScopeActive() || IsPendingBuildingInteractionScopeActive();
@@ -675,6 +833,21 @@ namespace GameplayTweaks
 				&& !startupSuppressed
 				&& TryGetLiveArrivalBridgeNodeId(vehicleId, pendingState, out nodeId, out source))
 			{
+				return true;
+			}
+
+			if (hasPendingState
+				&& !startupSuppressed
+				&& IsHumanVehicleTravelActive(vehicleId)
+				&& pendingState.GoalNodeID.IsValid)
+			{
+				nodeId = pendingState.ExpectedNodeID;
+				source = pendingState.GoalNodeID == pendingState.ExpectedNodeID ? "current-final-goal" : "current-segment";
+				LogVehicleAuthority(
+					"active-route-authority-source",
+					$"{vehicleId.id}:{nodeId}:{source}:{pendingState.GoalNodeID}",
+					$"active-route-authority-source vehicle={vehicleId.id} node={nodeId} source={source} finalGoal={pendingState.GoalNodeID}",
+					dedupe: false);
 				return true;
 			}
 
@@ -837,12 +1010,14 @@ namespace GameplayTweaks
 					return true;
 				}
 
+				int stableBridgeFrameDelta = int.MaxValue;
 				bool allowStableRecentFinalizeBridge = hasRecentFinalized
 					&& recentFinalizedNodeId.IsValid
 					&& recentFinalizedNodeId != liveNodeId
 					&& liveMobileSource
 					&& !IsHumanVehicleTravelActive(vehicleId)
 					&& !HasQueuedHumanVehiclePendingResume(vehicleId)
+					&& IsRecentFinalizedStableBridgeFresh(vehicleId, RecentFinalizeStableBridgeMaxFrames, out stableBridgeFrameDelta)
 					&& AreNodesWithinStableFinalizeBridgeRange(recentFinalizedNodeId, liveNodeId);
 				if (allowStableRecentFinalizeBridge)
 				{
@@ -856,7 +1031,7 @@ namespace GameplayTweaks
 					LogVehicleAuthority(
 						"selected-ui-authority-stable-finalize-bridge",
 						$"{vehicleId.id}:{recentFinalizedNodeId}:{liveNodeId}:{source}:{selectedSource}",
-						$"selected-ui-authority-stable-finalize-bridge vehicle={vehicleId.id} finalizedNode={recentFinalizedNodeId} liveNode={liveNodeId} liveSource={liveSource} selectedSource={selectedSource} resolvedSource={source}",
+						$"selected-ui-authority-stable-finalize-bridge vehicle={vehicleId.id} finalizedNode={recentFinalizedNodeId} liveNode={liveNodeId} liveSource={liveSource} selectedSource={selectedSource} resolvedSource={source} frameDelta={stableBridgeFrameDelta}",
 						dedupe: true);
 					return true;
 				}
@@ -1254,10 +1429,20 @@ namespace GameplayTweaks
 			{
 				return false;
 			}
+			if (ShouldSkipForAfterProhibitionRoutesBehaviorOwner("vehicle-node-authority", "physical-check"))
+			{
+				return false;
+			}
+
+			LogAfterProhibitionRoutesVehicleNodeAuthorityDecision(vehicleId, nodeId, "physical-check");
 
 			if (TryGetVehicleLiveAuthorityNodeId(vehicleId, out NodeID liveNodeId, out string liveSource)
 				&& liveNodeId == nodeId)
 			{
+				if (string.Equals(liveSource, "mobile", StringComparison.Ordinal))
+				{
+					RecordObservedHumanVehicleReachedNode(vehicleId, nodeId, liveSource);
+				}
 				LogVehicleAuthority("vehicle-node-reached", $"{vehicleId.id}:{nodeId}:{liveSource}", $"vehicle-node-reached vehicle={vehicleId.id} node={nodeId} source={liveSource}", dedupe: true);
 				return true;
 			}
@@ -1275,9 +1460,26 @@ namespace GameplayTweaks
 				return false;
 			}
 
+			long vehicleKey = (long)vehicleId.id;
+			int frame = Time.frameCount;
+			if (_vehiclePhysicalNodeCacheByVehicleId.TryGetValue(vehicleKey, out CachedVehicleNodeAuthority cached)
+				&& cached.Frame == frame)
+			{
+				nodeId = cached.NodeId;
+				source = cached.Source ?? "none";
+				return cached.HasNode;
+			}
+
 			Entity vehicle = vehicleId.FindEntity();
 			if (vehicle?.data?.board == null)
 			{
+				_vehiclePhysicalNodeCacheByVehicleId[vehicleKey] = new CachedVehicleNodeAuthority
+				{
+					Frame = frame,
+					HasNode = false,
+					NodeId = NodeID.INVALID,
+					Source = "none"
+				};
 				return false;
 			}
 
@@ -1286,25 +1488,203 @@ namespace GameplayTweaks
 				WorldPos worldPos = vehicle.data.board.worldpos;
 				if (worldPos.IsZero)
 				{
+					_vehiclePhysicalNodeCacheByVehicleId[vehicleKey] = new CachedVehicleNodeAuthority
+					{
+						Frame = frame,
+						HasNode = false,
+						NodeId = NodeID.INVALID,
+						Source = "none"
+					};
 					return false;
 				}
 
 				Node snappedNode = global::Game.Game.ctx.board.nodes.FindNearestNodeAround(worldPos, 5f);
 				if (snappedNode == null || !snappedNode.id.IsValid)
 				{
+					_vehiclePhysicalNodeCacheByVehicleId[vehicleKey] = new CachedVehicleNodeAuthority
+					{
+						Frame = frame,
+						HasNode = false,
+						NodeId = NodeID.INVALID,
+						Source = "none"
+					};
 					return false;
 				}
 
 				nodeId = snappedNode.id;
 				source = "physical";
+				_vehiclePhysicalNodeCacheByVehicleId[vehicleKey] = new CachedVehicleNodeAuthority
+				{
+					Frame = frame,
+					HasNode = true,
+					NodeId = nodeId,
+					Source = source
+				};
 				return true;
 			}
 			catch
 			{
 				nodeId = NodeID.INVALID;
 				source = "none";
+				_vehiclePhysicalNodeCacheByVehicleId[vehicleKey] = new CachedVehicleNodeAuthority
+				{
+					Frame = frame,
+					HasNode = false,
+					NodeId = NodeID.INVALID,
+					Source = "none"
+				};
 				return false;
 			}
+		}
+
+		internal static bool IsHumanVehicleStrictlyPhysicalAtNode(EntityID vehicleId, NodeID nodeId, out string source)
+		{
+			source = "none";
+			if (!vehicleId.IsValid || !nodeId.IsValid)
+			{
+				return false;
+			}
+			if (ShouldSkipForAfterProhibitionRoutesBehaviorOwner("vehicle-node-authority", "strict-physical-check"))
+			{
+				return false;
+			}
+
+			LogAfterProhibitionRoutesVehicleNodeAuthorityDecision(vehicleId, nodeId, "strict-physical-check");
+
+			if (!TryGetHumanVehiclePhysicalNodeId(vehicleId, out NodeID physicalNodeId, out string physicalSource)
+				|| physicalNodeId != nodeId)
+			{
+				return false;
+			}
+
+			source = string.IsNullOrWhiteSpace(physicalSource) ? "physical" : physicalSource;
+			LogVehicleAuthority(
+				"vehicle-node-strict-physical",
+				$"{vehicleId.id}:{nodeId}:{source}",
+				$"vehicle-node-strict-physical vehicle={vehicleId.id} node={nodeId} source={source}",
+				dedupe: true);
+			return true;
+		}
+
+		internal static bool TryGetStrictPhysicalVehicleNode(EntityID vehicleId, out Node node, out string source)
+		{
+			node = null;
+			source = "none";
+			if (!vehicleId.IsValid)
+			{
+				return false;
+			}
+
+			if (!TryGetHumanVehiclePhysicalNodeId(vehicleId, out NodeID nodeId, out source) || !nodeId.IsValid)
+			{
+				return false;
+			}
+
+			node = nodeId.FindNode();
+			if (node == null)
+			{
+				source = "none";
+				return false;
+			}
+
+			LogVehicleAuthority(
+				"vehicle-node-strict-physical",
+				$"{vehicleId.id}:{nodeId}:{source}",
+				$"vehicle-node-strict-physical vehicle={vehicleId.id} node={nodeId} source={source}",
+				dedupe: true);
+			return true;
+		}
+
+		internal static bool IsHumanVehicleStrictlyPhysicalAtNode(EntityID vehicleId, NodeID nodeId)
+		{
+			return IsHumanVehicleStrictlyPhysicalAtNode(vehicleId, nodeId, out _);
+		}
+
+		private static void RecordObservedHumanVehicleReachedNode(EntityID vehicleId, NodeID nodeId, string source)
+		{
+			if (!vehicleId.IsValid || !nodeId.IsValid)
+			{
+				return;
+			}
+
+			long vehicleKey = (long)vehicleId.id;
+			_observedHumanVehicleReachedNodeByVehicleId[vehicleKey] = nodeId;
+			_observedHumanVehicleReachedFrameByVehicleId[vehicleKey] = Time.frameCount;
+			_observedHumanVehicleReachedSourceByVehicleId[vehicleKey] = string.IsNullOrWhiteSpace(source) ? "mobile" : source;
+		}
+
+		internal static bool TryGetObservedHumanVehicleReachedNode(EntityID vehicleId, NodeID nodeId, int minimumFrame, out string source)
+		{
+			source = "none";
+			if (!vehicleId.IsValid || !nodeId.IsValid)
+			{
+				return false;
+			}
+
+			LogAfterProhibitionRoutesVehicleNodeAuthorityDecision(vehicleId, nodeId, "observed-arrival-check");
+
+			long vehicleKey = (long)vehicleId.id;
+			if (!_observedHumanVehicleReachedNodeByVehicleId.TryGetValue(vehicleKey, out NodeID observedNodeId)
+				|| observedNodeId != nodeId)
+			{
+				return false;
+			}
+
+			if (!_observedHumanVehicleReachedFrameByVehicleId.TryGetValue(vehicleKey, out int observedFrame)
+				|| observedFrame < minimumFrame)
+			{
+				return false;
+			}
+
+			if (!_observedHumanVehicleReachedSourceByVehicleId.TryGetValue(vehicleKey, out source)
+				|| string.IsNullOrWhiteSpace(source))
+			{
+				source = "mobile";
+			}
+			return true;
+		}
+
+		internal static bool IsHumanVehicleSettledAtNodeForAction(EntityID vehicleId, NodeID nodeId, out string source)
+		{
+			source = "none";
+			if (!vehicleId.IsValid || !nodeId.IsValid)
+			{
+				return false;
+			}
+
+			if (IsHumanVehicleStrictlyPhysicalAtNode(vehicleId, nodeId, out string strictSource))
+			{
+				source = strictSource;
+				return true;
+			}
+
+			bool hasRouteState = IsHumanVehicleTravelActive(vehicleId)
+				|| HasQueuedHumanVehiclePendingResume(vehicleId)
+				|| (TryGetPendingHumanVehicleTravelState(vehicleId, out PendingVehicleTravelState pendingState)
+					&& (pendingState.ExpectedNodeID.IsValid || pendingState.GoalNodeID.IsValid || pendingState.ResumeQueued));
+			if (hasRouteState)
+			{
+				return false;
+			}
+
+			if (TryGetVehicleLiveAuthorityNodeId(vehicleId, out NodeID liveNodeId, out string liveSource)
+				&& liveNodeId == nodeId)
+			{
+				source = "settled-" + (string.IsNullOrWhiteSpace(liveSource) ? "live" : liveSource);
+				LogVehicleAuthority(
+					"vehicle-node-settled-action",
+					$"{vehicleId.id}:{nodeId}:{source}",
+					$"vehicle-node-settled-action vehicle={vehicleId.id} node={nodeId} source={source}",
+					dedupe: true);
+				return true;
+			}
+
+			return false;
+		}
+
+		internal static bool IsHumanVehicleSettledAtNodeForAction(EntityID vehicleId, NodeID nodeId)
+		{
+			return IsHumanVehicleSettledAtNodeForAction(vehicleId, nodeId, out _);
 		}
 
 		internal static bool IsHumanVehicleAtOwnedBuildingAccessNode(EntityID vehicleId, NodeID nodeId)
@@ -1361,6 +1741,131 @@ namespace GameplayTweaks
 			return false;
 		}
 
+		internal static bool IsHumanVehicleRouteSimAccessNode(EntityID vehicleId, NodeID nodeId, string actionTag, out string source)
+		{
+			source = "none";
+			if (!vehicleId.IsValid || !nodeId.IsValid)
+			{
+				return false;
+			}
+			if (ShouldSkipForAfterProhibitionRoutesBehaviorOwner("route-sim-access", actionTag))
+			{
+				return false;
+			}
+
+			LogAfterProhibitionRoutesRouteSimAccessDecision(vehicleId, nodeId, actionTag);
+
+			if (!(GameplayTweaksPlugin.EnableRouteSimulatedConvenienceActions?.Value ?? true))
+			{
+				LogVehicleAuthority(
+					"route-sim-disabled",
+					$"{vehicleId.id}:{nodeId}:{actionTag}",
+					$"route-sim-disabled vehicle={vehicleId.id} node={nodeId} action={actionTag} reason=config-disabled",
+					dedupe: true);
+				return false;
+			}
+
+			if (!TryGetPendingHumanVehicleTravelState(vehicleId, out PendingVehicleTravelState pendingState))
+			{
+				return false;
+			}
+
+			bool routeActive = IsHumanVehicleTravelActive(vehicleId)
+				|| pendingState.ResumeQueued
+				|| HasQueuedHumanVehiclePendingResume(vehicleId);
+			if (!routeActive)
+			{
+				return false;
+			}
+
+			if (pendingState.ExpectedNodeID == nodeId)
+			{
+				source = "route-sim-expected";
+			}
+			else if (pendingState.GoalNodeID == nodeId)
+			{
+				if (IsRouteSimExpectedOnlyAction(actionTag))
+				{
+					LogVehicleAuthority(
+						"route-sim-goal-blocked",
+						$"{vehicleId.id}:{nodeId}:{pendingState.ExpectedNodeID}:{actionTag}",
+						$"route-sim-goal-blocked vehicle={vehicleId.id} node={nodeId} expectedNode={pendingState.ExpectedNodeID} finalGoal={pendingState.GoalNodeID} action={actionTag} reason=expected-node-only",
+						dedupe: true);
+					return false;
+				}
+				source = "route-sim-goal";
+			}
+			else
+			{
+				return false;
+			}
+
+			if (IsRouteSimPhysicalOnlyAction(actionTag))
+			{
+				LogVehicleAuthority(
+					"route-sim-physical-only-blocked",
+					$"{vehicleId.id}:{nodeId}:{source}:{actionTag}",
+					$"route-sim-physical-only-blocked vehicle={vehicleId.id} node={nodeId} expectedNode={pendingState.ExpectedNodeID} finalGoal={pendingState.GoalNodeID} source={source} action={actionTag} reason=physical-only-action",
+					dedupe: true);
+				return false;
+			}
+
+			LogVehicleAuthority(
+				"route-sim-access",
+				$"{vehicleId.id}:{nodeId}:{source}:{actionTag}",
+				$"route-sim-access vehicle={vehicleId.id} node={nodeId} expectedNode={pendingState.ExpectedNodeID} finalGoal={pendingState.GoalNodeID} source={source} action={actionTag}",
+				dedupe: true);
+			return true;
+		}
+
+		private static bool IsRouteSimPhysicalOnlyAction(string actionTag)
+		{
+			if (string.IsNullOrWhiteSpace(actionTag))
+			{
+				return false;
+			}
+
+			string normalized = actionTag.Trim().ToLowerInvariant();
+			return normalized.Contains("combat")
+				|| normalized.Contains("hostile")
+				|| normalized.Contains("attack")
+				|| normalized.Contains("storage")
+				|| normalized.Contains("module")
+				|| normalized.Contains("shop-commit")
+				|| normalized.Contains("buy-sell-commit")
+				|| normalized.Contains("owned-building")
+				|| normalized.Contains("safehouse")
+				|| normalized.Contains("physical");
+		}
+
+		private static bool IsRouteSimExpectedOnlyAction(string actionTag)
+		{
+			if (string.IsNullOrWhiteSpace(actionTag))
+			{
+				return false;
+			}
+
+			string normalized = actionTag.Trim().ToLowerInvariant();
+			return normalized.Contains("heal");
+		}
+
+		internal static bool IsHumanVehicleRouteSimExpectedAccessNode(EntityID vehicleId, NodeID nodeId, string actionTag, out string source)
+		{
+			source = "none";
+			if (!IsHumanVehicleRouteSimAccessNode(vehicleId, nodeId, actionTag, out string routeSource))
+			{
+				return false;
+			}
+
+			if (!string.Equals(routeSource, "route-sim-expected", StringComparison.Ordinal))
+			{
+				return false;
+			}
+
+			source = routeSource;
+			return true;
+		}
+
 		internal static bool IsHumanVehiclePreviewNodeKnownOrReached(EntityID vehicleId, NodeID nodeId)
 		{
 			if (!nodeId.IsValid)
@@ -1403,6 +1908,17 @@ namespace GameplayTweaks
 				&& (pendingState.ExpectedNodeID.IsValid || pendingState.ResumeQueued || IsHumanVehicleTravelActive(vehicleId));
 		}
 
+		internal static bool IsHumanVehicleFinalGoalPreviewOnlySource(string source)
+		{
+			if (string.IsNullOrWhiteSpace(source))
+			{
+				return false;
+			}
+
+			return source.IndexOf("final-goal", StringComparison.OrdinalIgnoreCase) >= 0
+				|| string.Equals(source, "queued-resume-goal", StringComparison.Ordinal);
+		}
+
 		private static bool IsHumanVehicleScopePreviewStatusAuthorizedSource(string source)
 		{
 			if (string.IsNullOrWhiteSpace(source))
@@ -1412,6 +1928,8 @@ namespace GameplayTweaks
 
 			return source.StartsWith("selected-", StringComparison.Ordinal)
 				|| source.StartsWith("selection-", StringComparison.Ordinal)
+				|| source.StartsWith("current-segment", StringComparison.Ordinal)
+				|| source.StartsWith("current-final-goal", StringComparison.Ordinal)
 				|| source.StartsWith("route-final-goal", StringComparison.Ordinal)
 				|| source.StartsWith("queued-final-goal", StringComparison.Ordinal)
 				|| string.Equals(source, "queued-resume-goal", StringComparison.Ordinal);
@@ -1478,7 +1996,7 @@ namespace GameplayTweaks
 						"building-node-preview-blocked",
 						$"{vehicleId.id}:{pendingState.ExpectedNodeID}:{nodeId}:{source}",
 						$"building-node-preview-blocked vehicle={vehicleId.id} pendingNode={pendingState.ExpectedNodeID} resolvedNode={nodeId} resolvedSource={source} finalGoal={pendingState.GoalNodeID} reason=vehicle-not-arrived",
-						dedupe: false);
+						dedupe: true);
 					nodeId = NodeID.INVALID;
 					source = "none";
 					return false;
@@ -1618,6 +2136,12 @@ namespace GameplayTweaks
 		{
 			return string.Equals(normalizedContext, "crewhud", StringComparison.Ordinal)
 				|| string.Equals(normalizedContext, "biz", StringComparison.Ordinal)
+				|| string.Equals(normalizedContext, "civic", StringComparison.Ordinal);
+		}
+
+		private static bool IsRouteSimulatedHumanVehicleConversationContext(string normalizedContext)
+		{
+			return string.Equals(normalizedContext, "biz", StringComparison.Ordinal)
 				|| string.Equals(normalizedContext, "civic", StringComparison.Ordinal);
 		}
 
@@ -1789,6 +2313,24 @@ namespace GameplayTweaks
 					&& pendingState.ExpectedNodeID == nodeId
 					&& !IsHumanVehiclePhysicallyAtNode(vehicleId, nodeId))
 				{
+					if (IsRouteSimulatedHumanVehicleConversationContext(normalizedContext)
+						&& IsHumanVehicleRouteSimAccessNode(vehicleId, nodeId, "convo-" + normalizedContext, out string routeSimSource))
+					{
+						string routeSimCategory = GetActualInteractionSourceCategory(normalizedContext);
+						source = routeSimSource + "-" + source;
+						LogVehicleAuthority(
+							"route-sim-convo",
+							$"{vehicleId.id}:{nodeId}:{normalizedContext}:{routeSimSource}",
+							$"route-sim-convo vehicle={vehicleId.id} node={nodeId} source={source} context={normalizedContext}",
+							dedupe: true);
+						RouteShopStagingState.RememberRouteInConversation(vehicleId, nodeId, normalizedContext, routeSimSource);
+						LogVehicleAuthority(
+							routeSimCategory,
+							$"{vehicleId.id}:{nodeId}:{source}:{normalizedContext}:route-sim",
+							$"{routeSimCategory} vehicle={vehicleId.id} node={nodeId} source={source} context={normalizedContext} reason=route-sim");
+						return true;
+					}
+
 					string reason = "vehicle-not-arrived";
 					LogActualHumanInteractionPreviewBlocked(normalizedContext, vehicleId, pendingState, nodeId, source, reason);
 					if (IsNonInterruptingHumanVehicleInteractionContext(normalizedContext))
@@ -2041,6 +2583,15 @@ namespace GameplayTweaks
 				&& state.CommandOwnerKey == QueuedRouteResumeCommandOwnerKey
 				&& state.ExpectedNodeID.IsValid
 				&& state.GoalNodeID.IsValid;
+		}
+
+		private static bool ShouldUseLogicalHumanVehicleRouteArrivalAtTurnStart(PendingVehicleTravelState state)
+		{
+			return state.VehicleID.IsValid
+				&& state.ExpectedNodeID.IsValid
+				&& state.GoalNodeID.IsValid
+				&& state.ExpectedNodeID != state.GoalNodeID
+				&& (state.ResumeQueued || state.CommandOwnerKey == QueuedRouteResumeCommandOwnerKey);
 		}
 
 		private static bool TryGetFreshStartupStalePendingTravelAuthority(
@@ -2310,9 +2861,110 @@ namespace GameplayTweaks
 			}
 		}
 
+		private static void FlushEnemyVehicleRepresentativeSwapSummary(string source)
+		{
+			if (_enemyVehicleRepresentativeSwapSummaryDay == int.MinValue || _enemyVehicleRepresentativeSwapSummaryTotal <= 0)
+			{
+				return;
+			}
+
+			string sourceCounts = string.Join(
+				",",
+				_enemyVehicleRepresentativeSwapSummaryBySource
+					.OrderByDescending(pair => pair.Value)
+					.ThenBy(pair => pair.Key, StringComparer.Ordinal)
+					.Select(pair => pair.Key + ":" + pair.Value));
+			GameplayTweaksPlugin.VerificationLog(
+				"VehicleNodeAuthority",
+				$"representative-swap-summary day={_enemyVehicleRepresentativeSwapSummaryDay} total={_enemyVehicleRepresentativeSwapSummaryTotal} sources={sourceCounts} source={source}");
+			_enemyVehicleRepresentativeSwapSummaryDay = int.MinValue;
+			_enemyVehicleRepresentativeSwapSummaryTotal = 0;
+			_enemyVehicleRepresentativeSwapSummaryBySource.Clear();
+		}
+
+		private static void RecordEnemyVehicleRepresentativeSwap(string source)
+		{
+			int day = G.GetNow().days;
+			if (_enemyVehicleRepresentativeSwapSummaryDay != int.MinValue && _enemyVehicleRepresentativeSwapSummaryDay != day)
+			{
+				FlushEnemyVehicleRepresentativeSwapSummary("day-change");
+			}
+			if (_enemyVehicleRepresentativeSwapSummaryDay == int.MinValue)
+			{
+				_enemyVehicleRepresentativeSwapSummaryDay = day;
+			}
+
+			string sourceKey = string.IsNullOrWhiteSpace(source) ? "unknown" : source;
+			_enemyVehicleRepresentativeSwapSummaryTotal++;
+			_enemyVehicleRepresentativeSwapSummaryBySource.TryGetValue(sourceKey, out int sourceCount);
+			_enemyVehicleRepresentativeSwapSummaryBySource[sourceKey] = sourceCount + 1;
+			if ((_enemyVehicleRepresentativeSwapSummaryTotal % 40) == 0)
+			{
+				FlushEnemyVehicleRepresentativeSwapSummary("threshold");
+			}
+		}
+
 		internal static bool IsHumanVehicleTravelActive(EntityID vehicleId)
 		{
 			return vehicleId.IsValid && _activeHumanVehicleTravel.Contains((long)vehicleId.id);
+		}
+
+		internal static bool TryGetHumanVehicleRouteModeLabel(EntityID vehicleId, out string label)
+		{
+			label = null;
+			if (!vehicleId.IsValid)
+			{
+				return false;
+			}
+
+			bool active = IsHumanVehicleTravelActive(vehicleId);
+			bool queuedResume = HasQueuedHumanVehiclePendingResume(vehicleId);
+			if (TryGetPendingHumanVehicleTravelState(vehicleId, out PendingVehicleTravelState state)
+				&& (active || queuedResume || state.ExpectedNodeID.IsValid || state.GoalNodeID.IsValid))
+			{
+				label = active
+					&& state.ExpectedNodeID.IsValid
+					&& state.GoalNodeID.IsValid
+					&& state.ExpectedNodeID == state.GoalNodeID
+					&& !state.ResumeQueued
+						? "Arriving"
+						: "In route";
+				LogVehicleAuthority(
+					"route-mode-label",
+					$"{vehicleId.id}:{label}:{state.StartNodeID}:{state.ExpectedNodeID}:{state.GoalNodeID}:{active}:{queuedResume}:{state.ResumeQueued}",
+					$"route-mode-label vehicle={vehicleId.id} label=\"{label}\" startNode={state.StartNodeID} expectedNode={state.ExpectedNodeID} finalGoal={state.GoalNodeID} active={active} queuedResume={queuedResume} resumeQueued={state.ResumeQueued}",
+					dedupe: true);
+				return true;
+			}
+
+			if (TryGetAuthoritativeVehicleNodeId(vehicleId, out NodeID nodeId, out _) && nodeId.IsValid)
+			{
+				label = "At corner";
+				LogVehicleAuthority(
+					"route-mode-label",
+					$"{vehicleId.id}:{label}:{nodeId}",
+					$"route-mode-label vehicle={vehicleId.id} label=\"{label}\" node={nodeId}",
+					dedupe: true);
+				return true;
+			}
+
+			return false;
+		}
+
+		internal static string AppendHumanVehicleRouteModeLabel(string text, EntityID vehicleId)
+		{
+			if (!TryGetHumanVehicleRouteModeLabel(vehicleId, out string label) || string.IsNullOrWhiteSpace(label))
+			{
+				return text;
+			}
+
+			string suffix = "[" + label + "]";
+			if (!string.IsNullOrEmpty(text) && text.IndexOf(suffix, StringComparison.OrdinalIgnoreCase) >= 0)
+			{
+				return text;
+			}
+
+			return string.IsNullOrWhiteSpace(text) ? suffix : text + " " + suffix;
 		}
 
 		internal static bool TryGetRecentFinalizedNodeId(EntityID vehicleId, out NodeID nodeId)
@@ -2338,13 +2990,16 @@ namespace GameplayTweaks
 			{
 				return;
 			}
+			ClearVehicleNodeAuthorityCaches(vehicleId);
 			long vehicleKey = (long)vehicleId.id;
 			if (!nodeId.IsValid)
 			{
 				_recentFinalizedNodeByVehicleId.Remove(vehicleKey);
+				_recentFinalizedFrameByVehicleId.Remove(vehicleKey);
 				return;
 			}
 			_recentFinalizedNodeByVehicleId[vehicleKey] = nodeId;
+			_recentFinalizedFrameByVehicleId[vehicleKey] = Time.frameCount;
 		}
 
 		internal static void ClearRecentFinalizedNode(EntityID vehicleId, string source = "clear")
@@ -2353,11 +3008,38 @@ namespace GameplayTweaks
 			{
 				return;
 			}
+			ClearVehicleNodeAuthorityCaches(vehicleId);
 			long vehicleKey = (long)vehicleId.id;
 			if (_recentFinalizedNodeByVehicleId.Remove(vehicleKey))
 			{
 				LogVehicleAuthority("recent-finalize-clear", $"{vehicleId.id}:{source}", $"recent-finalize-cleared vehicle={vehicleId.id} reason={source}", dedupe: false);
 			}
+			_recentFinalizedFrameByVehicleId.Remove(vehicleKey);
+		}
+
+		private static bool IsRecentFinalizedStableBridgeFresh(EntityID vehicleId, int maxFrameDelta, out int frameDelta)
+		{
+			frameDelta = int.MaxValue;
+			if (!vehicleId.IsValid
+				|| !_recentFinalizedFrameByVehicleId.TryGetValue((long)vehicleId.id, out int finalizedFrame))
+			{
+				return false;
+			}
+
+			frameDelta = Math.Max(0, Time.frameCount - finalizedFrame);
+			return frameDelta <= maxFrameDelta;
+		}
+
+		private static void ClearVehicleNodeAuthorityCaches(EntityID vehicleId)
+		{
+			if (!vehicleId.IsValid)
+			{
+				return;
+			}
+
+			long vehicleKey = (long)vehicleId.id;
+			_vehicleLiveAuthorityNodeCacheByVehicleId.Remove(vehicleKey);
+			_vehiclePhysicalNodeCacheByVehicleId.Remove(vehicleKey);
 		}
 
 		internal static bool TryGetInterruptExpectedStartNode(EntityID vehicleId, out NodeID nodeId)
@@ -2405,6 +3087,7 @@ namespace GameplayTweaks
 			switch (category)
 			{
 				case "selected-ui-authority-source":
+				case "active-route-authority-source":
 				case "selected-scope-node-suppressed":
 				case "recent-finalize-authority-suppressed":
 				case "scope-pick-presence":
@@ -2425,6 +3108,14 @@ namespace GameplayTweaks
 				case "selected-scope-old-node-blocked":
 				case "preview-scope-stale-start-blocked":
 				case "selected-scope-node-source":
+				case "route-resume-after-deferred-arrival-skipped":
+				case "route-resume-business-preview-skipped":
+				case "route-resume-source":
+				case "route-resume-watchdog":
+				case "turnstart-arrival-deferred":
+				case "turnstart-arrival-finalize":
+				case "turnstart-arrival-preserved":
+				case "turnstart-sync-skip":
 					return true;
 				default:
 					return false;
@@ -2611,6 +3302,35 @@ namespace GameplayTweaks
 
 			if (TryGetRecentFinalizedNode(vehicleId, out node) && node != null)
 			{
+				bool routeAuthorityActive = IsHumanVehicleTravelActive(vehicleId)
+					|| HasQueuedHumanVehiclePendingResume(vehicleId)
+					|| TryGetPendingHumanVehicleTravelState(vehicleId, out PendingVehicleTravelState pendingStartState)
+						&& (pendingStartState.ExpectedNodeID.IsValid || pendingStartState.ResumeQueued || pendingStartState.GoalNodeID.IsValid);
+				if (!routeAuthorityActive
+					&& TryGetVehicleLiveAuthorityNodeId(vehicleId, out NodeID liveNodeId, out string liveSource)
+					&& liveNodeId.IsValid
+					&& liveNodeId != node.id
+					&& !AreNodesWithinStableFinalizeBridgeRange(node.id, liveNodeId))
+				{
+					Node liveNode = liveNodeId.FindNode();
+					if (liveNode != null)
+					{
+						NodeID staleNodeId = node.id;
+						ClearRecentFinalizedNode(vehicleId, "fresh-command-live-authority");
+						node = liveNode;
+						source = string.IsNullOrWhiteSpace(liveSource) ? "live-authority" : liveSource;
+						if (logRebase)
+						{
+							LogVehicleAuthority(
+								"human-start-stale-finalize-cleared",
+								$"{vehicleId.id}:{staleNodeId}:{liveNodeId}:fresh-command",
+								$"human-start-stale-finalize-cleared vehicle={vehicleId.id} staleNode={staleNodeId} authoritativeNode={liveNodeId} authoritativeSource={source} reason=fresh-command-live-authority",
+								dedupe: false);
+						}
+						return true;
+					}
+				}
+
 				if (authoritativeNode != null
 					&& authoritativeNodeId.IsValid
 					&& authoritativeNodeId != node.id
@@ -2755,24 +3475,16 @@ namespace GameplayTweaks
 
 		internal static bool ShouldBlockHumanImmediateReverse(EntityID vehicleId, NodeID startNodeId, NodeID goalNodeId)
 		{
-			if (!vehicleId.IsValid || !startNodeId.IsValid || !goalNodeId.IsValid || startNodeId == goalNodeId)
-			{
-				return false;
-			}
-
-			long vehicleKey = (long)vehicleId.id;
-			if (!_recentHumanVehicleRequeueByVehicleId.TryGetValue(vehicleKey, out HumanVehicleRequeueState state))
+			if (!TryGetHumanImmediateReverseState(vehicleId, startNodeId, goalNodeId, out long vehicleKey, out HumanVehicleRequeueState state))
 			{
 				return false;
 			}
 
 			int day = G.GetNow().days;
-			bool isImmediateReverse = state.LastFinalizedStartNodeID == goalNodeId
-				&& state.LastFinalizedArrivalNodeID == startNodeId;
 			bool alreadyBlockedThisReverse = state.LastBlockedReverseStartNodeID == startNodeId
 				&& state.LastBlockedReverseGoalNodeID == goalNodeId
 				&& state.LastBlockedReverseDay == day;
-			if (!isImmediateReverse || alreadyBlockedThisReverse)
+			if (alreadyBlockedThisReverse)
 			{
 				return false;
 			}
@@ -2787,6 +3499,30 @@ namespace GameplayTweaks
 				$"human-reverse-resume-blocked vehicle={vehicleId.id} startNode={startNodeId} goalNode={goalNodeId} previousStart={state.LastFinalizedStartNodeID} previousArrival={state.LastFinalizedArrivalNodeID}",
 				dedupe: false);
 			return true;
+		}
+
+		private static bool IsHumanImmediateReverseSegment(EntityID vehicleId, NodeID startNodeId, NodeID goalNodeId)
+		{
+			return TryGetHumanImmediateReverseState(vehicleId, startNodeId, goalNodeId, out _, out _);
+		}
+
+		private static bool TryGetHumanImmediateReverseState(EntityID vehicleId, NodeID startNodeId, NodeID goalNodeId, out long vehicleKey, out HumanVehicleRequeueState state)
+		{
+			vehicleKey = 0;
+			state = default;
+			if (!vehicleId.IsValid || !startNodeId.IsValid || !goalNodeId.IsValid || startNodeId == goalNodeId)
+			{
+				return false;
+			}
+
+			vehicleKey = (long)vehicleId.id;
+			if (!_recentHumanVehicleRequeueByVehicleId.TryGetValue(vehicleKey, out state))
+			{
+				return false;
+			}
+
+			return state.LastFinalizedStartNodeID == goalNodeId
+				&& state.LastFinalizedArrivalNodeID == startNodeId;
 		}
 
 		internal static bool ShouldBlockAiImmediateReverse(EntityID vehicleId, NodeID startNodeId, NodeID goalNodeId)
@@ -3047,6 +3783,26 @@ namespace GameplayTweaks
 				|| !_pendingVehicleTravelByVehicleId.TryGetValue((long)vehicleId.id, out PendingVehicleTravelState state)
 				|| !state.GoalNodeID.IsValid)
 			{
+				return false;
+			}
+			if (IsSameHumanVehicleRouteCommand(state, command))
+			{
+				LogVehicleAuthority(
+					"route-same-command-allowed",
+					$"{vehicleId.id}:{command.peepId.id}:{state.ExpectedNodeID}:{state.GoalNodeID}:{command.goalID}",
+					$"route-same-command-allowed vehicle={vehicleId.id} peep={command.peepId.id} expectedNode={state.ExpectedNodeID} finalGoal={state.GoalNodeID} commandGoal={command.goalID}",
+					dedupe: false);
+				return false;
+			}
+			if (command.goalID.IsValid
+				&& command.goalID != state.ExpectedNodeID
+				&& command.goalID != state.GoalNodeID)
+			{
+				LogVehicleAuthority(
+					"route-fresh-command-allowed",
+					$"{vehicleId.id}:{command.peepId.id}:{state.ExpectedNodeID}:{state.GoalNodeID}:{command.goalID}",
+					$"route-fresh-command-allowed vehicle={vehicleId.id} peep={command.peepId.id} expectedNode={state.ExpectedNodeID} finalGoal={state.GoalNodeID} commandGoal={command.goalID} reason=replacement-destination",
+					dedupe: false);
 				return false;
 			}
 			return state.ResumeQueued
@@ -3567,24 +4323,24 @@ namespace GameplayTweaks
 			if (IsSameHumanVehicleRouteCommand(state, command))
 			{
 				LogVehicleAuthority(
-					"travel-conflict-same-route",
+					"travel-conflict-same-route-active",
 					$"{vehicleId.id}:{activeCommandKey}:{blockedCommandKey}:{command.goalID}",
-					$"travel-conflict-same-route vehicle={vehicleId.id} activeCommand={activeCommandKey} replacementCommand={blockedCommandKey} expectedNode={state.ExpectedNodeID} finalGoal={state.GoalNodeID} commandGoal={command.goalID}",
-					dedupe: false);
-				return false;
+					$"travel-conflict-same-route-active vehicle={vehicleId.id} activeCommand={activeCommandKey} replacementCommand={blockedCommandKey} expectedNode={state.ExpectedNodeID} finalGoal={state.GoalNodeID} commandGoal={command.goalID}",
+					dedupe: true);
+				sameOwner = activeCommandKey == blockedCommandKey;
+				return true;
 			}
 			if (activeCommandKey == QueuedRouteResumeCommandOwnerKey
 				&& blockedCommandKey != 0
 				&& blockedCommandKey != activeCommandKey)
 			{
 				LogVehicleAuthority(
-					"route-resume-interrupted",
+					"route-resume-replacement-deferred",
 					$"{vehicleId.id}:{blockedCommandKey}:{state.GoalNodeID}",
-					$"route-resume-interrupted vehicle={vehicleId.id} replacementCommand={blockedCommandKey} finalGoal={state.GoalNodeID}",
-					dedupe: false);
-				ClearPendingHumanVehicleTravel(vehicleId, "fresh-command-override");
-				activeCommandKey = 0;
-				return false;
+					$"route-resume-replacement-deferred vehicle={vehicleId.id} replacementCommand={blockedCommandKey} expectedNode={state.ExpectedNodeID} finalGoal={state.GoalNodeID}",
+					dedupe: true);
+				sameOwner = false;
+				return true;
 			}
 
 			if (activeCommandKey == 0)
@@ -3593,6 +4349,164 @@ namespace GameplayTweaks
 			}
 
 			sameOwner = activeCommandKey == blockedCommandKey;
+			return true;
+		}
+
+		internal static bool ShouldDeferHumanVehicleRouteCommandUntilArrival(EntityID vehicleId, CommandGoto command, out NodeID expectedNodeId, out NodeID commandGoalId)
+		{
+			expectedNodeId = NodeID.INVALID;
+			commandGoalId = command?.goalID ?? NodeID.INVALID;
+			if (command == null
+				|| !vehicleId.IsValid
+				|| !command.pid.IsHumanPlayer
+				|| !command.peepId.IsValid
+				|| !commandGoalId.IsValid
+				|| !TryGetActiveHumanVehicleTravelState(vehicleId, out PendingVehicleTravelState state)
+				|| !state.ExpectedNodeID.IsValid)
+			{
+				return false;
+			}
+			if (state.CommandOwnerKey != QueuedRouteResumeCommandOwnerKey
+				&& state.PeepID != command.peepId)
+			{
+				return false;
+			}
+
+			expectedNodeId = state.ExpectedNodeID;
+			bool sameRouteCommand = commandGoalId == state.ExpectedNodeID || commandGoalId == state.GoalNodeID;
+			if (sameRouteCommand)
+			{
+				LogVehicleAuthority(
+					"route-same-command-deferred",
+					$"{vehicleId.id}:{state.ExpectedNodeID}:{commandGoalId}",
+					$"route-same-command-deferred vehicle={vehicleId.id} peep={command.peepId.id} expectedNode={state.ExpectedNodeID} finalGoal={state.GoalNodeID} commandGoal={commandGoalId} reason=await-active-arrival",
+					dedupe: true);
+				return true;
+			}
+
+			LogVehicleAuthority(
+				"route-command-deferred",
+				$"{vehicleId.id}:{state.ExpectedNodeID}:{commandGoalId}",
+				$"route-command-deferred vehicle={vehicleId.id} peep={command.peepId.id} expectedNode={state.ExpectedNodeID} finalGoal={state.GoalNodeID} commandGoal={commandGoalId} reason=finish-active-segment-first",
+				dedupe: false);
+			NodeID previousGoalNodeId = state.GoalNodeID;
+			state.GoalNodeID = commandGoalId;
+			state.ResumeQueued = commandGoalId != state.ExpectedNodeID;
+			_pendingVehicleTravelByVehicleId[(long)vehicleId.id] = state;
+			RecordQueuedHumanVehicleDestinationPreview(vehicleId, state.ExpectedNodeID, commandGoalId, command.peepId, "route-command-queued-after-arrival");
+			LogVehicleAuthority(
+				"route-command-queued-after-arrival",
+				$"{vehicleId.id}:{state.ExpectedNodeID}:{previousGoalNodeId}:{commandGoalId}",
+				$"route-command-queued-after-arrival vehicle={vehicleId.id} peep={command.peepId.id} expectedNode={state.ExpectedNodeID} previousFinalGoal={previousGoalNodeId} queuedFinalGoal={commandGoalId} resumeQueued={state.ResumeQueued} reason=finish-active-segment-first",
+				dedupe: false);
+			return true;
+		}
+
+		private static void RecordQueuedHumanVehicleDestinationPreview(EntityID vehicleId, NodeID expectedNodeId, NodeID queuedGoalNodeId, EntityID peepId, string source)
+		{
+			if (!vehicleId.IsValid
+				|| !expectedNodeId.IsValid
+				|| !queuedGoalNodeId.IsValid
+				|| queuedGoalNodeId == expectedNodeId)
+			{
+				return;
+			}
+
+			long vehicleKey = unchecked((long)vehicleId.id);
+			_recentQueuedHumanVehicleDestinationPreviewByVehicleId[vehicleKey] = queuedGoalNodeId;
+			_recentQueuedHumanVehicleDestinationPreviewExpectedByVehicleId[vehicleKey] = expectedNodeId;
+			_recentQueuedHumanVehicleDestinationPreviewFrameByVehicleId[vehicleKey] = Time.frameCount;
+
+			Node expectedNode = expectedNodeId.FindNode();
+			Node queuedGoalNode = queuedGoalNodeId.FindNode();
+			if (queuedGoalNode != null)
+			{
+				GameplayTweaksPlugin.QueueDeferredSelectedVehicleUiRefresh(expectedNode, queuedGoalNode, "route-queued-preview", vehicleId);
+				GameplayTweaksPlugin.RefreshQueuedRouteSelectedVehicleNodeHighlight(queuedGoalNode, vehicleId, "route-queued-preview");
+			}
+
+			LogVehicleAuthority(
+				"route-queued-destination-preview",
+				$"{vehicleId.id}:{expectedNodeId}:{queuedGoalNodeId}:{source}",
+				$"route-queued-destination-preview vehicle={vehicleId.id} peep={peepId.id} expectedNode={expectedNodeId} queuedGoal={queuedGoalNodeId} frame={Time.frameCount} source={source}",
+				dedupe: false);
+		}
+
+		private static bool ShouldPreserveRecentQueuedHumanVehicleDestinationPreview(EntityID vehicleId, PendingVehicleTravelState state)
+		{
+			if (!vehicleId.IsValid
+				|| !state.ExpectedNodeID.IsValid
+				|| !state.GoalNodeID.IsValid
+				|| state.GoalNodeID == state.ExpectedNodeID
+				|| !state.ResumeQueued)
+			{
+				return false;
+			}
+
+			return TryGetRecentQueuedHumanVehicleDestinationPreview(vehicleId, state.ExpectedNodeID, out NodeID queuedGoalNodeId)
+				&& queuedGoalNodeId == state.GoalNodeID;
+		}
+
+		internal static bool TryGetRecentQueuedHumanVehicleDestinationPreview(EntityID vehicleId, NodeID expectedNodeId, out NodeID queuedGoalNodeId)
+		{
+			queuedGoalNodeId = NodeID.INVALID;
+			if (!vehicleId.IsValid || !expectedNodeId.IsValid)
+			{
+				return false;
+			}
+
+			long vehicleKey = unchecked((long)vehicleId.id);
+			if (!_recentQueuedHumanVehicleDestinationPreviewByVehicleId.TryGetValue(vehicleKey, out queuedGoalNodeId)
+				|| !queuedGoalNodeId.IsValid
+				|| queuedGoalNodeId == expectedNodeId
+				|| !_recentQueuedHumanVehicleDestinationPreviewExpectedByVehicleId.TryGetValue(vehicleKey, out NodeID previewExpectedNodeId)
+				|| previewExpectedNodeId != expectedNodeId
+				|| !_recentQueuedHumanVehicleDestinationPreviewFrameByVehicleId.TryGetValue(vehicleKey, out int queuedFrame))
+			{
+				return false;
+			}
+
+			return Time.frameCount - queuedFrame <= RecentQueuedHumanVehicleDestinationPreviewPreserveFrames;
+		}
+
+		internal static bool ShouldDiscardDuplicateHumanVehicleRouteCommand(EntityID vehicleId, CommandGoto command, out NodeID expectedNodeId, out NodeID goalNodeId, out NodeID commandGoalId)
+		{
+			expectedNodeId = NodeID.INVALID;
+			goalNodeId = NodeID.INVALID;
+			commandGoalId = command?.goalID ?? NodeID.INVALID;
+			if (command == null
+				|| !vehicleId.IsValid
+				|| !command.pid.IsHumanPlayer
+				|| !command.peepId.IsValid
+				|| !commandGoalId.IsValid
+				|| !TryGetActiveHumanVehicleTravelState(vehicleId, out PendingVehicleTravelState state)
+				|| !state.ExpectedNodeID.IsValid)
+			{
+				return false;
+			}
+			if (state.CommandOwnerKey != QueuedRouteResumeCommandOwnerKey
+				&& state.PeepID != command.peepId)
+			{
+				return false;
+			}
+			if (IsHumanVehiclePhysicallyAtNode(vehicleId, state.ExpectedNodeID))
+			{
+				return false;
+			}
+
+			expectedNodeId = state.ExpectedNodeID;
+			goalNodeId = state.GoalNodeID;
+			bool duplicate = commandGoalId == state.ExpectedNodeID || commandGoalId == state.GoalNodeID;
+			if (!duplicate)
+			{
+				return false;
+			}
+
+			LogVehicleAuthority(
+				"route-duplicate-command-discarded",
+				$"{vehicleId.id}:{state.ExpectedNodeID}:{state.GoalNodeID}:{commandGoalId}",
+				$"route-duplicate-command-discarded vehicle={vehicleId.id} peep={command.peepId.id} expectedNode={state.ExpectedNodeID} finalGoal={state.GoalNodeID} commandGoal={commandGoalId} reason=already-routed-await-arrival",
+				dedupe: true);
 			return true;
 		}
 
@@ -3623,7 +4537,24 @@ namespace GameplayTweaks
 			_pendingVehicleTravelByVehicleId.TryGetValue(vehicleKey, out PendingVehicleTravelState state);
 			NodeID committedNodeId = NodeID.INVALID;
 			string committedSource = "none";
-			if (TryGetVehicleLiveAuthorityNodeId(vehicle, out NodeID liveNodeId, out string liveSource)
+			NodeID liveNodeId = NodeID.INVALID;
+			string liveSource = "none";
+			bool freshDestinationReplacement = state.ExpectedNodeID.IsValid
+				&& command?.goalID.IsValid == true
+				&& command.goalID != state.ExpectedNodeID
+				&& command.goalID != state.GoalNodeID;
+			if (freshDestinationReplacement)
+			{
+				committedNodeId = state.ExpectedNodeID;
+				committedSource = "logical-pending-expected";
+				LogVehicleAuthority(
+					"travel-interrupt-logical-commit",
+					$"{vehicleId.id}:{state.ExpectedNodeID}:{state.GoalNodeID}:{command.goalID}:{sourceTag}",
+					$"travel-interrupt-logical-commit vehicle={vehicleId.id} expectedNode={state.ExpectedNodeID} priorGoal={state.GoalNodeID} replacementGoal={command.goalID} source={sourceTag} reason=fresh-destination-preferred-for-cost",
+					dedupe: false);
+			}
+			if (!committedNodeId.IsValid
+				&& TryGetVehicleLiveAuthorityNodeId(vehicle, out liveNodeId, out liveSource)
 				&& liveNodeId.IsValid
 				&& IsHumanVehiclePhysicallyAtNode(vehicleId, liveNodeId))
 			{
@@ -3653,6 +4584,17 @@ namespace GameplayTweaks
 				committedNodeId = state.ExpectedNodeID;
 				committedSource = "physical-pending-expected";
 			}
+			if (!committedNodeId.IsValid
+				&& freshDestinationReplacement)
+			{
+				committedNodeId = state.ExpectedNodeID;
+				committedSource = "logical-pending-expected";
+				LogVehicleAuthority(
+					"travel-interrupt-logical-commit",
+					$"{vehicleId.id}:{state.ExpectedNodeID}:{state.GoalNodeID}:{command.goalID}:{sourceTag}",
+					$"travel-interrupt-logical-commit vehicle={vehicleId.id} expectedNode={state.ExpectedNodeID} priorGoal={state.GoalNodeID} replacementGoal={command.goalID} source={sourceTag} reason=fresh-destination-before-physical-arrival",
+					dedupe: false);
+			}
 			if (!committedNodeId.IsValid)
 			{
 				LogVehicleAuthority(
@@ -3673,9 +4615,6 @@ namespace GameplayTweaks
 			}
 			_queuedArrivalCommittedNodeByVehicleId[vehicleKey] = committedNodeId;
 			SetRecentFinalizedNode(vehicleId, committedNodeId);
-			TrySyncVehicleOccupantsToNode(crew, vehicleId, committedNodeId, "travel-interrupt-" + sourceTag, syncVehicle: false);
-			ClearPendingHumanVehicleTravel(vehicleId, "fresh-command-override");
-			ClearInterruptExpectedStartNode(vehicleId, "fresh-command-override");
 
 			try
 			{
@@ -3685,6 +4624,19 @@ namespace GameplayTweaks
 			{
 				Debug.LogWarning("[GameplayTweaks] TryInterruptActiveHumanVehicleTravelForImmediateMove: " + ex.Message);
 			}
+
+			bool syncVehicleToLogicalCommit = string.Equals(committedSource, "logical-pending-expected", StringComparison.Ordinal);
+			TrySyncVehicleOccupantsToNode(crew, vehicleId, committedNodeId, "travel-interrupt-" + sourceTag, syncVehicle: syncVehicleToLogicalCommit);
+			if (syncVehicleToLogicalCommit)
+			{
+				LogVehicleAuthority(
+					"travel-interrupt-visual-sync",
+					$"{vehicleId.id}:{committedNodeId}:{sourceTag}",
+					$"travel-interrupt-visual-sync vehicle={vehicleId.id} node={committedNodeId} source={sourceTag} reason=logical-commit-before-replacement",
+					dedupe: false);
+			}
+			ClearPendingHumanVehicleTravel(vehicleId, "fresh-command-override");
+			ClearInterruptExpectedStartNode(vehicleId, "fresh-command-override");
 
 			LogVehicleAuthority(
 				"travel-interrupt-commit",
@@ -3701,6 +4653,20 @@ namespace GameplayTweaks
 				return;
 			}
 			long vehicleKey = (long)vehicleId.id;
+			RouteShopStagingState.OnVehicleRouteChanged(vehicleId, expectedNodeId, goalNodeId, "segment-start");
+			if (_activeHumanVehicleTravel.Contains(vehicleKey)
+				&& _pendingVehicleTravelByVehicleId.TryGetValue(vehicleKey, out PendingVehicleTravelState activeState)
+				&& activeState.CommandOwnerKey == QueuedRouteResumeCommandOwnerKey
+				&& commandOwnerKey != 0
+				&& commandOwnerKey != QueuedRouteResumeCommandOwnerKey)
+			{
+				LogVehicleAuthority(
+					"route-resume-replacement-blocked",
+					$"{vehicleId.id}:{commandOwnerKey}:{activeState.GoalNodeID}:segment-start",
+					$"route-resume-replacement-blocked vehicle={vehicleId.id} replacementCommand={commandOwnerKey} expectedNode={activeState.ExpectedNodeID} finalGoal={activeState.GoalNodeID} phase=segment-start",
+					dedupe: false);
+				return;
+			}
 			ClearInterruptExpectedStartNode(vehicleId, "segment-start");
 			_turnStartFinalizedQueuedRouteVehicleIds.Remove(vehicleKey);
 			_queuedArrivalCommittedNodeByVehicleId.Remove(vehicleKey);
@@ -3732,21 +4698,9 @@ namespace GameplayTweaks
 			}
 			if (_activeHumanVehicleTravel.Contains(vehicleKey))
 			{
-				if (_pendingVehicleTravelByVehicleId.TryGetValue(vehicleKey, out PendingVehicleTravelState existingState)
-					&& existingState.CommandOwnerKey == QueuedRouteResumeCommandOwnerKey
-					&& commandOwnerKey != 0
-					&& commandOwnerKey != QueuedRouteResumeCommandOwnerKey)
-				{
-					LogVehicleAuthority(
-						"route-resume-interrupted",
-						$"{vehicleId.id}:{commandOwnerKey}:{existingState.GoalNodeID}:segment-start",
-						$"route-resume-interrupted vehicle={vehicleId.id} replacementCommand={commandOwnerKey} finalGoal={existingState.GoalNodeID} phase=segment-start",
-						dedupe: false);
-					ClearPendingHumanVehicleTravel(vehicleId, "fresh-command-override");
-				}
 				if (_activeHumanVehicleTravel.Contains(vehicleKey))
 				{
-					if (_pendingVehicleTravelByVehicleId.TryGetValue(vehicleKey, out existingState))
+					if (_pendingVehicleTravelByVehicleId.TryGetValue(vehicleKey, out PendingVehicleTravelState existingState))
 					{
 						LogVehicleAuthority("travel-segment-keep", $"{vehicleId.id}:{existingState.ExpectedNodeID}:{expectedNodeId}", $"travel-segment-keep vehicle={vehicleId.id} existingExpectedNode={existingState.ExpectedNodeID} newExpectedNode={expectedNodeId} goalNode={goalNodeId}", dedupe: false);
 					}
@@ -3827,6 +4781,12 @@ namespace GameplayTweaks
 					|| pendingState.ResumeQueued
 					|| IsHumanVehicleTravelActive(vehicleId)))
 			{
+				if (pendingState.ExpectedNodeID.IsValid && IsHumanVehicleTravelActive(vehicleId))
+				{
+					displayNodeId = pendingState.ExpectedNodeID;
+					source = "active-segment-target";
+					return true;
+				}
 				bool knownOrReached = IsHumanVehiclePreviewNodeKnownOrReached(vehicleId, pendingState.GoalNodeID);
 				displayNodeId = pendingState.GoalNodeID;
 				source = pendingState.ResumeQueued && !pendingState.ExpectedNodeID.IsValid
@@ -3872,6 +4832,60 @@ namespace GameplayTweaks
 			return vehicleId.IsValid && _pendingVehicleTravelByVehicleId.TryGetValue((long)vehicleId.id, out state);
 		}
 
+		private static bool TryRebindPendingHumanVehicleTravelToLiveDriver(PlayerCrew crew, PendingVehicleTravelState state, out PendingVehicleTravelState updatedState, out CrewAssignment assignment, out string reason)
+		{
+			updatedState = state;
+			assignment = CrewAssignment.EMPTY;
+			reason = "none";
+			if (crew == null || !state.VehicleID.IsValid)
+			{
+				reason = "invalid-context";
+				return false;
+			}
+
+			if (state.PeepID.IsValid)
+			{
+				CrewAssignment existing = crew.GetCrewForPeep(state.PeepID);
+				if (existing.IsValid && existing.IsInVehicle && existing.VehicleID == state.VehicleID && IsActiveVehicleOccupant(crew, existing))
+				{
+					assignment = existing;
+					reason = "stored-peep-valid";
+					return true;
+				}
+			}
+
+			EntityID driverPeepId = GetDriverPeepId(crew, state.VehicleID);
+			if (driverPeepId.IsValid)
+			{
+				CrewAssignment driverAssignment = crew.GetCrewForPeep(driverPeepId);
+				if (driverAssignment.IsValid && driverAssignment.IsInVehicle && driverAssignment.VehicleID == state.VehicleID && IsActiveVehicleOccupant(crew, driverAssignment))
+				{
+					updatedState.PeepID = driverPeepId;
+					_pendingVehicleTravelByVehicleId[(long)state.VehicleID.id] = updatedState;
+					assignment = driverAssignment;
+					reason = state.PeepID.IsValid ? "dead-route-peep-driver-handoff" : "missing-route-peep-driver-handoff";
+					return true;
+				}
+			}
+
+			CrewAssignment survivor = GetAllCrewInVehicle(crew, state.VehicleID)
+				.Where(item => item.IsValid && item.IsInVehicle && item.VehicleID == state.VehicleID && IsActiveVehicleOccupant(crew, item))
+				.OrderBy(item => item.peepId.id)
+				.FirstOrDefault();
+			if (survivor.IsValid)
+			{
+				SetDriverInternal(state.VehicleID, survivor.peepId);
+				updatedState.PeepID = survivor.peepId;
+				_pendingVehicleTravelByVehicleId[(long)state.VehicleID.id] = updatedState;
+				assignment = survivor;
+				reason = "survivor-driver-handoff";
+				return true;
+			}
+
+			reason = "no-live-occupants";
+			return false;
+		}
+
 		private static bool TryReassignPendingHumanVehicleTravelDriver(EntityID vehicleId, EntityID driverPeepId, string sourceTag)
 		{
 			if (!vehicleId.IsValid || !driverPeepId.IsValid)
@@ -3904,6 +4918,27 @@ namespace GameplayTweaks
 				&& state.ResumeQueued
 				&& state.GoalNodeID.IsValid
 				&& !_activeHumanVehicleTravel.Contains((long)vehicleId.id);
+		}
+
+		internal static bool TryConsumeTurnStartDeferredHumanVehicleArrival(EntityID vehicleId, string sourceTag)
+		{
+			if (!vehicleId.IsValid)
+			{
+				return false;
+			}
+
+			long vehicleKey = (long)vehicleId.id;
+			bool consumed = _turnStartDeferredArrivalVehicleIds.Remove(vehicleKey);
+			if (consumed)
+			{
+				LogVehicleAuthority(
+					"turnstart-deferred-arrival-consumed",
+					$"{vehicleId.id}:{sourceTag}",
+					$"turnstart-deferred-arrival-consumed vehicle={vehicleId.id} source={sourceTag}",
+					dedupe: false);
+			}
+
+			return consumed;
 		}
 
 		internal static bool ShouldRecordSelectedVehicleUiFinalNode(EntityID vehicleId, NodeID finalNodeId, string sourceTag)
@@ -3985,6 +5020,7 @@ namespace GameplayTweaks
 			}
 			_activeHumanVehicleTravel.Remove(vehicleKey);
 			_turnStartFinalizedQueuedRouteVehicleIds.Remove(vehicleKey);
+			_turnStartDeferredArrivalVehicleIds.Remove(vehicleKey);
 			_pendingVehicleTravelByVehicleId.Remove(vehicleKey);
 			_queuedArrivalCommittedNodeByVehicleId.Remove(vehicleKey);
 			if (!ShouldPreserveHumanCommittedAuthorityOnPendingTravelClear(reason))
@@ -3997,6 +5033,7 @@ namespace GameplayTweaks
 			}
 			if (hadPending)
 			{
+				RouteShopStagingState.ClearForVehicle(vehicleId, reason, "pending-travel-clear");
 				LogVehicleAuthority("pending-travel-clear", $"{vehicleId.id}:{state.ExpectedNodeID}:{reason}", $"pending-travel-cleared vehicle={vehicleId.id} startNode={state.StartNodeID} expectedNode={state.ExpectedNodeID} goalNode={state.GoalNodeID} reason={reason}", dedupe: false);
 				if (state.ResumeQueued || state.GoalNodeID.IsValid)
 				{
@@ -4058,6 +5095,7 @@ namespace GameplayTweaks
 				ClearPendingHumanVehicleTravel(vehicleId, "invalid");
 				return false;
 			}
+			RouteShopStagingState.OnVehicleArrived(vehicleId, finalNodeId, "segment-arrived");
 
 			if (!state.ResumeQueued || !state.GoalNodeID.IsValid)
 			{
@@ -4075,15 +5113,17 @@ namespace GameplayTweaks
 
 			if (state.StartNodeID.IsValid && finalNodeId == state.StartNodeID)
 			{
+				bool awaitingNextResume = state.GoalNodeID.IsValid && state.GoalNodeID != finalNodeId;
+				string reason = awaitingNextResume ? "segment-committed-awaiting-resume" : "same-node-final-goal";
 				LogVehicleAuthority(
 					"route-resume-deferred",
-					$"{vehicleId.id}:{finalNodeId}:{state.GoalNodeID}:same-node-final-goal",
-					$"route-resume-deferred vehicle={vehicleId.id} reason=same-node-final-goal currentNode={finalNodeId} finalGoal={state.GoalNodeID}",
+					$"{vehicleId.id}:{finalNodeId}:{state.GoalNodeID}:{reason}",
+					$"route-resume-deferred vehicle={vehicleId.id} reason={reason} currentNode={finalNodeId} startNode={state.StartNodeID} finalGoal={state.GoalNodeID} resumeQueued={awaitingNextResume}",
 					dedupe: false);
 				SetRecentFinalizedNode(vehicleId, finalNodeId);
 				state.ExpectedNodeID = NodeID.INVALID;
 				state.CommandOwnerKey = 0;
-				state.ResumeQueued = state.GoalNodeID.IsValid && state.GoalNodeID != finalNodeId;
+				state.ResumeQueued = awaitingNextResume;
 				_pendingVehicleTravelByVehicleId[(long)vehicleId.id] = state;
 				if (!state.ResumeQueued)
 				{
@@ -4120,21 +5160,55 @@ namespace GameplayTweaks
 			return true;
 		}
 
-		internal static bool TryFinalizeHumanVehicleTravelStop(PlayerCrew crew, Entity vehicle, out NodeID finalNodeId)
+		internal static bool TryFinalizeHumanVehicleTravelStop(PlayerCrew crew, Entity vehicle, out NodeID finalNodeId, out bool routeQueued)
 		{
 			finalNodeId = NodeID.INVALID;
+			routeQueued = false;
 			if (crew == null || vehicle?.Id.IsValid != true)
 			{
 				return false;
 			}
 
-			TrySyncVehicleOccupantsToVehicleNode(crew, vehicle.Id, "travel-end");
-			if (TryGetPendingHumanVehicleTravel(vehicle.Id, out _, out NodeID expectedNodeId, out _)
-				&& expectedNodeId.IsValid)
+			bool hasPendingExpected = TryGetPendingHumanVehicleTravelState(vehicle.Id, out PendingVehicleTravelState pendingState)
+				&& pendingState.ExpectedNodeID.IsValid;
+			if (hasPendingExpected)
 			{
-				finalNodeId = expectedNodeId;
+				bool confirmedExpectedArrival;
+				try
+				{
+					confirmedExpectedArrival = TryConfirmHumanVehicleExpectedArrival(crew, vehicle, pendingState, out _, out _);
+				}
+				catch (Exception ex)
+				{
+					LogVehicleAuthority(
+						"travel-finalize-confirm-failed",
+						$"{vehicle.Id.id}:{pendingState.StartNodeID}:{pendingState.ExpectedNodeID}:{pendingState.GoalNodeID}:{ex.GetType().Name}",
+						$"travel-finalize-confirm-failed vehicle={vehicle.Id.id} startNode={pendingState.StartNodeID} expectedNode={pendingState.ExpectedNodeID} finalGoal={pendingState.GoalNodeID} ex={ex.GetType().Name}: {ex.Message}",
+						dedupe: false);
+					return false;
+				}
+				if (!confirmedExpectedArrival)
+				{
+					LogHumanVehicleExpectedArrivalDeferred("travel-finalize-deferred", vehicle.Id, pendingState, "travel-end-await-physical");
+					return false;
+				}
+
+				finalNodeId = pendingState.ExpectedNodeID;
 			}
-			else if (TryGetRecentFinalizedNodeId(vehicle.Id, out NodeID recentFinalizedNodeId)
+
+			try
+			{
+				TrySyncVehicleOccupantsToVehicleNode(crew, vehicle.Id, "travel-end");
+			}
+			catch (Exception ex)
+			{
+				LogVehicleAuthority(
+					"travel-finalize-sync-failed",
+					$"{vehicle.Id.id}:{finalNodeId}:{pendingState.ExpectedNodeID}:{ex.GetType().Name}",
+					$"travel-finalize-sync-failed vehicle={vehicle.Id.id} finalNode={finalNodeId} expectedNode={pendingState.ExpectedNodeID} finalGoal={pendingState.GoalNodeID} hasPendingExpected={hasPendingExpected} ex={ex.GetType().Name}: {ex.Message}",
+					dedupe: false);
+			}
+			if (!finalNodeId.IsValid && TryGetRecentFinalizedNodeId(vehicle.Id, out NodeID recentFinalizedNodeId)
 				&& recentFinalizedNodeId.IsValid)
 			{
 				finalNodeId = recentFinalizedNodeId;
@@ -4150,8 +5224,57 @@ namespace GameplayTweaks
 				_queuedArrivalCommittedNodeByVehicleId[(long)vehicle.Id.id] = finalNodeId;
 				SetRecentFinalizedNode(vehicle.Id, finalNodeId);
 			}
-			CompleteHumanVehicleTravelSegment(vehicle.Id, finalNodeId, out _);
+			CompleteHumanVehicleTravelSegment(vehicle.Id, finalNodeId, out routeQueued);
 			return finalNodeId.IsValid;
+		}
+
+		private static bool TryConfirmHumanVehicleExpectedArrival(PlayerCrew crew, Entity vehicle, PendingVehicleTravelState state, out NodeID confirmedNodeId, out string source)
+		{
+			confirmedNodeId = NodeID.INVALID;
+			source = "none";
+			if (crew == null || vehicle?.Id.IsValid != true || !state.ExpectedNodeID.IsValid)
+			{
+				return false;
+			}
+
+			NodeID mobileNodeId = vehicle.components?.mobile?.FindNodeNearThisMobile() ?? NodeID.INVALID;
+			if (mobileNodeId == state.ExpectedNodeID)
+			{
+				confirmedNodeId = mobileNodeId;
+				source = "mobile";
+				RecordObservedHumanVehicleReachedNode(vehicle.Id, mobileNodeId, source);
+				LogVehicleAuthority(
+					"delivery-route-arrival-confirmed",
+					$"{vehicle.Id.id}:{mobileNodeId}:{state.GoalNodeID}:{Time.frameCount}",
+					$"delivery-route-arrival-confirmed vehicle={vehicle.Id.id} node={mobileNodeId} finalGoal={state.GoalNodeID} source={source} frame={Time.frameCount}",
+					dedupe: false);
+				return true;
+			}
+			if (mobileNodeId.IsValid)
+			{
+				return false;
+			}
+
+			if (IsHumanVehicleStrictlyPhysicalAtNode(vehicle.Id, state.ExpectedNodeID, out string physicalSource))
+			{
+				confirmedNodeId = state.ExpectedNodeID;
+				source = physicalSource;
+				return true;
+			}
+
+			return false;
+		}
+
+		private static void LogHumanVehicleExpectedArrivalDeferred(string category, EntityID vehicleId, PendingVehicleTravelState state, string reason)
+		{
+			NodeID liveNodeId = NodeID.INVALID;
+			string liveSource = "none";
+			_ = TryGetVehicleLiveAuthorityNodeId(vehicleId, out liveNodeId, out liveSource);
+			LogVehicleAuthority(
+				category,
+				$"{vehicleId.id}:{state.StartNodeID}:{state.ExpectedNodeID}:{state.GoalNodeID}:{reason}",
+				$"{category} vehicle={vehicleId.id} startNode={state.StartNodeID} expectedNode={state.ExpectedNodeID} finalGoal={state.GoalNodeID} liveNode={liveNodeId} liveSource={liveSource} reason={reason}",
+				dedupe: false);
 		}
 
 		internal static bool TryGetRecoverableHumanVehicleTravelState(EntityID vehicleId, out string source)
@@ -4214,115 +5337,600 @@ namespace GameplayTweaks
 			}
 		}
 
-		internal static void FinalizeQueuedHumanVehicleArrivalsAtTurnStart(PlayerInfo player)
+		private static void LogAfterProhibitionRoutesTravelContinuationDecision(EntityID vehicleId, string sourceTag)
 		{
-			_turnStartFinalizedQueuedRouteVehicleIds.Clear();
-			if (player?.PID.IsHumanPlayer != true || player.crew == null || _pendingVehicleTravelByVehicleId.Count <= 0)
+			string normalizedSource = string.IsNullOrWhiteSpace(sourceTag) ? "unknown" : sourceTag.Trim();
+			string dedupeKey = vehicleId.id + ":" + normalizedSource;
+			if (!_loggedAfterProhibitionRoutesTravelContinuationDecisionKeys.Add(dedupeKey))
 			{
 				return;
 			}
 
+			try
+			{
+				if (!TryGetAfterProhibitionRoutesPluginType(out Type routesType))
+				{
+					LogAfterProhibitionRoutesTravelContinuationFallback("bridge-missing", normalizedSource);
+					return;
+				}
+
+				_afterProhibitionRoutesOwnsTravelContinuationDecisionMethod =
+					_afterProhibitionRoutesOwnsTravelContinuationDecisionMethod ?? AccessTools.Method(routesType, "OwnsTravelContinuationDecision");
+				_afterProhibitionRoutesLogTravelContinuationDecisionMethod =
+					_afterProhibitionRoutesLogTravelContinuationDecisionMethod ?? AccessTools.Method(routesType, "LogTravelContinuationDecision", new[] { typeof(EntityID), typeof(string) });
+
+				if (_afterProhibitionRoutesOwnsTravelContinuationDecisionMethod == null
+					|| _afterProhibitionRoutesLogTravelContinuationDecisionMethod == null)
+				{
+					LogAfterProhibitionRoutesTravelContinuationFallback("bridge-method-missing", normalizedSource);
+					return;
+				}
+
+				object ownsValue = _afterProhibitionRoutesOwnsTravelContinuationDecisionMethod.Invoke(null, null);
+				if (!(ownsValue is bool ownsDecision) || !ownsDecision)
+				{
+					LogAfterProhibitionRoutesTravelContinuationFallback("bridge-disabled", normalizedSource);
+					return;
+				}
+
+				if (!_verboseAfterProhibitionRoutesDecisionBridge)
+				{
+					if (!_loggedAfterProhibitionRoutesTravelContinuationDelegated)
+					{
+						_loggedAfterProhibitionRoutesTravelContinuationDelegated = true;
+						Debug.Log("[GameplayTweaks] RouteContinuation delegated owner=AfterProhibitionRoutes mode=decision-only behaviorFallback=True quietBridge=True source=" + normalizedSource);
+					}
+					return;
+				}
+
+				object summaryValue = _afterProhibitionRoutesLogTravelContinuationDecisionMethod.Invoke(null, new object[] { vehicleId, normalizedSource });
+				if (!_loggedAfterProhibitionRoutesTravelContinuationDelegated)
+				{
+					_loggedAfterProhibitionRoutesTravelContinuationDelegated = true;
+					Debug.Log("[GameplayTweaks] RouteContinuation delegated owner=AfterProhibitionRoutes mode=decision-only behaviorFallback=True source=" + normalizedSource + " " + (summaryValue as string ?? string.Empty));
+				}
+			}
+			catch (Exception ex)
+			{
+				LogAfterProhibitionRoutesTravelContinuationFallback("bridge-error-" + ex.GetType().Name, normalizedSource);
+			}
+		}
+
+		private static void LogAfterProhibitionRoutesTravelContinuationFallback(string reason, string sourceTag)
+		{
+			if (_loggedAfterProhibitionRoutesTravelContinuationFallback)
+			{
+				return;
+			}
+
+			_loggedAfterProhibitionRoutesTravelContinuationFallback = true;
+			Debug.Log("[GameplayTweaks] RouteContinuation fallback active reason=" + reason + " source=" + sourceTag);
+		}
+
+		private static void LogAfterProhibitionRoutesVehicleNodeAuthorityDecision(EntityID vehicleId, NodeID queryNodeId, string actionType)
+		{
+			string normalizedAction = string.IsNullOrWhiteSpace(actionType) ? "none" : actionType.Trim();
+			string dedupeKey = vehicleId.id + ":" + queryNodeId + ":" + normalizedAction;
+			if (!_loggedAfterProhibitionRoutesVehicleAuthorityDecisionKeys.Add(dedupeKey))
+			{
+				return;
+			}
+
+			try
+			{
+				if (!TryGetAfterProhibitionRoutesPluginType(out Type routesType))
+				{
+					LogAfterProhibitionRoutesVehicleNodeAuthorityFallback("bridge-missing", normalizedAction);
+					return;
+				}
+
+				_afterProhibitionRoutesOwnsVehicleNodeAuthorityDecisionMethod =
+					_afterProhibitionRoutesOwnsVehicleNodeAuthorityDecisionMethod ?? AccessTools.Method(routesType, "OwnsVehicleNodeAuthorityDecision");
+				_afterProhibitionRoutesLogVehicleNodeAuthorityDecisionMethod =
+					_afterProhibitionRoutesLogVehicleNodeAuthorityDecisionMethod ?? AccessTools.Method(routesType, "LogVehicleNodeAuthorityDecision", new[] { typeof(EntityID), typeof(NodeID), typeof(string) });
+
+				if (_afterProhibitionRoutesOwnsVehicleNodeAuthorityDecisionMethod == null
+					|| _afterProhibitionRoutesLogVehicleNodeAuthorityDecisionMethod == null)
+				{
+					LogAfterProhibitionRoutesVehicleNodeAuthorityFallback("bridge-method-missing", normalizedAction);
+					return;
+				}
+
+				object ownsValue = _afterProhibitionRoutesOwnsVehicleNodeAuthorityDecisionMethod.Invoke(null, null);
+				if (!(ownsValue is bool ownsDecision) || !ownsDecision)
+				{
+					LogAfterProhibitionRoutesVehicleNodeAuthorityFallback("bridge-disabled", normalizedAction);
+					return;
+				}
+
+				if (!_verboseAfterProhibitionRoutesDecisionBridge)
+				{
+					if (!_loggedAfterProhibitionRoutesVehicleNodeAuthorityDelegated)
+					{
+						_loggedAfterProhibitionRoutesVehicleNodeAuthorityDelegated = true;
+						Debug.Log("[GameplayTweaks] VehicleNodeAuthority delegated owner=AfterProhibitionRoutes mode=decision-only behaviorFallback=True quietBridge=True source=" + normalizedAction);
+					}
+					return;
+				}
+
+				object summaryValue = _afterProhibitionRoutesLogVehicleNodeAuthorityDecisionMethod.Invoke(null, new object[] { vehicleId, queryNodeId, normalizedAction });
+				if (!_loggedAfterProhibitionRoutesVehicleNodeAuthorityDelegated)
+				{
+					_loggedAfterProhibitionRoutesVehicleNodeAuthorityDelegated = true;
+					Debug.Log("[GameplayTweaks] VehicleNodeAuthority delegated owner=AfterProhibitionRoutes mode=decision-only behaviorFallback=True source=" + normalizedAction + " " + (summaryValue as string ?? string.Empty));
+				}
+			}
+			catch (Exception ex)
+			{
+				LogAfterProhibitionRoutesVehicleNodeAuthorityFallback("bridge-error-" + ex.GetType().Name, normalizedAction);
+			}
+		}
+
+		private static void LogAfterProhibitionRoutesVehicleNodeAuthorityFallback(string reason, string sourceTag)
+		{
+			if (_loggedAfterProhibitionRoutesVehicleNodeAuthorityFallback)
+			{
+				return;
+			}
+
+			_loggedAfterProhibitionRoutesVehicleNodeAuthorityFallback = true;
+			Debug.Log("[GameplayTweaks] VehicleNodeAuthority fallback active reason=" + reason + " source=" + sourceTag);
+		}
+
+		internal static void LogAfterProhibitionRoutesDeliveryPumpDecision(EntityID vehicleId, NodeID finalNodeId, string sourceTag, int queuePumps, int automationPumps)
+		{
+			string normalizedSource = string.IsNullOrWhiteSpace(sourceTag) ? "unknown" : sourceTag.Trim();
+			string dedupeKey = vehicleId.id + ":" + finalNodeId + ":" + normalizedSource + ":" + queuePumps + ":" + automationPumps;
+			if (!_loggedAfterProhibitionRoutesDeliveryPumpDecisionKeys.Add(dedupeKey))
+			{
+				return;
+			}
+
+			try
+			{
+				if (!TryGetAfterProhibitionRoutesPluginType(out Type routesType))
+				{
+					LogAfterProhibitionRoutesDeliveryPumpFallback("bridge-missing", normalizedSource);
+					return;
+				}
+
+				_afterProhibitionRoutesOwnsDeliveryPumpDecisionMethod =
+					_afterProhibitionRoutesOwnsDeliveryPumpDecisionMethod ?? AccessTools.Method(routesType, "OwnsDeliveryPumpDecision");
+				_afterProhibitionRoutesLogDeliveryPumpDecisionMethod =
+					_afterProhibitionRoutesLogDeliveryPumpDecisionMethod ?? AccessTools.Method(routesType, "LogDeliveryPumpDecision", new[] { typeof(EntityID), typeof(NodeID), typeof(string), typeof(int), typeof(int) });
+
+				if (_afterProhibitionRoutesOwnsDeliveryPumpDecisionMethod == null
+					|| _afterProhibitionRoutesLogDeliveryPumpDecisionMethod == null)
+				{
+					LogAfterProhibitionRoutesDeliveryPumpFallback("bridge-method-missing", normalizedSource);
+					return;
+				}
+
+				object ownsValue = _afterProhibitionRoutesOwnsDeliveryPumpDecisionMethod.Invoke(null, null);
+				if (!(ownsValue is bool ownsDecision) || !ownsDecision)
+				{
+					LogAfterProhibitionRoutesDeliveryPumpFallback("bridge-disabled", normalizedSource);
+					return;
+				}
+
+				if (!_verboseAfterProhibitionRoutesDecisionBridge)
+				{
+					if (!_loggedAfterProhibitionRoutesDeliveryPumpDelegated)
+					{
+						_loggedAfterProhibitionRoutesDeliveryPumpDelegated = true;
+						Debug.Log("[GameplayTweaks] DeliveryRoutePump delegated owner=AfterProhibitionRoutes mode=decision-only behaviorFallback=True quietBridge=True source=" + normalizedSource);
+					}
+					return;
+				}
+
+				object summaryValue = _afterProhibitionRoutesLogDeliveryPumpDecisionMethod.Invoke(null, new object[] { vehicleId, finalNodeId, normalizedSource, queuePumps, automationPumps });
+				if (!_loggedAfterProhibitionRoutesDeliveryPumpDelegated)
+				{
+					_loggedAfterProhibitionRoutesDeliveryPumpDelegated = true;
+					Debug.Log("[GameplayTweaks] DeliveryRoutePump delegated owner=AfterProhibitionRoutes mode=decision-only behaviorFallback=True source=" + normalizedSource + " " + (summaryValue as string ?? string.Empty));
+				}
+			}
+			catch (Exception ex)
+			{
+				LogAfterProhibitionRoutesDeliveryPumpFallback("bridge-error-" + ex.GetType().Name, normalizedSource);
+			}
+		}
+
+		private static void LogAfterProhibitionRoutesDeliveryPumpFallback(string reason, string sourceTag)
+		{
+			if (_loggedAfterProhibitionRoutesDeliveryPumpFallback)
+			{
+				return;
+			}
+
+			_loggedAfterProhibitionRoutesDeliveryPumpFallback = true;
+			Debug.Log("[GameplayTweaks] DeliveryRoutePump fallback active reason=" + reason + " source=" + sourceTag);
+		}
+
+		internal static void LogAfterProhibitionRoutesRouteSimAccessDecision(EntityID vehicleId, NodeID queryNodeId, string actionTag)
+		{
+			string normalizedAction = string.IsNullOrWhiteSpace(actionTag) ? "none" : actionTag.Trim();
+			string dedupeKey = vehicleId.id + ":" + queryNodeId + ":" + normalizedAction;
+			if (!_loggedAfterProhibitionRoutesRouteSimAccessDecisionKeys.Add(dedupeKey))
+			{
+				return;
+			}
+
+			try
+			{
+				if (!TryGetAfterProhibitionRoutesPluginType(out Type routesType))
+				{
+					LogAfterProhibitionRoutesRouteSimAccessFallback("bridge-missing", normalizedAction);
+					return;
+				}
+
+				_afterProhibitionRoutesOwnsRouteSimAccessDecisionMethod =
+					_afterProhibitionRoutesOwnsRouteSimAccessDecisionMethod ?? AccessTools.Method(routesType, "OwnsRouteSimAccessDecision");
+				_afterProhibitionRoutesLogRouteSimAccessDecisionMethod =
+					_afterProhibitionRoutesLogRouteSimAccessDecisionMethod ?? AccessTools.Method(routesType, "LogRouteSimAccessDecision", new[] { typeof(EntityID), typeof(NodeID), typeof(string) });
+
+				if (_afterProhibitionRoutesOwnsRouteSimAccessDecisionMethod == null
+					|| _afterProhibitionRoutesLogRouteSimAccessDecisionMethod == null)
+				{
+					LogAfterProhibitionRoutesRouteSimAccessFallback("bridge-method-missing", normalizedAction);
+					return;
+				}
+
+				object ownsValue = _afterProhibitionRoutesOwnsRouteSimAccessDecisionMethod.Invoke(null, null);
+				if (!(ownsValue is bool ownsDecision) || !ownsDecision)
+				{
+					LogAfterProhibitionRoutesRouteSimAccessFallback("bridge-disabled", normalizedAction);
+					return;
+				}
+
+				if (!_verboseAfterProhibitionRoutesDecisionBridge)
+				{
+					if (!_loggedAfterProhibitionRoutesRouteSimAccessDelegated)
+					{
+						_loggedAfterProhibitionRoutesRouteSimAccessDelegated = true;
+						Debug.Log("[GameplayTweaks] RouteSimAccess delegated owner=AfterProhibitionRoutes mode=decision-only behaviorFallback=True quietBridge=True source=" + normalizedAction);
+					}
+					return;
+				}
+
+				object summaryValue = _afterProhibitionRoutesLogRouteSimAccessDecisionMethod.Invoke(null, new object[] { vehicleId, queryNodeId, normalizedAction });
+				if (!_loggedAfterProhibitionRoutesRouteSimAccessDelegated)
+				{
+					_loggedAfterProhibitionRoutesRouteSimAccessDelegated = true;
+					Debug.Log("[GameplayTweaks] RouteSimAccess delegated owner=AfterProhibitionRoutes mode=decision-only behaviorFallback=True source=" + normalizedAction + " " + (summaryValue as string ?? string.Empty));
+				}
+			}
+			catch (Exception ex)
+			{
+				LogAfterProhibitionRoutesRouteSimAccessFallback("bridge-error-" + ex.GetType().Name, normalizedAction);
+			}
+		}
+
+		private static void LogAfterProhibitionRoutesRouteSimAccessFallback(string reason, string sourceTag)
+		{
+			if (_loggedAfterProhibitionRoutesRouteSimAccessFallback)
+			{
+				return;
+			}
+
+			_loggedAfterProhibitionRoutesRouteSimAccessFallback = true;
+			Debug.Log("[GameplayTweaks] RouteSimAccess fallback active reason=" + reason + " source=" + sourceTag);
+		}
+
+		internal static bool ShouldSkipForAfterProhibitionRoutesBehaviorOwner(string slice, string sourceTag)
+		{
+			string normalizedSlice = string.IsNullOrWhiteSpace(slice) ? "unknown" : slice.Trim();
+			string normalizedSource = string.IsNullOrWhiteSpace(sourceTag) ? "unknown" : sourceTag.Trim();
+			if (_afterProhibitionRoutesBehaviorOwnerBySlice.TryGetValue(normalizedSlice, out bool cachedOwnsBehavior))
+			{
+				return cachedOwnsBehavior;
+			}
+
+			try
+			{
+				if (!TryGetAfterProhibitionRoutesPluginType(out Type routesType))
+				{
+					LogAfterProhibitionRoutesBehaviorFallback(normalizedSlice, "bridge-missing", normalizedSource);
+					_afterProhibitionRoutesBehaviorOwnerBySlice[normalizedSlice] = false;
+					return false;
+				}
+
+				_afterProhibitionRoutesOwnsRouteBehaviorSliceMethod =
+					_afterProhibitionRoutesOwnsRouteBehaviorSliceMethod ?? AccessTools.Method(routesType, "OwnsRouteBehaviorSlice", new[] { typeof(string) });
+				if (_afterProhibitionRoutesOwnsRouteBehaviorSliceMethod == null)
+				{
+					LogAfterProhibitionRoutesBehaviorFallback(normalizedSlice, "bridge-method-missing", normalizedSource);
+					_afterProhibitionRoutesBehaviorOwnerBySlice[normalizedSlice] = false;
+					return false;
+				}
+
+				object ownsValue = _afterProhibitionRoutesOwnsRouteBehaviorSliceMethod.Invoke(null, new object[] { normalizedSlice });
+				if (ownsValue is bool ownsBehavior && ownsBehavior)
+				{
+					_afterProhibitionRoutesBehaviorOwnerBySlice[normalizedSlice] = true;
+					if (_loggedAfterProhibitionRoutesBehaviorDelegatedSlices.Add(normalizedSlice))
+					{
+						Debug.Log("[GameplayTweaks] Routes behavior delegated owner=AfterProhibitionRoutes slice=" + normalizedSlice + " source=" + normalizedSource);
+					}
+					return true;
+				}
+
+				LogAfterProhibitionRoutesBehaviorFallback(normalizedSlice, "behavior-owner-false", normalizedSource);
+				_afterProhibitionRoutesBehaviorOwnerBySlice[normalizedSlice] = false;
+				return false;
+			}
+			catch (Exception ex)
+			{
+				LogAfterProhibitionRoutesBehaviorFallback(normalizedSlice, "bridge-error-" + ex.GetType().Name, normalizedSource);
+				return false;
+			}
+		}
+
+		internal static void WarmAfterProhibitionRoutesBehaviorOwnerCache(string sourceTag)
+		{
+			if (_afterProhibitionRoutesBehaviorOwnerWarmComplete)
+			{
+				return;
+			}
+
+			int frame = Time.frameCount;
+			if (_afterProhibitionRoutesBehaviorOwnerWarmAttempts > 0
+				&& frame - _afterProhibitionRoutesBehaviorOwnerWarmLastAttemptFrame < 300)
+			{
+				return;
+			}
+
+			_afterProhibitionRoutesBehaviorOwnerWarmAttempts++;
+			_afterProhibitionRoutesBehaviorOwnerWarmLastAttemptFrame = frame;
+
+			long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+			string normalizedSource = string.IsNullOrWhiteSpace(sourceTag) ? "warm" : sourceTag.Trim();
+			if (!TryGetAfterProhibitionRoutesPluginType(out _))
+			{
+				if (_afterProhibitionRoutesBehaviorOwnerWarmAttempts >= 20)
+				{
+					_afterProhibitionRoutesBehaviorOwnerWarmComplete = true;
+				}
+				return;
+			}
+
+			int warmed = 0;
+			for (int i = 0; i < AfterProhibitionRoutesBehaviorOwnerWarmSlices.Length; i++)
+			{
+				string warmSlice = AfterProhibitionRoutesBehaviorOwnerWarmSlices[i];
+				if (_afterProhibitionRoutesBehaviorOwnerBySlice.ContainsKey(warmSlice))
+				{
+					continue;
+				}
+
+				ShouldSkipForAfterProhibitionRoutesBehaviorOwner(warmSlice, normalizedSource);
+				warmed++;
+			}
+
+			bool complete = true;
+			for (int i = 0; i < AfterProhibitionRoutesBehaviorOwnerWarmSlices.Length; i++)
+			{
+				if (!_afterProhibitionRoutesBehaviorOwnerBySlice.ContainsKey(AfterProhibitionRoutesBehaviorOwnerWarmSlices[i]))
+				{
+					complete = false;
+					break;
+				}
+			}
+			_afterProhibitionRoutesBehaviorOwnerWarmComplete = complete;
+
+			long elapsedMs = GetElapsedMilliseconds(startTicks);
+			if (elapsedMs >= 10L || _verboseAfterProhibitionRoutesDecisionBridge)
+			{
+				Debug.Log("[PERF][RoutesBehaviorWarm] ms=" + elapsedMs
+					+ " warmed=" + warmed
+					+ " cached=" + _afterProhibitionRoutesBehaviorOwnerBySlice.Count
+					+ " complete=" + _afterProhibitionRoutesBehaviorOwnerWarmComplete
+					+ " attempts=" + _afterProhibitionRoutesBehaviorOwnerWarmAttempts
+					+ " source=" + normalizedSource);
+			}
+		}
+
+		private static void LogAfterProhibitionRoutesBehaviorFallback(string slice, string reason, string sourceTag)
+		{
+			string key = (string.IsNullOrWhiteSpace(slice) ? "unknown" : slice.Trim()) + ":" + reason;
+			if (!_loggedAfterProhibitionRoutesBehaviorFallbackSlices.Add(key))
+			{
+				return;
+			}
+
+			Debug.Log("[GameplayTweaks] Routes behavior fallback active slice=" + slice + " reason=" + reason + " source=" + sourceTag);
+		}
+
+		private static bool TryGetAfterProhibitionRoutesPluginType(out Type routesType)
+		{
+			routesType = _afterProhibitionRoutesPluginType;
+			if (routesType != null)
+			{
+				return true;
+			}
+
+			routesType = AccessTools.TypeByName("AfterProhibitionRoutes.AfterProhibitionRoutesPlugin");
+			if (routesType != null)
+			{
+				_afterProhibitionRoutesPluginType = routesType;
+				return true;
+			}
+
+			return false;
+		}
+
+		private static long GetElapsedMilliseconds(long startTicks)
+		{
+			return (System.Diagnostics.Stopwatch.GetTimestamp() - startTicks) * 1000L / System.Diagnostics.Stopwatch.Frequency;
+		}
+
+		internal static void FinalizeQueuedHumanVehicleArrivalsAtTurnStart(PlayerInfo player)
+		{
+			_turnStartFinalizedQueuedRouteVehicleIds.Clear();
+			_turnStartDeferredArrivalVehicleIds.Clear();
+			if (player?.PID.IsHumanPlayer != true || player.crew == null || _pendingVehicleTravelByVehicleId.Count <= 0)
+			{
+				return;
+			}
+			if (ShouldSkipForAfterProhibitionRoutesBehaviorOwner("travel-continuation", "turnstart-finalize"))
+			{
+				return;
+			}
+
+			System.Diagnostics.Stopwatch finalizeStopwatch = System.Diagnostics.Stopwatch.StartNew();
+			int processedRoutes = 0;
+			int deferredArrivals = 0;
+			int finalizedRoutes = 0;
+			int preservedRoutes = 0;
+			int clearedRoutes = 0;
+			long filterMs = 0L;
+			long bridgeMs = 0L;
+			long entityMs = 0L;
+			long confirmMs = 0L;
+			long commitMs = 0L;
+			long sectionTicks = System.Diagnostics.Stopwatch.GetTimestamp();
 			List<PendingVehicleTravelState> queuedRoutes = _pendingVehicleTravelByVehicleId.Values
 				.Where((PendingVehicleTravelState state) => state.ResumeQueued && state.GoalNodeID.IsValid && state.VehicleID.IsValid)
 				.OrderBy((PendingVehicleTravelState state) => state.VehicleID.id)
 				.ToList();
+			filterMs += GetElapsedMilliseconds(sectionTicks);
 			foreach (PendingVehicleTravelState state in queuedRoutes)
 			{
+				processedRoutes++;
+				PendingVehicleTravelState currentState = state;
 				try
 				{
-					Entity vehicle = state.VehicleID.FindEntity();
-					CrewAssignment assignment = player.crew.GetCrewForPeep(state.PeepID);
-					if (vehicle?.data?.mobile == null || !assignment.IsValid || !assignment.IsInVehicle || assignment.VehicleID != state.VehicleID)
+					sectionTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+					LogAfterProhibitionRoutesTravelContinuationDecision(currentState.VehicleID, "turnstart-finalize");
+					bridgeMs += GetElapsedMilliseconds(sectionTicks);
+					sectionTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+					Entity vehicle = currentState.VehicleID.FindEntity();
+					CrewAssignment assignment = player.crew.GetCrewForPeep(currentState.PeepID);
+					entityMs += GetElapsedMilliseconds(sectionTicks);
+					if (vehicle?.data?.mobile == null || !assignment.IsValid || !assignment.IsInVehicle || assignment.VehicleID != currentState.VehicleID)
 					{
-						LogVehicleAuthority("turnstart-arrival-clear", $"{state.VehicleID.id}:invalid-assignment", $"turnstart-arrival-clear-invalid vehicle={state.VehicleID.id} reason=invalid-assignment finalGoal={state.GoalNodeID}", dedupe: false);
-						ClearPendingHumanVehicleTravel(state.VehicleID, "invalid");
-						continue;
+						if (vehicle?.data?.mobile != null
+							&& TryRebindPendingHumanVehicleTravelToLiveDriver(player.crew, currentState, out PendingVehicleTravelState reboundState, out CrewAssignment reboundAssignment, out string reboundReason))
+						{
+							currentState = reboundState;
+							assignment = reboundAssignment;
+							LogVehicleAuthority(
+								"turnstart-route-driver-rebound",
+								$"{currentState.VehicleID.id}:{currentState.PeepID.id}:{currentState.StartNodeID}:{currentState.ExpectedNodeID}:{currentState.GoalNodeID}:{reboundReason}",
+								$"turnstart-route-driver-rebound vehicle={currentState.VehicleID.id} peep={currentState.PeepID.id} startNode={currentState.StartNodeID} expectedNode={currentState.ExpectedNodeID} finalGoal={currentState.GoalNodeID} reason={reboundReason}",
+								dedupe: false);
+						}
+						else
+						{
+							LogVehicleAuthority("turnstart-arrival-clear", $"{currentState.VehicleID.id}:invalid-assignment", $"turnstart-arrival-clear-invalid vehicle={currentState.VehicleID.id} reason=invalid-assignment finalGoal={currentState.GoalNodeID}", dedupe: false);
+							ClearPendingHumanVehicleTravel(currentState.VehicleID, "invalid");
+							clearedRoutes++;
+							continue;
+						}
 					}
 
-					long vehicleKey = (long)state.VehicleID.id;
+					long vehicleKey = (long)currentState.VehicleID.id;
+					bool wasActiveTravel = _activeHumanVehicleTravel.Contains(vehicleKey);
+					bool useLogicalRouteArrival = wasActiveTravel
+						&& ShouldUseLogicalHumanVehicleRouteArrivalAtTurnStart(currentState);
+					if (wasActiveTravel
+						&& currentState.ExpectedNodeID.IsValid
+						&& !useLogicalRouteArrival
+						&& !TryConfirmHumanVehicleExpectedArrivalTimed(player.crew, vehicle, currentState, ref confirmMs))
+					{
+						_turnStartDeferredArrivalVehicleIds.Add(vehicleKey);
+						LogHumanVehicleExpectedArrivalDeferred("turnstart-arrival-deferred", currentState.VehicleID, currentState, "turnstart-await-physical");
+						deferredArrivals++;
+						continue;
+					}
+					if (useLogicalRouteArrival)
+					{
+						LogVehicleAuthority(
+							"turnstart-logical-route-arrival",
+							$"{currentState.VehicleID.id}:{currentState.StartNodeID}:{currentState.ExpectedNodeID}:{currentState.GoalNodeID}",
+							$"turnstart-logical-route-arrival vehicle={currentState.VehicleID.id} startNode={currentState.StartNodeID} expectedNode={currentState.ExpectedNodeID} finalGoal={currentState.GoalNodeID} reason=vanilla-route-continuation",
+							dedupe: false);
+					}
+
 					_activeHumanVehicleTravel.Remove(vehicleKey);
-					NodeID committedNodeId = state.ExpectedNodeID;
+					sectionTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+					NodeID committedNodeId = currentState.ExpectedNodeID;
 					string committedSource = "expected";
 					if (!committedNodeId.IsValid)
 					{
-						if (TryGetQueuedArrivalCommittedNodeId(state.VehicleID, out NodeID queuedArrivalNodeId) && queuedArrivalNodeId.IsValid)
+						if (TryGetQueuedArrivalCommittedNodeId(currentState.VehicleID, out NodeID queuedArrivalNodeId) && queuedArrivalNodeId.IsValid)
 						{
 							committedNodeId = queuedArrivalNodeId;
 							committedSource = "queued-arrival";
 						}
-						else if (TryGetRecentFinalizedNodeId(state.VehicleID, out NodeID recentFinalizedNodeId) && recentFinalizedNodeId.IsValid)
+						else if (TryGetRecentFinalizedNodeId(currentState.VehicleID, out NodeID recentFinalizedNodeId) && recentFinalizedNodeId.IsValid)
 						{
 							committedNodeId = recentFinalizedNodeId;
 							committedSource = "recent-finalize";
 						}
-						else if (state.StartNodeID.IsValid)
+						else if (currentState.StartNodeID.IsValid)
 						{
-							committedNodeId = state.StartNodeID;
+							committedNodeId = currentState.StartNodeID;
 							committedSource = "pending-start";
 						}
 					}
 
 					if (!committedNodeId.IsValid)
 					{
-						LogVehicleAuthority("turnstart-arrival-clear", $"{state.VehicleID.id}:invalid-expected", $"turnstart-arrival-clear-invalid vehicle={state.VehicleID.id} reason=invalid-expected finalGoal={state.GoalNodeID}", dedupe: false);
-						ClearPendingHumanVehicleTravel(state.VehicleID, "invalid");
+						LogVehicleAuthority("turnstart-arrival-clear", $"{currentState.VehicleID.id}:invalid-expected", $"turnstart-arrival-clear-invalid vehicle={currentState.VehicleID.id} reason=invalid-expected finalGoal={currentState.GoalNodeID}", dedupe: false);
+						ClearPendingHumanVehicleTravel(currentState.VehicleID, "invalid");
+						clearedRoutes++;
 						continue;
 					}
 
-					if (!state.ExpectedNodeID.IsValid)
+					if (!currentState.ExpectedNodeID.IsValid)
 					{
-						if (committedNodeId == state.GoalNodeID)
+						if (committedNodeId == currentState.GoalNodeID)
 						{
 							LogVehicleAuthority(
 								"turnstart-route-stale-cleared",
-								$"{state.VehicleID.id}:{committedNodeId}:{state.GoalNodeID}:already-arrived",
-								$"turnstart-route-stale-cleared vehicle={state.VehicleID.id} committedNode={committedNodeId} committedSource={committedSource} finalGoal={state.GoalNodeID} reason=already-arrived",
+								$"{currentState.VehicleID.id}:{committedNodeId}:{currentState.GoalNodeID}:already-arrived",
+								$"turnstart-route-stale-cleared vehicle={currentState.VehicleID.id} committedNode={committedNodeId} committedSource={committedSource} finalGoal={currentState.GoalNodeID} reason=already-arrived",
 								dedupe: false);
-							ClearInterruptExpectedStartNode(state.VehicleID, "turnstart-arrived");
-							ClearPendingHumanVehicleTravel(state.VehicleID, "arrived");
+							ClearInterruptExpectedStartNode(currentState.VehicleID, "turnstart-arrived");
+							ClearPendingHumanVehicleTravel(currentState.VehicleID, "arrived");
+							clearedRoutes++;
 							continue;
 						}
-						if (ShouldSuppressHumanVehicleRequeue(state.VehicleID, committedNodeId, state.GoalNodeID))
-						{
-							LogVehicleAuthority(
-								"turnstart-route-stale-cleared",
-								$"{state.VehicleID.id}:{committedNodeId}:{state.GoalNodeID}:requeue-suppressed",
-								$"turnstart-route-stale-cleared vehicle={state.VehicleID.id} committedNode={committedNodeId} committedSource={committedSource} finalGoal={state.GoalNodeID} reason=requeue-suppressed",
-								dedupe: false);
-							ClearInterruptExpectedStartNode(state.VehicleID, "turnstart-requeue-suppressed");
-							ClearPendingHumanVehicleTravel(state.VehicleID, "requeue-suppressed");
-							continue;
-						}
-
-						RecordHumanVehicleFinalizedSegment(state.VehicleID, state.StartNodeID, committedNodeId);
-						PendingVehicleTravelState preservedState = state;
+						// This state has already committed the previous segment and is only waiting
+						// for the next turn's queued resume. Running the same-day requeue loop guard
+						// here clears legitimate long-distance continuation before it can drive.
+						RecordHumanVehicleFinalizedSegment(currentState.VehicleID, currentState.StartNodeID, committedNodeId);
+						PendingVehicleTravelState preservedState = currentState;
 						preservedState.StartNodeID = committedNodeId;
 						preservedState.ExpectedNodeID = NodeID.INVALID;
 						preservedState.CommandOwnerKey = 0;
 						preservedState.ResumeQueued = preservedState.GoalNodeID.IsValid && preservedState.GoalNodeID != committedNodeId;
 						_pendingVehicleTravelByVehicleId[vehicleKey] = preservedState;
 						_queuedArrivalCommittedNodeByVehicleId[vehicleKey] = committedNodeId;
-						SetRecentFinalizedNode(state.VehicleID, committedNodeId);
-						ClearInterruptExpectedStartNode(state.VehicleID, "turnstart-preserved");
+						SetRecentFinalizedNode(currentState.VehicleID, committedNodeId);
+						ClearInterruptExpectedStartNode(currentState.VehicleID, "turnstart-preserved");
 						LogVehicleAuthority(
 							"turnstart-arrival-preserved",
-							$"{state.VehicleID.id}:{committedNodeId}:{state.GoalNodeID}:{committedSource}",
-							$"turnstart-arrival-already-committed vehicle={state.VehicleID.id} currentNode={committedNodeId} finalGoal={state.GoalNodeID} source={committedSource}",
+							$"{currentState.VehicleID.id}:{committedNodeId}:{currentState.GoalNodeID}:{committedSource}",
+							$"turnstart-arrival-already-committed vehicle={currentState.VehicleID.id} currentNode={committedNodeId} finalGoal={currentState.GoalNodeID} source={committedSource}",
 							dedupe: false);
 						LogVehicleAuthority(
 							"route-resume-preserved",
-							$"{state.VehicleID.id}:{committedNodeId}:{state.GoalNodeID}",
-							$"route-resume-preserved vehicle={state.VehicleID.id} currentNode={committedNodeId} finalGoal={state.GoalNodeID}",
-							dedupe: false);
-						continue;
-					}
+							$"{currentState.VehicleID.id}:{committedNodeId}:{currentState.GoalNodeID}",
+							$"route-resume-preserved vehicle={currentState.VehicleID.id} currentNode={committedNodeId} finalGoal={currentState.GoalNodeID}",
+						dedupe: false);
+					preservedRoutes++;
+					commitMs += GetElapsedMilliseconds(sectionTicks);
+					continue;
+				}
 
 					int mismatchCount = 0;
 					if (TrySyncVehicleEntityToNode(vehicle, committedNodeId))
 					{
 						mismatchCount++;
 					}
-					foreach (CrewAssignment occupant in GetAllCrewInVehicle(player.crew, state.VehicleID))
+					foreach (CrewAssignment occupant in GetAllCrewInVehicle(player.crew, currentState.VehicleID))
 					{
 						if (!occupant.IsValid || !occupant.peepId.IsValid || !occupant.IsNotDead)
 						{
@@ -4338,49 +5946,67 @@ namespace GameplayTweaks
 
 					LogVehicleAuthority(
 						"turnstart-arrival-finalize",
-						$"{state.VehicleID.id}:{committedNodeId}:{state.GoalNodeID}",
-						$"turnstart-arrival-finalize vehicle={state.VehicleID.id} finalNode={committedNodeId} reason=queued-segment-complete mismatches={mismatchCount}",
+						$"{currentState.VehicleID.id}:{committedNodeId}:{currentState.GoalNodeID}",
+						$"turnstart-arrival-finalize vehicle={currentState.VehicleID.id} finalNode={committedNodeId} reason=queued-segment-complete mismatches={mismatchCount}",
 						dedupe: false);
-					RecordHumanVehicleFinalizedSegment(state.VehicleID, state.StartNodeID, committedNodeId);
-					if (committedNodeId == state.GoalNodeID)
+					RecordHumanVehicleFinalizedSegment(currentState.VehicleID, currentState.StartNodeID, committedNodeId);
+					if (committedNodeId == currentState.GoalNodeID)
 					{
 						LogVehicleAuthority(
 							"turnstart-route-stale-cleared",
-							$"{state.VehicleID.id}:{committedNodeId}:{state.GoalNodeID}:already-arrived",
-							$"turnstart-route-stale-cleared vehicle={state.VehicleID.id} committedNode={committedNodeId} committedSource={committedSource} finalGoal={state.GoalNodeID} reason=already-arrived",
+							$"{currentState.VehicleID.id}:{committedNodeId}:{currentState.GoalNodeID}:already-arrived",
+							$"turnstart-route-stale-cleared vehicle={currentState.VehicleID.id} committedNode={committedNodeId} committedSource={committedSource} finalGoal={currentState.GoalNodeID} reason=already-arrived",
 							dedupe: false);
-						ClearInterruptExpectedStartNode(state.VehicleID, "turnstart-arrived");
-						ClearPendingHumanVehicleTravel(state.VehicleID, "arrived");
+						ClearInterruptExpectedStartNode(currentState.VehicleID, "turnstart-arrived");
+						ClearPendingHumanVehicleTravel(currentState.VehicleID, "arrived");
+						clearedRoutes++;
 						continue;
 					}
-					if (ShouldSuppressHumanVehicleRequeue(state.VehicleID, committedNodeId, state.GoalNodeID))
+					if (ShouldSuppressHumanVehicleRequeue(currentState.VehicleID, committedNodeId, currentState.GoalNodeID))
 					{
 						LogVehicleAuthority(
 							"turnstart-route-stale-cleared",
-							$"{state.VehicleID.id}:{committedNodeId}:{state.GoalNodeID}:requeue-suppressed",
-							$"turnstart-route-stale-cleared vehicle={state.VehicleID.id} committedNode={committedNodeId} committedSource={committedSource} finalGoal={state.GoalNodeID} reason=requeue-suppressed",
+							$"{currentState.VehicleID.id}:{committedNodeId}:{currentState.GoalNodeID}:requeue-suppressed",
+							$"turnstart-route-stale-cleared vehicle={currentState.VehicleID.id} committedNode={committedNodeId} committedSource={committedSource} finalGoal={currentState.GoalNodeID} reason=requeue-suppressed",
 							dedupe: false);
-						ClearInterruptExpectedStartNode(state.VehicleID, "turnstart-requeue-suppressed");
-						ClearPendingHumanVehicleTravel(state.VehicleID, "requeue-suppressed");
+						ClearInterruptExpectedStartNode(currentState.VehicleID, "turnstart-requeue-suppressed");
+						ClearPendingHumanVehicleTravel(currentState.VehicleID, "requeue-suppressed");
+						clearedRoutes++;
 						continue;
 					}
 					_queuedArrivalCommittedNodeByVehicleId[vehicleKey] = committedNodeId;
-					SetRecentFinalizedNode(state.VehicleID, committedNodeId);
-					PendingVehicleTravelState resumedState = state;
+					SetRecentFinalizedNode(currentState.VehicleID, committedNodeId);
+					PendingVehicleTravelState resumedState = currentState;
 					resumedState.StartNodeID = committedNodeId;
 					resumedState.ExpectedNodeID = NodeID.INVALID;
 					resumedState.CommandOwnerKey = 0;
 					resumedState.ResumeQueued = resumedState.GoalNodeID.IsValid && resumedState.GoalNodeID != committedNodeId;
 					_pendingVehicleTravelByVehicleId[vehicleKey] = resumedState;
 					_turnStartFinalizedQueuedRouteVehicleIds.Add(vehicleKey);
-					ClearInterruptExpectedStartNode(state.VehicleID, "turnstart-arrival-finalize");
+					ClearInterruptExpectedStartNode(currentState.VehicleID, "turnstart-arrival-finalize");
+					finalizedRoutes++;
+					commitMs += GetElapsedMilliseconds(sectionTicks);
 				}
 				catch (Exception ex)
 				{
 					Debug.LogWarning("[GameplayTweaks] FinalizeQueuedHumanVehicleArrivalsAtTurnStart: " + ex.Message);
-					ClearPendingHumanVehicleTravel(state.VehicleID, "invalid");
+					ClearPendingHumanVehicleTravel(currentState.VehicleID, "invalid");
+					clearedRoutes++;
 				}
 			}
+			finalizeStopwatch.Stop();
+			if (finalizeStopwatch.ElapsedMilliseconds >= 20)
+			{
+				Debug.Log($"[PERF][RouteTurnStartFinalize] ms={finalizeStopwatch.ElapsedMilliseconds} pending={_pendingVehicleTravelByVehicleId.Count} queued={queuedRoutes.Count} processed={processedRoutes} finalized={finalizedRoutes} preserved={preservedRoutes} deferred={deferredArrivals} cleared={clearedRoutes} filterMs={filterMs} bridgeMs={bridgeMs} entityMs={entityMs} confirmMs={confirmMs} commitMs={commitMs} frame={Time.frameCount}");
+			}
+		}
+
+		private static bool TryConfirmHumanVehicleExpectedArrivalTimed(PlayerCrew crew, Entity vehicle, PendingVehicleTravelState state, ref long elapsedMs)
+		{
+			long ticks = System.Diagnostics.Stopwatch.GetTimestamp();
+			bool confirmed = TryConfirmHumanVehicleExpectedArrival(crew, vehicle, state, out _, out _);
+			elapsedMs += GetElapsedMilliseconds(ticks);
+			return confirmed;
 		}
 
 		internal static void ClearQueuedHumanVehicleTravelForPeep(PlayerInfo player, EntityID peepId, string reason)
@@ -4409,6 +6035,23 @@ namespace GameplayTweaks
 					&& activeState.ExpectedNodeID.IsValid)
 				{
 					NodeID abandonedGoalNodeId = activeState.GoalNodeID;
+					if (ShouldPreserveRecentQueuedHumanVehicleDestinationPreview(vehicleId, activeState))
+					{
+						Node queuedStartNode = activeState.ExpectedNodeID.FindNode();
+						Node queuedGoalNode = activeState.GoalNodeID.FindNode();
+						if (queuedGoalNode != null)
+						{
+							GameplayTweaksPlugin.QueueDeferredSelectedVehicleUiRefresh(queuedStartNode, queuedGoalNode, "route-queued-preview-user-stop-preserved", vehicleId);
+							GameplayTweaksPlugin.RefreshQueuedRouteSelectedVehicleNodeHighlight(queuedGoalNode, vehicleId, "route-queued-preview-user-stop-preserved");
+						}
+						Entity queuedPeep = peepId.FindEntity();
+						LogVehicleAuthority(
+							"user-stop-route-queued-preserved",
+							$"{vehicleId.id}:{activeState.ExpectedNodeID}:{activeState.GoalNodeID}:{peepId.id}",
+							$"user-stop-route-queued-preserved vehicle={vehicleId.id} peep={peepId.id} expectedNode={activeState.ExpectedNodeID} queuedGoal={activeState.GoalNodeID} moves={queuedPeep?.components?.agent?.MovesRemaining ?? -1} actions={queuedPeep?.components?.agent?.ActionsRemaining ?? -1} reason=recent-queued-destination-preview",
+							dedupe: false);
+						return;
+					}
 					activeState.GoalNodeID = activeState.ExpectedNodeID;
 					activeState.ResumeQueued = false;
 					_pendingVehicleTravelByVehicleId[(long)vehicleId.id] = activeState;
@@ -4466,17 +6109,26 @@ namespace GameplayTweaks
 			SomaSim.Util.Fixnum maxCost = freeDrive ? SomaSim.Util.Fixnum.MAX_VALUE : new SomaSim.Util.Fixnum(movesRemaining);
 			WorldPos startPos = startNode.pos;
 			PathData builtPath = null;
+			bool routeExistsBeyondCurrentMoves = false;
 			global::Game.Game.ctx.transit.FindDrivingPath(player.PID, peep, goalNode.pos, delegate (Pathfinding.Result result)
 			{
 				if (result.status == Pathfinding.Status.Success)
 				{
 					builtPath = new PathData();
 					result.PopulatePath(builtPath, startPos, maxCost);
+					if (!freeDrive && (builtPath.world == null || builtPath.world.Count <= 1))
+					{
+						PathData fullPath = new PathData();
+						result.PopulatePath(fullPath, startPos, SomaSim.Util.Fixnum.MAX_VALUE);
+						routeExistsBeyondCurrentMoves = fullPath.world != null && fullPath.world.Count > 1;
+					}
 				}
 			});
 			path = builtPath;
 			buildResult = builtPath != null && builtPath.world != null && builtPath.world.Count > 1
 				? QueuedHumanVehiclePathBuildResult.BuiltValid
+				: routeExistsBeyondCurrentMoves
+					? QueuedHumanVehiclePathBuildResult.InsufficientMovesForSegment
 				: QueuedHumanVehiclePathBuildResult.BuiltEmpty;
 			return true;
 		}
@@ -4503,6 +6155,7 @@ namespace GameplayTweaks
 			SomaSim.Util.Fixnum maxCost = freeDrive ? SomaSim.Util.Fixnum.MAX_VALUE : new SomaSim.Util.Fixnum(movesRemaining);
 			WorldPos startPos = startNode.pos;
 			PathData builtPath = null;
+			bool routeExistsBeyondCurrentMoves = false;
 			RoadPathContext ctx = new RoadPathContext(global::Game.Game.ctx.board);
 			global::Game.Game.ctx.board.GetGridPath(player.PID, peep.Id, startPos, goalNode.pos, ctx, delegate (Pathfinding.Result result)
 			{
@@ -4510,24 +6163,95 @@ namespace GameplayTweaks
 				{
 					builtPath = new PathData();
 					result.PopulatePath(builtPath, startPos, maxCost);
+					if (!freeDrive && (builtPath.world == null || builtPath.world.Count <= 1))
+					{
+						PathData fullPath = new PathData();
+						result.PopulatePath(fullPath, startPos, SomaSim.Util.Fixnum.MAX_VALUE);
+						routeExistsBeyondCurrentMoves = fullPath.world != null && fullPath.world.Count > 1;
+					}
 				}
 			});
 			path = builtPath;
 			buildResult = builtPath != null && builtPath.world != null && builtPath.world.Count > 1
 				? QueuedHumanVehiclePathBuildResult.BuiltValid
+				: routeExistsBeyondCurrentMoves
+					? QueuedHumanVehiclePathBuildResult.InsufficientMovesForSegment
 				: QueuedHumanVehiclePathBuildResult.BuiltEmpty;
 			return true;
 		}
 
 		internal static void TryResumeQueuedHumanVehicleRoutes(PlayerInfo player)
 		{
-			if (player?.PID.IsHumanPlayer != true || player.crew == null)
+			TryResumeQueuedHumanVehicleRoutes(player, EntityID.INVALID, "turn-start");
+		}
+
+		internal static void QueueDeferredQueuedHumanVehicleRouteResume(PlayerInfo player, string sourceTag)
+		{
+			if (player?.PID.IsHumanPlayer != true || player.crew == null || _pendingVehicleTravelByVehicleId.Count <= 0)
+			{
+				return;
+			}
+			if (!_pendingVehicleTravelByVehicleId.Values.Any(state => state.ResumeQueued && state.GoalNodeID.IsValid && state.VehicleID.IsValid && state.PeepID.IsValid && !_activeHumanVehicleTravel.Contains((long)state.VehicleID.id)))
 			{
 				return;
 			}
 
+			_deferredQueuedHumanVehicleRouteResumePending = true;
+			_deferredQueuedHumanVehicleRouteResumeEarliestFrame = Time.frameCount + 2;
+			_deferredQueuedHumanVehicleRouteResumeSource = string.IsNullOrWhiteSpace(sourceTag) ? "turn-start" : sourceTag;
+			LogVehicleAuthority(
+				"route-resume-deferred-turnstart",
+				$"{_deferredQueuedHumanVehicleRouteResumeSource}:{_deferredQueuedHumanVehicleRouteResumeEarliestFrame}:{_pendingVehicleTravelByVehicleId.Count}",
+				$"route-resume-deferred-turnstart source={_deferredQueuedHumanVehicleRouteResumeSource} pending={_pendingVehicleTravelByVehicleId.Count} earliestFrame={_deferredQueuedHumanVehicleRouteResumeEarliestFrame}",
+				dedupe: false);
+		}
+
+		internal static void FlushDeferredQueuedHumanVehicleRouteResume(string sourceTag)
+		{
+			if (!_deferredQueuedHumanVehicleRouteResumePending)
+			{
+				return;
+			}
+			if (Time.frameCount < _deferredQueuedHumanVehicleRouteResumeEarliestFrame)
+			{
+				return;
+			}
+
+			_deferredQueuedHumanVehicleRouteResumePending = false;
+			string queuedSource = string.IsNullOrWhiteSpace(_deferredQueuedHumanVehicleRouteResumeSource)
+				? "deferred-turn-start"
+				: _deferredQueuedHumanVehicleRouteResumeSource;
+			_deferredQueuedHumanVehicleRouteResumeSource = string.Empty;
+			PlayerInfo humanPlayer = G.GetHumanPlayer();
+			if (humanPlayer?.PID.IsHumanPlayer != true || humanPlayer.crew == null)
+			{
+				return;
+			}
+
+			System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
+			TryResumeQueuedHumanVehicleRoutes(humanPlayer, EntityID.INVALID, "deferred-" + queuedSource);
+			stopwatch.Stop();
+			if (stopwatch.ElapsedMilliseconds >= 20)
+			{
+				Debug.Log($"[PERF][RouteResume] source={sourceTag} queuedSource={queuedSource} ms={stopwatch.ElapsedMilliseconds} frame={Time.frameCount}");
+			}
+		}
+
+		internal static void TryResumeQueuedHumanVehicleRoutes(PlayerInfo player, EntityID onlyVehicleId, string sourceTag)
+		{
+			if (player?.PID.IsHumanPlayer != true || player.crew == null)
+			{
+				return;
+			}
+			if (ShouldSkipForAfterProhibitionRoutesBehaviorOwner("travel-continuation", sourceTag))
+			{
+				return;
+			}
+
+			bool singleVehicle = onlyVehicleId.IsValid;
 			List<PendingVehicleTravelState> queuedRoutes = _pendingVehicleTravelByVehicleId.Values
 				.Where(state => state.ResumeQueued && state.GoalNodeID.IsValid && !_activeHumanVehicleTravel.Contains((long)state.VehicleID.id))
+				.Where(state => !singleVehicle || state.VehicleID == onlyVehicleId)
 				.Where(state => state.VehicleID.IsValid && state.PeepID.IsValid)
 				.OrderBy(state => state.VehicleID.id)
 				.ToList();
@@ -4535,6 +6259,23 @@ namespace GameplayTweaks
 			{
 				try
 				{
+					System.Diagnostics.Stopwatch routeDetailStopwatch = System.Diagnostics.Stopwatch.StartNew();
+					long pathBuildMs = 0L;
+					long markKnownMs = 0L;
+					long hudRefreshMs = 0L;
+					long syncMs = 0L;
+					long driveMs = 0L;
+					long bridgeMs = 0L;
+					long authorityMs = 0L;
+					long entityMs = 0L;
+					long rebaseMs = 0L;
+					long reachedNodeMs = 0L;
+					long stateMs = 0L;
+					long displayMs = 0L;
+					long sectionTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+					LogAfterProhibitionRoutesTravelContinuationDecision(state.VehicleID, sourceTag);
+					bridgeMs += GetElapsedMilliseconds(sectionTicks);
+					sectionTicks = System.Diagnostics.Stopwatch.GetTimestamp();
 					bool turnStartFinalized = WasTurnStartQueuedRouteFinalized(state.VehicleID);
 					PendingVehicleTravelState resumeState = state;
 					NodeID committedNodeId = NodeID.INVALID;
@@ -4543,6 +6284,12 @@ namespace GameplayTweaks
 					{
 						TryGetAuthoritativeVehicleNodeId(state.VehicleID, out committedNodeId, out committedSource);
 					}
+					LogVehicleAuthority(
+						"route-resume-watchdog",
+						$"{state.VehicleID.id}:{state.StartNodeID}:{state.ExpectedNodeID}:{state.GoalNodeID}:{committedNodeId}:{committedSource}:{sourceTag}",
+						$"route-resume-watchdog vehicle={state.VehicleID.id} peep={state.PeepID.id} startNode={state.StartNodeID} expectedNode={state.ExpectedNodeID} finalGoal={state.GoalNodeID} committedNode={committedNodeId} committedSource={committedSource} turnStartFinalized={turnStartFinalized} active={_activeHumanVehicleTravel.Contains((long)state.VehicleID.id)} source={sourceTag}",
+						dedupe: false);
+					authorityMs += GetElapsedMilliseconds(sectionTicks);
 					if (string.Equals(committedSource, "recent-finalize", StringComparison.Ordinal)
 						&& TryGetAuthoritativeVehicleNodeId(state.VehicleID, out NodeID authoritativeCommittedNodeId, out string authoritativeCommittedSource)
 						&& authoritativeCommittedNodeId.IsValid
@@ -4588,10 +6335,12 @@ namespace GameplayTweaks
 							continue;
 						}
 					}
+					sectionTicks = System.Diagnostics.Stopwatch.GetTimestamp();
 					Entity vehicle = state.VehicleID.FindEntity();
 					Entity peep = state.PeepID.FindEntity();
 					CrewAssignment assignment = player.crew.GetCrewForPeep(state.PeepID);
 					Node goalNode = state.GoalNodeID.FindNode();
+					entityMs += GetElapsedMilliseconds(sectionTicks);
 					if (vehicle?.data?.mobile == null || peep?.data?.agent == null || !assignment.IsValid || !assignment.IsInVehicle || assignment.VehicleID != state.VehicleID || goalNode == null)
 					{
 						LogVehicleAuthority("route-resume-skip", $"{state.VehicleID.id}:invalid", $"route-resume-skip vehicle={state.VehicleID.id} reason=invalid finalGoal={state.GoalNodeID}", dedupe: false);
@@ -4603,13 +6352,23 @@ namespace GameplayTweaks
 						ClearPendingHumanVehicleTravel(state.VehicleID, "invalid");
 						continue;
 					}
-					if (!TryBuildQueuedHumanVehiclePath(player, peep, assignment, goalNode, freeDrive: false, out PathData path, out Node startNode, out string source, out QueuedHumanVehiclePathBuildResult buildResult))
+					System.Diagnostics.Stopwatch pathBuildStopwatch = System.Diagnostics.Stopwatch.StartNew();
+					bool builtQueuedPath = TryBuildQueuedHumanVehiclePath(player, peep, assignment, goalNode, freeDrive: false, out PathData path, out Node startNode, out string source, out QueuedHumanVehiclePathBuildResult buildResult);
+					pathBuildStopwatch.Stop();
+					pathBuildMs += pathBuildStopwatch.ElapsedMilliseconds;
+					if (!builtQueuedPath)
 					{
+						routeDetailStopwatch.Stop();
+						if (routeDetailStopwatch.ElapsedMilliseconds >= 20 || pathBuildMs >= 20)
+						{
+							Debug.Log($"[PERF][RouteResumeDetail] outcome=build-failed ms={routeDetailStopwatch.ElapsedMilliseconds} pathBuildMs={pathBuildMs} vehicle={state.VehicleID.id} peep={state.PeepID.id} finalGoal={state.GoalNodeID} sourceTag={sourceTag} frame={Time.frameCount}");
+						}
 						LogVehicleAuthority("route-resume-skip", $"{state.VehicleID.id}:invalid-build", $"route-resume-skip vehicle={state.VehicleID.id} reason=invalid finalGoal={state.GoalNodeID}", dedupe: false);
 						LogVehicleAuthority("route-resume-deferred", $"{state.VehicleID.id}:build-failed", $"route-resume-deferred vehicle={state.VehicleID.id} reason=build-failed finalGoal={state.GoalNodeID}", dedupe: false);
 						continue;
 					}
 					LogVehicleAuthority("route-resume-source", $"{state.VehicleID.id}:{source}", $"route-resume-source vehicle={state.VehicleID.id} source={source}", dedupe: false);
+					sectionTicks = System.Diagnostics.Stopwatch.GetTimestamp();
 					bool rebasedBeforeRefresh = false;
 					if (startNode?.id.IsValid == true
 						&& resumeState.StartNodeID.IsValid
@@ -4635,6 +6394,7 @@ namespace GameplayTweaks
 							continue;
 						}
 					}
+					rebaseMs += GetElapsedMilliseconds(sectionTicks);
 					bool invalidResumeOrigin = string.Equals(source, "interrupt-expected", StringComparison.Ordinal)
 						|| (turnStartFinalized
 							&& !string.Equals(source, "queued-arrival", StringComparison.Ordinal)
@@ -4700,12 +6460,16 @@ namespace GameplayTweaks
 							LogVehicleAuthority("route-resume-skip", $"{state.VehicleID.id}:arrived", $"route-resume-skip vehicle={state.VehicleID.id} reason=already-arrived finalGoal={state.GoalNodeID}", dedupe: false);
 							ClearPendingHumanVehicleTravel(state.VehicleID, "arrived");
 						}
-						else if (buildResult == QueuedHumanVehiclePathBuildResult.NoMovesYet)
+						else if (buildResult == QueuedHumanVehiclePathBuildResult.NoMovesYet
+							|| buildResult == QueuedHumanVehiclePathBuildResult.InsufficientMovesForSegment)
 						{
+							string deferredReason = buildResult == QueuedHumanVehiclePathBuildResult.InsufficientMovesForSegment
+								? "insufficient-moves-for-next-segment"
+								: "no-moves";
 							LogVehicleAuthority(
 								"route-resume-deferred",
-								$"{state.VehicleID.id}:{currentNodeId}:{state.GoalNodeID}:no-moves",
-								$"route-resume-deferred vehicle={state.VehicleID.id} reason=no-moves currentNode={currentNodeId} finalGoal={state.GoalNodeID}",
+								$"{state.VehicleID.id}:{currentNodeId}:{state.GoalNodeID}:{deferredReason}",
+								$"route-resume-deferred vehicle={state.VehicleID.id} reason={deferredReason} currentNode={currentNodeId} finalGoal={state.GoalNodeID}",
 								dedupe: false);
 							continue;
 						}
@@ -4717,12 +6481,16 @@ namespace GameplayTweaks
 								path = retryPath;
 								startNode = retryStartNode;
 								buildResult = retryBuildResult;
-								if (buildResult == QueuedHumanVehiclePathBuildResult.NoMovesYet)
+								if (buildResult == QueuedHumanVehiclePathBuildResult.NoMovesYet
+									|| buildResult == QueuedHumanVehiclePathBuildResult.InsufficientMovesForSegment)
 								{
+									string deferredReason = buildResult == QueuedHumanVehiclePathBuildResult.InsufficientMovesForSegment
+										? "insufficient-moves-for-next-segment"
+										: "no-moves";
 									LogVehicleAuthority(
 										"route-resume-deferred",
-										$"{state.VehicleID.id}:{currentNodeId}:{state.GoalNodeID}:no-moves-retry",
-										$"route-resume-deferred vehicle={state.VehicleID.id} reason=no-moves currentNode={currentNodeId} finalGoal={state.GoalNodeID} source=queued-arrival-retry",
+										$"{state.VehicleID.id}:{currentNodeId}:{state.GoalNodeID}:{deferredReason}-retry",
+										$"route-resume-deferred vehicle={state.VehicleID.id} reason={deferredReason} currentNode={currentNodeId} finalGoal={state.GoalNodeID} source=queued-arrival-retry",
 										dedupe: false);
 									continue;
 								}
@@ -4747,7 +6515,9 @@ namespace GameplayTweaks
 					}
 
 					WorldPos reachedPos = path.world[path.world.Count - 1];
+					sectionTicks = System.Diagnostics.Stopwatch.GetTimestamp();
 					Node reachedNode = global::Game.Game.ctx.board.nodes.FindNearestNodeAround(reachedPos, 5f);
+					reachedNodeMs += GetElapsedMilliseconds(sectionTicks);
 					if (reachedNode == null)
 					{
 						LogVehicleAuthority("route-resume-skip", $"{state.VehicleID.id}:invalid-reached", $"route-resume-skip vehicle={state.VehicleID.id} reason=invalid finalGoal={state.GoalNodeID}", dedupe: false);
@@ -4795,14 +6565,26 @@ namespace GameplayTweaks
 							continue;
 						}
 
-						if (!TryBuildQueuedHumanVehiclePathFromCommittedNode(player, peep, assignment, goalNode, freeDrive: false, out PathData rebasedPath, out Node rebasedStartNode, out QueuedHumanVehiclePathBuildResult rebasedBuildResult))
+						pathBuildStopwatch.Restart();
+						bool builtRebasedPath = TryBuildQueuedHumanVehiclePathFromCommittedNode(player, peep, assignment, goalNode, freeDrive: false, out PathData rebasedPath, out Node rebasedStartNode, out QueuedHumanVehiclePathBuildResult rebasedBuildResult);
+						pathBuildStopwatch.Stop();
+						pathBuildMs += pathBuildStopwatch.ElapsedMilliseconds;
+						if (!builtRebasedPath)
 						{
 							LogVehicleAuthority("resume-origin-invalid", $"{state.VehicleID.id}:{rebasedNodeId}:reverse-rebuild-failed", $"resume-origin-invalid vehicle={state.VehicleID.id} source=reverse-rebuild committedNode={rebasedNodeId} committedSource={rebasedSource} finalGoal={state.GoalNodeID} reason=rebuild-failed", dedupe: false);
 							continue;
 						}
-						if (rebasedBuildResult == QueuedHumanVehiclePathBuildResult.NoMovesYet)
+						if (rebasedBuildResult == QueuedHumanVehiclePathBuildResult.NoMovesYet
+							|| rebasedBuildResult == QueuedHumanVehiclePathBuildResult.InsufficientMovesForSegment)
 						{
-							LogVehicleAuthority("route-resume-deferred", $"{state.VehicleID.id}:{rebasedNodeId}:{state.GoalNodeID}:reverse-no-moves", $"route-resume-deferred vehicle={state.VehicleID.id} reason=no-moves currentNode={rebasedNodeId} finalGoal={state.GoalNodeID} source=reverse-rebuild", dedupe: false);
+							string deferredReason = rebasedBuildResult == QueuedHumanVehiclePathBuildResult.InsufficientMovesForSegment
+								? "insufficient-moves-for-next-segment"
+								: "no-moves";
+							LogVehicleAuthority(
+								"route-resume-deferred",
+								$"{state.VehicleID.id}:{rebasedNodeId}:{state.GoalNodeID}:reverse-{deferredReason}",
+								$"route-resume-deferred vehicle={state.VehicleID.id} reason={deferredReason} currentNode={rebasedNodeId} finalGoal={state.GoalNodeID} source=reverse-rebuild",
+								dedupe: false);
 							continue;
 						}
 						if (rebasedPath == null || rebasedPath.world == null || rebasedPath.world.Count <= 1)
@@ -4813,10 +6595,45 @@ namespace GameplayTweaks
 
 						WorldPos rebasedReachedPos = rebasedPath.world[rebasedPath.world.Count - 1];
 						Node rebasedReachedNode = global::Game.Game.ctx.board.nodes.FindNearestNodeAround(rebasedReachedPos, 5f);
-						if (rebasedStartNode == null || rebasedReachedNode == null || ShouldBlockHumanImmediateReverse(state.VehicleID, rebasedStartNode.id, rebasedReachedNode.id))
+						if (rebasedStartNode == null || rebasedReachedNode == null)
 						{
-							LogVehicleAuthority("turnstart-mobile-start-blocked", $"{state.VehicleID.id}:{rebasedNodeId}:{state.GoalNodeID}:reverse", $"turnstart-mobile-start-blocked vehicle={state.VehicleID.id} committedNode={rebasedNodeId} committedSource={rebasedSource} finalGoal={state.GoalNodeID} reason=reverse-rebuild", dedupe: false);
+							LogVehicleAuthority("turnstart-mobile-start-blocked", $"{state.VehicleID.id}:{rebasedNodeId}:{state.GoalNodeID}:reverse-invalid", $"turnstart-mobile-start-blocked vehicle={state.VehicleID.id} committedNode={rebasedNodeId} committedSource={rebasedSource} finalGoal={state.GoalNodeID} reason=reverse-rebuild-invalid", dedupe: false);
 							continue;
+						}
+						if (IsHumanImmediateReverseSegment(state.VehicleID, rebasedStartNode.id, rebasedReachedNode.id))
+						{
+							pathBuildStopwatch.Restart();
+							bool builtBridgePath = TryBuildQueuedHumanVehiclePathFromCommittedNode(player, peep, assignment, goalNode, freeDrive: true, out PathData bridgePath, out Node bridgeStartNode, out QueuedHumanVehiclePathBuildResult bridgeBuildResult);
+							pathBuildStopwatch.Stop();
+							pathBuildMs += pathBuildStopwatch.ElapsedMilliseconds;
+							if (builtBridgePath
+								&& bridgePath?.world != null
+								&& bridgePath.world.Count > 1)
+							{
+								WorldPos bridgeReachedPos = bridgePath.world[bridgePath.world.Count - 1];
+								Node bridgeReachedNode = global::Game.Game.ctx.board.nodes.FindNearestNodeAround(bridgeReachedPos, 5f);
+								if (bridgeStartNode != null && bridgeReachedNode != null && bridgeReachedNode.id == state.GoalNodeID)
+								{
+									rebasedPath = bridgePath;
+									rebasedStartNode = bridgeStartNode;
+									rebasedReachedNode = bridgeReachedNode;
+									LogVehicleAuthority(
+										"route-resume-freebridge",
+										$"{state.VehicleID.id}:{rebasedNodeId}:{state.GoalNodeID}:{bridgeBuildResult}",
+										$"route-resume-freebridge vehicle={state.VehicleID.id} committedNode={rebasedNodeId} committedSource={rebasedSource} finalGoal={state.GoalNodeID} reason=avoid-immediate-reverse",
+										dedupe: false);
+								}
+								else
+								{
+									LogVehicleAuthority("turnstart-mobile-start-blocked", $"{state.VehicleID.id}:{rebasedNodeId}:{state.GoalNodeID}:reverse-bridge-miss", $"turnstart-mobile-start-blocked vehicle={state.VehicleID.id} committedNode={rebasedNodeId} committedSource={rebasedSource} finalGoal={state.GoalNodeID} reason=reverse-bridge-miss bridgeNode={bridgeReachedNode?.id ?? NodeID.INVALID}", dedupe: false);
+									continue;
+								}
+							}
+							else
+							{
+								LogVehicleAuthority("turnstart-mobile-start-blocked", $"{state.VehicleID.id}:{rebasedNodeId}:{state.GoalNodeID}:reverse", $"turnstart-mobile-start-blocked vehicle={state.VehicleID.id} committedNode={rebasedNodeId} committedSource={rebasedSource} finalGoal={state.GoalNodeID} reason=reverse-rebuild", dedupe: false);
+								continue;
+							}
 						}
 
 						path = rebasedPath;
@@ -4826,6 +6643,7 @@ namespace GameplayTweaks
 						LogVehicleAuthority("resume-segment-rebased", $"{state.VehicleID.id}:{startNode.id}:{reachedNode.id}:{state.GoalNodeID}", $"resume-segment-rebased vehicle={state.VehicleID.id} startNode={startNode.id} nextGoal={reachedNode.id} finalGoal={state.GoalNodeID} source={rebasedSource}", dedupe: false);
 					}
 					bool instant = !player.IsHuman;
+					System.Diagnostics.Stopwatch markKnownStopwatch = System.Diagnostics.Stopwatch.StartNew();
 					foreach (PathNode pathNode in path.nodes)
 					{
 						if (player.IsHuman && !pathNode.node.known.Get(PlayerID.HumanPlayer))
@@ -4834,34 +6652,50 @@ namespace GameplayTweaks
 						}
 						player.meetings.MarkNodeAsKnown(pathNode.node, expectedSeen: true, instant);
 					}
+					markKnownStopwatch.Stop();
+					markKnownMs += markKnownStopwatch.ElapsedMilliseconds;
 
+					HumanVehicleTravelEndSyncPatch.ClearDeliveryPumpSegmentGuard(state.VehicleID, "queued-route-resume");
+					sectionTicks = System.Diagnostics.Stopwatch.GetTimestamp();
 					MarkHumanVehicleTravelActive(state.VehicleID, state.PeepID, QueuedRouteResumeCommandOwnerKey, startNode?.id ?? NodeID.INVALID, reachedNode.id, state.GoalNodeID);
-					MarkQueuedFinalGoalKnownForScopePreview(player, peep, state.VehicleID, startNode, reachedNode, state.GoalNodeID, "route-resume-goal-known");
+					stateMs += GetElapsedMilliseconds(sectionTicks);
 					NodeID previewFinalNodeId = reachedNode.id;
+					sectionTicks = System.Diagnostics.Stopwatch.GetTimestamp();
 					TryGetHumanVehicleTravelDisplayFinalNodeId(state.VehicleID, reachedNode.id, out previewFinalNodeId, out string previewFinalSource);
+					displayMs += GetElapsedMilliseconds(sectionTicks);
 					Node refreshStartNode = rebasedBeforeRefresh ? null : startNode;
 					if (rebasedBeforeRefresh)
 					{
 						LogVehicleAuthority("queued-resume-refresh-suppressed", $"{state.VehicleID.id}:{state.StartNodeID}:{startNode?.id ?? NodeID.INVALID}:{reachedNode.id}", $"queued-resume-refresh-suppressed vehicle={state.VehicleID.id} staleStart={state.StartNodeID} rebasedStart={startNode?.id ?? NodeID.INVALID} finalGoal={state.GoalNodeID}", dedupe: false);
 					}
+					System.Diagnostics.Stopwatch hudRefreshStopwatch = System.Diagnostics.Stopwatch.StartNew();
 					TryRefreshCrewHudStateAfterTravel(state.VehicleID, previewFinalNodeId);
+					hudRefreshStopwatch.Stop();
+					hudRefreshMs += hudRefreshStopwatch.ElapsedMilliseconds;
 					if (refreshStartNode?.id.IsValid == true && previewFinalNodeId.IsValid && refreshStartNode.id != previewFinalNodeId)
 					{
 						HideCornerInfoIfShowingNode(refreshStartNode.id);
 					}
-					Node previewFinalNode = previewFinalNodeId.FindNode();
-					if (refreshStartNode != null && previewFinalNode != null && refreshStartNode.id.IsValid && previewFinalNode.id.IsValid && refreshStartNode.id != previewFinalNode.id)
-					{
-						GameplayTweaksPlugin.RefreshBuildingPickStateAfterHumanVehicleTravel(refreshStartNode, previewFinalNode, "travel-start-preview", state.VehicleID);
-					}
+					LogVehicleAuthority("route-resume-business-preview-skipped", $"{state.VehicleID.id}:{startNode?.id ?? NodeID.INVALID}:{reachedNode.id}:{state.GoalNodeID}", $"route-resume-business-preview-skipped vehicle={state.VehicleID.id} startNode={startNode?.id ?? NodeID.INVALID} nextNode={reachedNode.id} finalGoal={state.GoalNodeID} reason=route-node-authority", dedupe: false);
 					LogVehicleAuthority("route-resume", $"{state.VehicleID.id}:{startNode?.id ?? NodeID.INVALID}:{reachedNode.id}:{state.GoalNodeID}", $"route-resume vehicle={state.VehicleID.id} startNode={startNode?.id ?? NodeID.INVALID} nextGoal={reachedNode.id} finalGoal={state.GoalNodeID} previewNode={previewFinalNodeId} previewSource={previewFinalSource}", dedupe: false);
 					if (startNode?.id.IsValid == true)
 					{
+						System.Diagnostics.Stopwatch syncStopwatch = System.Diagnostics.Stopwatch.StartNew();
 						TrySyncVehicleOccupantsToNode(player.crew, state.VehicleID, startNode.id, "resume-travel-start", syncVehicle: false);
+						syncStopwatch.Stop();
+						syncMs += syncStopwatch.ElapsedMilliseconds;
 					}
+					System.Diagnostics.Stopwatch driveStopwatch = System.Diagnostics.Stopwatch.StartNew();
 					global::Game.Game.ctx.transit.DriveOnPath(player.PID, vehicle, path);
+					driveStopwatch.Stop();
+					driveMs += driveStopwatch.ElapsedMilliseconds;
 					peep.components.agent.AddXP(XPSource.FromDriving);
 					vehicle.components.mobile.UpdateHealthFrom(assignment, VehicleHealthSource.FromDriving);
+					routeDetailStopwatch.Stop();
+					if (routeDetailStopwatch.ElapsedMilliseconds >= 20)
+					{
+						Debug.Log($"[PERF][RouteResumeDetail] outcome=started ms={routeDetailStopwatch.ElapsedMilliseconds} bridgeMs={bridgeMs} authorityMs={authorityMs} entityMs={entityMs} pathBuildMs={pathBuildMs} rebaseMs={rebaseMs} reachedNodeMs={reachedNodeMs} markKnownMs={markKnownMs} stateMs={stateMs} displayMs={displayMs} hudMs={hudRefreshMs} syncMs={syncMs} driveMs={driveMs} vehicle={state.VehicleID.id} peep={state.PeepID.id} nodes={path?.nodes?.Count ?? 0} world={path?.world?.Count ?? 0} startNode={startNode?.id ?? NodeID.INVALID} nextNode={reachedNode.id} finalGoal={state.GoalNodeID} source={source} sourceTag={sourceTag} frame={Time.frameCount}");
+					}
 				}
 				catch (Exception ex)
 				{
@@ -4869,7 +6703,14 @@ namespace GameplayTweaks
 					ClearPendingHumanVehicleTravel(state.VehicleID, "invalid");
 				}
 			}
-			_turnStartFinalizedQueuedRouteVehicleIds.Clear();
+			if (singleVehicle)
+			{
+				_turnStartFinalizedQueuedRouteVehicleIds.Remove((long)onlyVehicleId.id);
+			}
+			else
+			{
+				_turnStartFinalizedQueuedRouteVehicleIds.Clear();
+			}
 		}
 
 		internal static void LogSelectionHookConfiguration(MethodInfo mobileActivation, MethodInfo crewPickOnClick, MethodInfo crewPickMouseover)
@@ -5028,7 +6869,30 @@ namespace GameplayTweaks
 		{
 			nodeId = NodeID.INVALID;
 			source = "none";
-			return vehicleId.IsValid && TryGetVehicleLiveAuthorityNodeId(vehicleId.FindEntity(), out nodeId, out source);
+			if (!vehicleId.IsValid)
+			{
+				return false;
+			}
+
+			long vehicleKey = (long)vehicleId.id;
+			int frame = Time.frameCount;
+			if (_vehicleLiveAuthorityNodeCacheByVehicleId.TryGetValue(vehicleKey, out CachedVehicleNodeAuthority cached)
+				&& cached.Frame == frame)
+			{
+				nodeId = cached.NodeId;
+				source = cached.Source ?? "none";
+				return cached.HasNode;
+			}
+
+			bool hasNode = TryGetVehicleLiveAuthorityNodeId(vehicleId.FindEntity(), out nodeId, out source);
+			_vehicleLiveAuthorityNodeCacheByVehicleId[vehicleKey] = new CachedVehicleNodeAuthority
+			{
+				Frame = frame,
+				HasNode = hasNode,
+				NodeId = hasNode ? nodeId : NodeID.INVALID,
+				Source = hasNode ? source : "none"
+			};
+			return hasNode;
 		}
 
 		internal static bool TryGetAuthoritativeVehicleNodeId(EntityID vehicleId, out NodeID nodeId, out string source)
@@ -5059,18 +6923,30 @@ namespace GameplayTweaks
 		public static int GetVehicleCrewSlots(EntityID vehicleId)
 		{
 			Entity v = vehicleId.FindEntity();
-			if (v?.config == null)
-				return DefaultCrewSlots;
-			string key = v.config.Template.String;
-			return key != null && VehicleCrewSlots.TryGetValue(key, out int slots) ? slots : DefaultCrewSlots;
+			return GetVehicleCrewSlots(v);
 		}
 
 		public static int GetVehicleCrewSlots(Entity vehicle)
 		{
 			if (vehicle?.config == null)
 				return DefaultCrewSlots;
-			string key = vehicle.config.Template.String;
-			return key != null && VehicleCrewSlots.TryGetValue(key, out int slots) ? slots : DefaultCrewSlots;
+			return ResolveVehicleCrewSlots(vehicle.config.Template.String);
+		}
+
+		private static int ResolveVehicleCrewSlots(string template)
+		{
+			if (string.IsNullOrEmpty(template))
+				return DefaultCrewSlots;
+			if (VehicleCrewSlots.TryGetValue(template, out int slots))
+				return slots;
+			const string preorderSuffix = "-preorder";
+			if (template.EndsWith(preorderSuffix, StringComparison.OrdinalIgnoreCase))
+			{
+				string baseTemplate = template.Substring(0, template.Length - preorderSuffix.Length);
+				if (!string.IsNullOrEmpty(baseTemplate) && VehicleCrewSlots.TryGetValue(baseTemplate, out slots))
+					return slots;
+			}
+			return DefaultCrewSlots;
 		}
 
 		public static int GetVehicleCrewCount(PlayerCrew crew, EntityID vehicleId)
@@ -5358,9 +7234,7 @@ namespace GameplayTweaks
 					_lastEnemyVehicleRepresentativeByVehicleId[vehicleKey] = (long)representativePeepId.id;
 					if (priorRepresentativePeepId != representativePeepId)
 					{
-						GameplayTweaksPlugin.VerificationLog(
-							"VehicleNodeAuthority",
-							$"representative-swap vehicle={vehicleId.id} from={priorRepresentativePeepId.id} to={representativePeepId.id} source={source}");
+						RecordEnemyVehicleRepresentativeSwap(source);
 					}
 					return;
 				}
@@ -5421,8 +7295,12 @@ namespace GameplayTweaks
 			EntityID deadRepresentativePeepId = EntityID.INVALID;
 			if (!representativePeepId.IsValid)
 			{
-				TryGetRecentEnemyVehicleDeathRepresentative(vehicleId, out deadRepresentativePeepId);
-				if (deadRepresentativePeepId.IsValid && !EnemyVehicleHasSearchableRewards(vehicle))
+				bool suppressDeadRepresentative = ownerPid.FindPlayer()?.IsJustCop == true;
+				if (!suppressDeadRepresentative)
+				{
+					TryGetRecentEnemyVehicleDeathRepresentative(vehicleId, out deadRepresentativePeepId);
+				}
+				if (deadRepresentativePeepId.IsValid && vehicle == null)
 				{
 					TryCleanupEmptyEnemyVehiclePresentation(crew, vehicleId, "display-state-prune", out _);
 					deadRepresentativePeepId = EntityID.INVALID;
@@ -5456,7 +7334,7 @@ namespace GameplayTweaks
 				CrewSlots = Math.Max(1, GetVehicleCrewSlots(vehicleId)),
 				Presentation = liveOccupantCount > 0
 					? EnemyVehiclePresentationMode.ActiveCrew
-					: EnemyVehiclePresentationMode.Empty
+					: (deadRepresentativePeepId.IsValid ? EnemyVehiclePresentationMode.DeadCrew : EnemyVehiclePresentationMode.Empty)
 			};
 			return true;
 		}
@@ -5539,6 +7417,15 @@ namespace GameplayTweaks
 			{
 				return false;
 			}
+			if (IsHumanVehicleDeliveryAutomationActive(vehicleId))
+			{
+				LogVehicleAuthority(
+					"route-requeue-allowed",
+					$"{vehicleId.id}:{startNodeId}:{goalNodeId}:delivery",
+					$"route-requeue-allowed vehicle={vehicleId.id} currentNode={startNodeId} finalGoal={goalNodeId} reason=delivery-automation",
+					dedupe: true);
+				return false;
+			}
 
 			long vehicleKey = (long)vehicleId.id;
 			int day = G.GetNow().days;
@@ -5559,6 +7446,23 @@ namespace GameplayTweaks
 			state.Day = day;
 			_recentHumanVehicleRequeueByVehicleId[vehicleKey] = state;
 			return false;
+		}
+
+		internal static bool IsHumanVehicleDeliveryAutomationActive(EntityID vehicleId)
+		{
+			try
+			{
+				if (!vehicleId.IsValid)
+				{
+					return false;
+				}
+				AutomationSequence sequence = G.GetHumanPlayer()?.automation?.GetAutoOrNull(vehicleId);
+				return sequence != null && sequence.IsAutoActive && sequence.steps != null && sequence.steps.Count > 0;
+			}
+			catch
+			{
+				return false;
+			}
 		}
 
 		internal static bool TryStartCrewVisitWithPendingSelectionScope(Entity targetPeep, CrewAssignment matchingCrew)
@@ -5754,6 +7658,22 @@ namespace GameplayTweaks
 					|| !foundBestNode
 					|| priorNode == null
 					|| allowStaleCommittedRepair);
+			if (canRepairFromPeepNode
+				&& string.Equals(priorSource, "mobile", StringComparison.Ordinal)
+				&& priorNode?.id.IsValid == true
+				&& peepNodeId.IsValid
+				&& priorNode.id != peepNodeId
+				&& TryGetVehicleLiveAuthorityNodeId(vehicleId, out NodeID liveStartNodeId, out string liveStartSource)
+				&& liveStartNodeId.IsValid
+				&& liveStartNodeId == priorNode.id)
+			{
+				LogVehicleAuthority(
+					"path-peep-live-suppressed",
+					$"{vehicleId.id}:{priorNode.id}:{peepNodeId}:{liveStartSource}",
+					$"path-peep-live-suppressed vehicle={vehicleId.id} vehicleNode={priorNode.id} peepNode={peepNodeId} vehicleSource={liveStartSource} priorSource={priorSource} reason=prefer-mobile-authority",
+					dedupe: true);
+				return true;
+			}
 			if (canRepairFromPeepNode)
 			{
 				Node peepNode = peepNodeId.FindNode();
@@ -5868,7 +7788,7 @@ namespace GameplayTweaks
 
 		internal static bool ShouldRunAiHireNormalization(PlayerInfo player, Entity peep, bool isBoss)
 		{
-			if (player == null || player.PID.IsHumanPlayer || player.crew == null || player.crew.IsCrewDefeated || isBoss)
+			if (player == null || player.PID.IsHumanPlayer || player.IsJustCop || player.IsCopOrFed || player.crew == null || player.crew.IsCrewDefeated || isBoss)
 			{
 				return false;
 			}
@@ -6398,7 +8318,7 @@ namespace GameplayTweaks
 		{
 			try
 			{
-				if (player == null || player.PID.IsHumanPlayer || player.crew == null || player.crew.IsCrewDefeated)
+				if (player == null || player.PID.IsHumanPlayer || player.IsJustCop || player.IsCopOrFed || player.crew == null || player.crew.IsCrewDefeated)
 				{
 					return;
 				}
@@ -6888,7 +8808,7 @@ namespace GameplayTweaks
 
 		internal static void HandleCrewDepartureFromGang(PlayerInfo player, EntityID peepId, EntityID priorVehicleId, string source)
 		{
-			if (player?.crew == null || !peepId.IsValid || !priorVehicleId.IsValid)
+			if (player?.crew == null || !peepId.IsValid)
 			{
 				return;
 			}
@@ -6896,6 +8816,24 @@ namespace GameplayTweaks
 			try
 			{
 				PlayerCrew crew = player.crew;
+				if (priorVehicleId.IsValid)
+				{
+					try
+					{
+						player.automation?.TryClearAutomationCrew(new CrewAssignment(peepId).SetVehicle(priorVehicleId));
+					}
+					catch (Exception ex)
+					{
+						Debug.LogWarning("[GameplayTweaks] HandleCrewDepartureFromGang automation cleanup: " + ex.Message);
+					}
+				}
+				else if (player.PID.IsHumanPlayer)
+				{
+					GameplayTweaksPlugin.RefreshCrewHudUi(source + "-crew-departure", rebuildCards: true);
+					GameplayTweaksPlugin.VerificationLog("VehicleNodeAuthority", $"crew-departure gang={player.PID.id} peep={peepId.id} vehicle=0 liveOccupants=0 activeDriver=0 source={source}");
+					return;
+				}
+
 				long vehicleKey = (long)priorVehicleId.id;
 				if (DriverMap.TryGetValue(vehicleKey, out long rawDriverId) && rawDriverId == (long)peepId.id)
 				{
@@ -6924,6 +8862,7 @@ namespace GameplayTweaks
 				if (player.PID.IsHumanPlayer)
 				{
 					TryRefreshCrewHudCardsForVehicle(priorVehicleId);
+					GameplayTweaksPlugin.RefreshCrewHudUi(source + "-crew-departure", rebuildCards: true);
 				}
 				else
 				{
@@ -7092,6 +9031,10 @@ namespace GameplayTweaks
 			if (vehicle == null || !nodeId.IsValid || vehicle.components?.agent == null)
 			{
 				return false;
+			}
+			if (vehicle.Id.IsValid)
+			{
+				ClearVehicleNodeAuthorityCaches(vehicle.Id);
 			}
 			bool changed = false;
 			NodeID currentNodeId = vehicle.data?.agent?.nid ?? NodeID.INVALID;
@@ -7621,16 +9564,28 @@ namespace GameplayTweaks
 				expectedNodeId = pendingState.ExpectedNodeID;
 				goalNodeId = pendingState.GoalNodeID;
 				startNodeId = pendingState.StartNodeID;
+				bool hasObservedExpectedArrival = TryGetObservedHumanVehicleReachedNode(vehicleId, pendingState.ExpectedNodeID, Time.frameCount, out string observedExpectedSource);
+				string expectedArrivalSource = hasObservedExpectedArrival
+					? "observed-" + observedExpectedSource
+					: "expected";
 				if (!nodeId.IsValid)
 				{
 					nodeId = pendingState.ExpectedNodeID;
-					source = "pending";
+					source = expectedArrivalSource;
 				}
 				else if (nodeId != pendingState.ExpectedNodeID)
 				{
-					LogVehicleAuthority("travel-finalize-override", $"{vehicleId.id}:{pendingState.ExpectedNodeID}:{nodeId}", $"travel-finalize-override vehicle={vehicleId.id} expectedNode={pendingState.ExpectedNodeID} staleNode={nodeId}");
+					string overrideReason = hasObservedExpectedArrival ? "observed-arrival" : "expected-authority";
+					LogVehicleAuthority(
+						"travel-finalize-override",
+						$"{vehicleId.id}:{pendingState.ExpectedNodeID}:{nodeId}",
+						$"travel-finalize-override vehicle={vehicleId.id} expectedNode={pendingState.ExpectedNodeID} staleNode={nodeId} source={expectedArrivalSource} reason={overrideReason}");
 					nodeId = pendingState.ExpectedNodeID;
-					source = "expected";
+					source = expectedArrivalSource;
+				}
+				else if (hasObservedExpectedArrival)
+				{
+					source = expectedArrivalSource;
 				}
 			}
 			if (!nodeId.IsValid)
@@ -7653,6 +9608,10 @@ namespace GameplayTweaks
 				SetRecentFinalizedNode(vehicleId, nodeId);
 				LogVehicleAuthority("travel-finalize", $"{vehicleId.id}:{nodeId}:{expectedNodeId}:{goalNodeId}", $"travel-segment-finalize vehicle={vehicleId.id} startNode={startNodeId} finalNode={nodeId} expectedNode={expectedNodeId} goalNode={goalNodeId} mismatch={mismatch} source={source}", dedupe: false);
 				LogVehicleAuthority("travel-end", $"{vehicleId.id}:{nodeId}:{occupantCount}", $"travel-end-sync vehicle={vehicleId.id} node={nodeId} source={source} occupants={occupantCount} mismatches={mismatchCount}", dedupe: false);
+				if (crew?.PID.IsHumanPlayer == true)
+				{
+					GameplayTweaksPlugin.TurnUpdatePatch.TryRunAiHumanRobberyContactScanNow("human-travel-finalize");
+				}
 			}
 			else if (crew?.PID.IsAIPlayer == true && nodeId.IsValid)
 			{
@@ -7874,6 +9833,13 @@ namespace GameplayTweaks
 
 		internal static bool TryBuildHumanVehicleCommandPath(CommandGoto command, out PathData path, out Node startNode, out string source)
 		{
+			long totalTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+			long segmentTicks = totalTicks;
+			long contextMs = 0L;
+			long goalMs = 0L;
+			long startResolveMs = 0L;
+			long authorityMs = 0L;
+			long pathfindMs = 0L;
 			path = null;
 			startNode = null;
 			source = "none";
@@ -7881,12 +9847,18 @@ namespace GameplayTweaks
 			{
 				return false;
 			}
+			contextMs = GetElapsedMs(segmentTicks);
+			segmentTicks = System.Diagnostics.Stopwatch.GetTimestamp();
 			Node goalNode = command.goalID.FindNode();
 			NodeID peepNodeId = peep.data?.agent?.nid ?? NodeID.INVALID;
+			goalMs = GetElapsedMs(segmentTicks);
+			segmentTicks = System.Diagnostics.Stopwatch.GetTimestamp();
 			if (goalNode == null || !TryGetResolvedHumanVehiclePathStartNode(assignment.VehicleID, peepNodeId, out startNode, out source, allowQueuedResumeRepair: true) || startNode == null)
 			{
 				return false;
 			}
+			startResolveMs = GetElapsedMs(segmentTicks);
+			segmentTicks = System.Diagnostics.Stopwatch.GetTimestamp();
 			if (TryGetAuthoritativeVehicleNodeId(assignment.VehicleID, out NodeID authoritativeNodeId, out string authoritativeSource)
 				&& authoritativeNodeId.IsValid
 				&& authoritativeNodeId != startNode.id
@@ -7895,6 +9867,8 @@ namespace GameplayTweaks
 			{
 				LogVehicleAuthority("human-start-rebased", $"{assignment.VehicleID.id}:{startNode.id}:{authoritativeNodeId}:{source}:command-build", $"human-start-rebased vehicle={assignment.VehicleID.id} startNode={startNode.id} source={source} authoritativeNode={authoritativeNodeId} authoritativeSource={authoritativeSource} phase=command-build", dedupe: false);
 			}
+			authorityMs = GetElapsedMs(segmentTicks);
+			segmentTicks = System.Diagnostics.Stopwatch.GetTimestamp();
 			int movesRemaining = command.freeDrive ? int.MaxValue : peep.components.agent.MovesRemaining;
 			if (movesRemaining <= 0)
 			{
@@ -7911,8 +9885,19 @@ namespace GameplayTweaks
 					result.PopulatePath(builtPath, startPos, maxCost);
 				}
 			});
+			pathfindMs = GetElapsedMs(segmentTicks);
 			path = builtPath;
+			long totalMs = GetElapsedMs(totalTicks);
+			if (totalMs >= 12L || pathfindMs >= 8L || startResolveMs >= 8L)
+			{
+				Debug.Log($"[PERF][HumanVehicleCommandPath] ms={totalMs} contextMs={contextMs} goalMs={goalMs} startResolveMs={startResolveMs} authorityMs={authorityMs} pathfindMs={pathfindMs} vehicle={assignment.VehicleID.id} peep={assignment.peepId.id} startNode={startNode?.id ?? NodeID.INVALID} goalNode={command.goalID} source={source} moves={movesRemaining} pathNodes={builtPath?.nodes?.Count ?? 0} pathWorld={builtPath?.world?.Count ?? 0} frame={Time.frameCount}");
+			}
 			return true;
+		}
+
+		private static long GetElapsedMs(long startTicks)
+		{
+			return (System.Diagnostics.Stopwatch.GetTimestamp() - startTicks) * 1000L / System.Diagnostics.Stopwatch.Frequency;
 		}
 
 		internal static bool TryGetCrewCommandNode(CrewAssignment crew, out Node node)
@@ -8332,6 +10317,17 @@ namespace GameplayTweaks
 				return;
 			}
 
+			if (string.Equals(sourceTag, "travel-start-preview-goal-known", StringComparison.Ordinal)
+				|| string.Equals(sourceTag, "route-resume-goal-known", StringComparison.Ordinal))
+			{
+				LogVehicleAuthority(
+					"scope-preview-final-goal-skipped",
+					$"{vehicleId.id}:{finalNode.id}:{sourceTag}",
+					$"scope-preview-final-goal-skipped vehicle={vehicleId.id} node={finalNode.id} reachedNode={reachedNode?.id ?? NodeID.INVALID} source={sourceTag} reason=route-node-authority",
+					dedupe: false);
+				return;
+			}
+
 			bool wasKnown = true;
 			try
 			{
@@ -8470,7 +10466,28 @@ namespace GameplayTweaks
 
 			bool sourceIsPreviewAuthority = IsHumanVehicleScopePreviewStatusAuthorizedSource(previewSource);
 			bool physicallyAtPreviewNode = IsHumanVehiclePhysicallyAtNode(selectedVehicleId, previewNodeId);
-			if (!sourceIsPreviewAuthority && !physicallyAtPreviewNode)
+			bool routeExpectedScopeAccess = IsHumanVehicleRouteSimExpectedAccessNode(selectedVehicleId, previewNodeId, "scope-preview-building", out string routeExpectedSource);
+			if (buildingId.IsValid
+				&& IsHumanVehicleFinalGoalPreviewOnlySource(previewSource)
+				&& !physicallyAtPreviewNode
+				&& !routeExpectedScopeAccess)
+			{
+				LogVehicleAuthority(
+					"scope-preview-physical-presence-required",
+					$"{selectedVehicleId.id}:{requestedNodeId}:{previewNodeId}:{previewSource}:{buildingId.id}",
+					$"scope-preview-physical-presence-required vehicle={selectedVehicleId.id} requestedNode={requestedNodeId} resolvedNode={previewNodeId} building={buildingId.id} resolvedSource={previewSource} reason=final-goal-not-arrived selectedSource={selectedSource}",
+					dedupe: false);
+				return false;
+			}
+			if (routeExpectedScopeAccess)
+			{
+				LogVehicleAuthority(
+					"scope-preview-route-access-allowed",
+					$"{selectedVehicleId.id}:{requestedNodeId}:{previewNodeId}:{previewSource}:{buildingId.id}",
+					$"scope-preview-route-access-allowed vehicle={selectedVehicleId.id} requestedNode={requestedNodeId} resolvedNode={previewNodeId} building={buildingId.id} resolvedSource={previewSource} routeSource={routeExpectedSource} reason=active-route-expected selectedSource={selectedSource}",
+					dedupe: false);
+			}
+			if (!sourceIsPreviewAuthority && !physicallyAtPreviewNode && !routeExpectedScopeAccess)
 			{
 				LogVehicleAuthority(
 					"scope-preview-source-rejected",
@@ -9085,8 +11102,7 @@ namespace GameplayTweaks
 				if (crewHud == null)
 					return;
 
-				FieldInfo allCardsField = typeof(CrewDialog).GetField("_allCards", BindingFlags.Instance | BindingFlags.NonPublic);
-				List<CrewCardContext> allCards = allCardsField?.GetValue(crewHud) as List<CrewCardContext>;
+				List<CrewCardContext> allCards = CrewDialogAllCardsField?.GetValue(crewHud) as List<CrewCardContext>;
 				if (allCards == null)
 					return;
 
@@ -9114,7 +11130,93 @@ namespace GameplayTweaks
 			}
 		}
 
+		private sealed class DeferredCrewHudVehicleRefresh
+		{
+			internal int Day;
+			internal int QueuedFrame;
+			internal int EarliestFrame;
+			internal EntityID VehicleId = EntityID.INVALID;
+			internal NodeID FinalNodeId = NodeID.INVALID;
+			internal string Source = string.Empty;
+		}
+
+		private static readonly Dictionary<long, DeferredCrewHudVehicleRefresh> DeferredCrewHudRefreshByVehicle = new Dictionary<long, DeferredCrewHudVehicleRefresh>();
+		private static readonly bool EnableRoutineCrewDisplayRefreshLog =
+			string.Equals(Environment.GetEnvironmentVariable("COG_VERBOSE_VEHICLE_AUTHORITY"), "1", StringComparison.Ordinal);
+
+		internal static void QueueDeferredCrewHudStateAfterTravel(EntityID vehicleId, NodeID finalNodeId, string sourceTag, int delayFrames = 8)
+		{
+			TryRefreshCrewHudStateAfterTravelInternal(vehicleId, finalNodeId, deferCardRefresh: true, sourceTag, delayFrames);
+		}
+
+		internal static void FlushDeferredCrewHudVehicleRefreshes(string sourceTag)
+		{
+			if (DeferredCrewHudRefreshByVehicle.Count == 0)
+			{
+				return;
+			}
+
+			int today = G.GetNow().days;
+			long readyKey = 0L;
+			int readyQueuedFrame = int.MaxValue;
+			foreach (KeyValuePair<long, DeferredCrewHudVehicleRefresh> pair in DeferredCrewHudRefreshByVehicle)
+			{
+				DeferredCrewHudVehicleRefresh candidate = pair.Value;
+				if (candidate == null || candidate.Day != today)
+				{
+					readyKey = pair.Key;
+					break;
+				}
+				if (Time.frameCount < Math.Max(candidate.QueuedFrame + 1, candidate.EarliestFrame))
+				{
+					continue;
+				}
+				if (candidate.QueuedFrame < readyQueuedFrame)
+				{
+					readyKey = pair.Key;
+					readyQueuedFrame = candidate.QueuedFrame;
+				}
+			}
+
+			if (readyKey == 0L)
+			{
+				return;
+			}
+
+			if (DeferredCrewHudRefreshByVehicle.TryGetValue(readyKey, out DeferredCrewHudVehicleRefresh refresh) && refresh != null)
+			{
+				long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+				try
+				{
+					TryRefreshCrewHudCardsForVehicle(refresh.VehicleId);
+				}
+				finally
+				{
+					DeferredCrewHudRefreshByVehicle.Remove(readyKey);
+					long elapsedMs = GetElapsedMs(startTicks);
+					if (elapsedMs >= 4L)
+					{
+						Debug.Log($"[PERF][DeferredCrewHudVehicleRefresh] ms={elapsedMs} vehicle={refresh.VehicleId.id} finalNode={refresh.FinalNodeId} source={refresh.Source} trigger={sourceTag} frame={Time.frameCount}");
+					}
+					LogVehicleAuthority(
+						"crew-display-refresh-flushed",
+						$"{refresh.VehicleId.id}:{refresh.FinalNodeId}:{refresh.Source}",
+						$"crew-display-refresh-flushed vehicle={refresh.VehicleId.id} finalNode={refresh.FinalNodeId} source={refresh.Source} trigger={sourceTag}",
+						dedupe: false);
+				}
+			}
+			else
+			{
+				DeferredCrewHudRefreshByVehicle.Remove(readyKey);
+			}
+		}
+
 		internal static void TryRefreshCrewHudStateAfterTravel(EntityID vehicleId, NodeID finalNodeId)
+		{
+			TryRefreshCrewHudStateAfterTravelInternal(vehicleId, finalNodeId, deferCardRefresh: false, "immediate", 0);
+		}
+
+		private static void TryRefreshCrewHudStateAfterTravelInternal(EntityID vehicleId, NodeID finalNodeId, bool deferCardRefresh, string sourceTag, int delayFrames)
 		{
 			if (!vehicleId.IsValid || !finalNodeId.IsValid)
 			{
@@ -9151,14 +11253,57 @@ namespace GameplayTweaks
 					RememberSelectedHumanVehicle(vehicleId);
 				}
 
-				TryRefreshCrewHudCardsForVehicle(vehicleId);
-				GameplayTweaksPlugin.PactColorUiPatch.RequestFullCrewPickRefresh("vehicle-travel", 0);
-				LogVehicleAuthority("crew-display-refresh", $"{vehicleId.id}:{finalNodeId}:{selected}", $"crew-display-refresh vehicle={vehicleId.id} selected={selected} finalNode={finalNodeId}", dedupe: false);
+				if (deferCardRefresh)
+				{
+					QueueDeferredCrewHudCardsForVehicle(vehicleId, finalNodeId, sourceTag, delayFrames);
+				}
+				else
+				{
+					TryRefreshCrewHudCardsForVehicle(vehicleId);
+				}
+				GameplayTweaksPlugin.PactColorUiPatch.RequestFullCrewPickRefresh("vehicle-travel", 18);
+				if (!deferCardRefresh || EnableRoutineCrewDisplayRefreshLog)
+				{
+					LogVehicleAuthority(
+						deferCardRefresh ? "crew-display-refresh-deferred" : "crew-display-refresh",
+						$"{vehicleId.id}:{finalNodeId}:{selected}:{sourceTag}",
+						$"crew-display-refresh{(deferCardRefresh ? "-deferred" : string.Empty)} vehicle={vehicleId.id} selected={selected} finalNode={finalNodeId} source={sourceTag}",
+						dedupe: false);
+				}
 			}
 			catch (Exception ex)
 			{
 				Debug.LogWarning("[GameplayTweaks] TryRefreshCrewHudStateAfterTravel: " + ex.Message);
 			}
+		}
+
+		private static void QueueDeferredCrewHudCardsForVehicle(EntityID vehicleId, NodeID finalNodeId, string sourceTag, int delayFrames)
+		{
+			if (!vehicleId.IsValid)
+			{
+				return;
+			}
+
+			long vehicleKey = (long)vehicleId.id;
+			int earliestFrame = Time.frameCount + Math.Max(1, delayFrames);
+			if (DeferredCrewHudRefreshByVehicle.TryGetValue(vehicleKey, out DeferredCrewHudVehicleRefresh existing)
+				&& existing != null
+				&& existing.Day == G.GetNow().days
+				&& existing.FinalNodeId == finalNodeId)
+			{
+				existing.EarliestFrame = Math.Min(existing.EarliestFrame, earliestFrame);
+				return;
+			}
+
+			DeferredCrewHudRefreshByVehicle[vehicleKey] = new DeferredCrewHudVehicleRefresh
+			{
+				Day = G.GetNow().days,
+				QueuedFrame = Time.frameCount,
+				EarliestFrame = earliestFrame,
+				VehicleId = vehicleId,
+				FinalNodeId = finalNodeId,
+				Source = string.IsNullOrWhiteSpace(sourceTag) ? "unknown" : sourceTag
+			};
 		}
 
 		internal static void HideCornerInfoIfShowingNode(NodeID nodeId)
@@ -9603,6 +11748,12 @@ namespace GameplayTweaks
 				harmony.Patch(crewPickRefresh, prefix: new HarmonyMethod(typeof(HumanCrewPickDriverPortraitPatch), nameof(HumanCrewPickDriverPortraitPatch.RefreshContentsPrefix)));
 				Debug.Log("[GameplayTweaks] Multi-crew vehicle: CrewPick driver portrait refresh patch applied");
 			}
+			MethodInfo selectionSetActive = typeof(SelectionManager).GetMethod("SetActive", BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(Entity) }, null);
+			if (selectionSetActive != null)
+			{
+				harmony.Patch(selectionSetActive, finalizer: new HarmonyMethod(typeof(SelectionManagerStaleEntityPatch), nameof(SelectionManagerStaleEntityPatch.SetActiveFinalizer)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: SelectionManager.SetActive stale entity guard applied");
+			}
 
 			// AllUnassignedVehicles: show vehicles with < 4 crew so player can add more
 			var getter = typeof(PlayerCrew).GetProperty("AllUnassignedVehicles")?.GetGetMethod();
@@ -9815,6 +11966,18 @@ namespace GameplayTweaks
 				harmony.Patch(refillCrewActionsMethod, postfix: new HarmonyMethod(typeof(HumanVehicleTurnStartResumeAfterRefillPatch), nameof(HumanVehicleTurnStartResumeAfterRefillPatch.Postfix)));
 				Debug.Log("[GameplayTweaks] Multi-crew vehicle: queued human route resume after refill applied");
 			}
+			var automationTurnMethod = typeof(AutomationExecutor).GetMethod("OnPlayerTurnStarted", BindingFlags.Instance | BindingFlags.Public);
+			if (automationTurnMethod != null)
+			{
+				harmony.Patch(automationTurnMethod, prefix: new HarmonyMethod(typeof(HumanVehicleAutomationDriverPatch), nameof(HumanVehicleAutomationDriverPatch.Prefix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: human vehicle automation driver routing applied");
+			}
+			var handleAddingCommandMethod = typeof(CommandExecutor).GetMethod("HandleAddingCommand", BindingFlags.Instance | BindingFlags.NonPublic);
+			if (handleAddingCommandMethod != null)
+			{
+				harmony.Patch(handleAddingCommandMethod, prefix: new HarmonyMethod(typeof(HumanVehicleCommandQueueDriverPatch), nameof(HumanVehicleCommandQueueDriverPatch.HandleAddingCommandPrefix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: human vehicle command queue driver routing applied");
+			}
 			var flushQueueMethod = typeof(CommandExecutor).GetMethod("FlushQueue", BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(EntityID), typeof(bool) }, null);
 			if (flushQueueMethod != null)
 			{
@@ -9844,7 +12007,10 @@ namespace GameplayTweaks
 			MethodInfo carInputUpdateLine = typeof(CarInputMode).GetMethod("UpdateLine", BindingFlags.Instance | BindingFlags.NonPublic);
 			if (carInputUpdateLine != null)
 			{
-				harmony.Patch(carInputUpdateLine, prefix: new HarmonyMethod(typeof(CarInputModeDriverPeepPatch), nameof(CarInputModeDriverPeepPatch.UpdateLinePrefix)));
+				harmony.Patch(
+					carInputUpdateLine,
+					prefix: new HarmonyMethod(typeof(CarInputModeDriverPeepPatch), nameof(CarInputModeDriverPeepPatch.UpdateLinePrefix)),
+					finalizer: new HarmonyMethod(typeof(CarInputModeDriverPeepPatch), nameof(CarInputModeDriverPeepPatch.UpdateLineFinalizer)));
 				Debug.Log("[GameplayTweaks] Multi-crew vehicle: CarInputMode.UpdateLine driver authority applied");
 			}
 			// CommandGoto.StartDrivingCar: block vehicle movement when passenger (safety net if CanStart was bypassed)
@@ -9865,6 +12031,11 @@ namespace GameplayTweaks
 			{
 				harmony.Patch(canActivateAfterDequeue, prefix: new HarmonyMethod(typeof(HumanVehicleQueuedCanActivatePatch), nameof(HumanVehicleQueuedCanActivatePatch.Prefix)));
 				Debug.Log("[GameplayTweaks] Multi-crew vehicle: CommandGoto.CanActivateAfterDequeue human vehicle stale queue skip applied");
+			}
+			int commandGotoExecuteTimingMethods = HumanVehicleCommandGotoExecuteTimingPatch.Patch(harmony);
+			if (commandGotoExecuteTimingMethods > 0)
+			{
+				Debug.Log($"[GameplayTweaks] Multi-crew vehicle: CommandGoto execute segment timing applied methods={commandGotoExecuteTimingMethods} owners=human,ai");
 			}
 			var findDrivingPath = typeof(TransitManager).GetMethod("FindDrivingPath", BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(PlayerID), typeof(Entity), typeof(WorldPos), typeof(Action<Pathfinding.Result>) }, null);
 			if (findDrivingPath != null)
@@ -9892,6 +12063,34 @@ namespace GameplayTweaks
 				harmony.Patch(getCornerNode, prefix: new HarmonyMethod(typeof(CrewInfoGenGotoCornerPatch), nameof(CrewInfoGenGotoCornerPatch.GetCornerNodePrefix)));
 				Debug.Log("[GameplayTweaks] Multi-crew vehicle: CrewInfoGen.GetCornerNode (vehicle position) applied");
 			}
+			var muscleTextLineBottom = typeof(CrewInfoGenMuscle).GetMethod("GetTextLineBottom", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+			if (muscleTextLineBottom != null)
+			{
+				harmony.Patch(muscleTextLineBottom, postfix: new HarmonyMethod(typeof(CrewCardRouteModeLabelPatch), nameof(CrewCardRouteModeLabelPatch.MuscleTextLineBottomPostfix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: crew card route-mode label applied");
+			}
+			var jobTextLineBottom = typeof(CrewInfoGenJob).GetMethod("GetTextLineBottom", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+			if (jobTextLineBottom != null)
+			{
+				harmony.Patch(jobTextLineBottom, postfix: new HarmonyMethod(typeof(CrewCardRouteModeLabelPatch), nameof(CrewCardRouteModeLabelPatch.JobTextLineBottomPostfix)));
+			}
+			var emptyVehicleTextLineBottom = typeof(CrewInfoGenJustVehicle).GetMethod("GetTextLineBottom", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+			if (emptyVehicleTextLineBottom != null)
+			{
+				harmony.Patch(emptyVehicleTextLineBottom, postfix: new HarmonyMethod(typeof(CrewCardRouteModeLabelPatch), nameof(CrewCardRouteModeLabelPatch.EmptyVehicleTextLineBottomPostfix)));
+			}
+			var getCrewName = typeof(CrewInfoGen).GetMethod("GetCrewName", BindingFlags.Instance | BindingFlags.NonPublic);
+			if (getCrewName != null)
+			{
+				harmony.Patch(getCrewName, finalizer: new HarmonyMethod(typeof(CrewInfoGenCrewNameStabilityPatch), nameof(CrewInfoGenCrewNameStabilityPatch.Finalizer)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: CrewInfoGen.GetCrewName stale assignment guard applied");
+			}
+			var getEmptyVehicleName = typeof(CrewInfoGen).GetMethod("GetEmptyVehicleName", BindingFlags.Instance | BindingFlags.NonPublic);
+			if (getEmptyVehicleName != null)
+			{
+				harmony.Patch(getEmptyVehicleName, finalizer: new HarmonyMethod(typeof(CrewInfoGenEmptyVehicleNameStabilityPatch), nameof(CrewInfoGenEmptyVehicleNameStabilityPatch.Finalizer)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: CrewInfoGen.GetEmptyVehicleName stale vehicle guard applied");
+			}
 
 			// Crew card: show other crew in same vehicle below main portrait
 			var refreshPanel = typeof(CrewCardContext).GetMethod("RefreshPanel", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -9903,8 +12102,17 @@ namespace GameplayTweaks
 			var setCardState = typeof(CrewDialog).GetMethod("SetCardState", BindingFlags.NonPublic | BindingFlags.Instance, null, new[] { typeof(CrewCardContext), typeof(bool) }, null);
 			if (setCardState != null)
 			{
-				harmony.Patch(setCardState, postfix: new HarmonyMethod(typeof(CrewDialogCardToggleLayoutPatch), nameof(CrewDialogCardToggleLayoutPatch.Postfix)));
+				harmony.Patch(
+					setCardState,
+					prefix: new HarmonyMethod(typeof(CrewDialogCardToggleLayoutPatch), nameof(CrewDialogCardToggleLayoutPatch.Prefix)),
+					postfix: new HarmonyMethod(typeof(CrewDialogCardToggleLayoutPatch), nameof(CrewDialogCardToggleLayoutPatch.Postfix)));
 				Debug.Log("[GameplayTweaks] Multi-crew vehicle: CrewDialog.SetCardState layout refresh applied");
+			}
+			var generateCardDataFor = typeof(CrewDialog).GetMethod("GenerateCardDataFor", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(CrewCardType) }, null);
+			if (generateCardDataFor != null)
+			{
+				harmony.Patch(generateCardDataFor, postfix: new HarmonyMethod(typeof(DriverOnlyVehicleMuscleCardPatch), nameof(DriverOnlyVehicleMuscleCardPatch.Postfix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: passenger muscle card visibility applied");
 			}
 			var refreshCards = typeof(CrewDialog).GetMethod("RefreshCards", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null);
 			if (refreshCards != null)
@@ -9915,8 +12123,7 @@ namespace GameplayTweaks
 			var recreateAllCards = typeof(CrewDialog).GetMethod("RecreateAllCards", BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null);
 			if (recreateAllCards != null)
 			{
-				harmony.Patch(recreateAllCards, postfix: new HarmonyMethod(typeof(CrewDialogRefreshLayoutPatch), nameof(CrewDialogRefreshLayoutPatch.Postfix)));
-				Debug.Log("[GameplayTweaks] Multi-crew vehicle: CrewDialog.RecreateAllCards layout refresh applied");
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: CrewDialog.RecreateAllCards layout refresh skipped; vanilla rebuild already forces layout");
 			}
 			var toggleSectionEditMode = typeof(CrewDialog).GetMethod("ToggleSectionEditMode", BindingFlags.NonPublic | BindingFlags.Instance, null, new[] { typeof(CrewCardType), typeof(GameObject) }, null);
 			if (toggleSectionEditMode != null)
@@ -9964,8 +12171,9 @@ namespace GameplayTweaks
 			{
 				harmony.Patch(entryIsPeepUnassigned, postfix: new HarmonyMethod(typeof(CrewMgmtPopupJailStatePatch), nameof(CrewMgmtPopupJailStatePatch.IsPeepUnassignedPostfix)));
 			}
+			bool afterUiCrewManagementJailVisuals = GameplayTweaksPlugin.IsAfterProhibitionUiCrewManagementJailVisualsAvailable();
 			var setCardDesc = typeof(CrewManagementPopup).GetMethod("SetCardDesc", BindingFlags.NonPublic | BindingFlags.Instance);
-			if (setCardDesc != null)
+			if (setCardDesc != null && !afterUiCrewManagementJailVisuals)
 			{
 				harmony.Patch(setCardDesc, postfix: new HarmonyMethod(typeof(CrewMgmtPopupJailStatePatch), nameof(CrewMgmtPopupJailStatePatch.SetCardDescPostfix)));
 			}
@@ -9974,6 +12182,22 @@ namespace GameplayTweaks
 			{
 				harmony.Patch(setCardButtons, postfix: new HarmonyMethod(typeof(CrewMgmtPopupJailStatePatch), nameof(CrewMgmtPopupJailStatePatch.SetCardButtonsPostfix)));
 				Debug.Log("[GameplayTweaks] Multi-crew vehicle: CrewManagementPopup jail card state patches applied");
+			}
+			var getArrestedDesc = typeof(CrewManagementPopup).GetMethod("GetArrestedDesc", BindingFlags.NonPublic | BindingFlags.Static);
+			if (getArrestedDesc != null && !afterUiCrewManagementJailVisuals)
+			{
+				harmony.Patch(getArrestedDesc, prefix: new HarmonyMethod(typeof(CrewMgmtPopupJailStatePatch), nameof(CrewMgmtPopupJailStatePatch.GetArrestedDescPrefix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: CrewManagementPopup jail description override applied");
+			}
+			var describeCrewPeep = typeof(CrewInfoGen).GetMethod("DescribeCrewPeep", BindingFlags.NonPublic | BindingFlags.Instance);
+			if (describeCrewPeep != null && !afterUiCrewManagementJailVisuals)
+			{
+				harmony.Patch(describeCrewPeep, postfix: new HarmonyMethod(typeof(CrewMgmtPopupJailStatePatch), nameof(CrewMgmtPopupJailStatePatch.DescribeCrewPeepPostfix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: CrewInfoGen jail description override applied");
+			}
+			if (afterUiCrewManagementJailVisuals)
+			{
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: crew management jail text visuals skipped; owner=AfterProhibitionUI");
 			}
 
 			// Crew management popup: only show vehicles at owned building in assign-to-vehicle selector
@@ -10034,12 +12258,49 @@ namespace GameplayTweaks
 				Debug.Log("[GameplayTweaks] Multi-crew vehicle: CommandButtonScopeOut.OnHumanButtonClick human scope patch applied");
 			}
 			var buildingPickType = AccessTools.TypeByName("Game.UI.Session.Picks.BuildingPick");
+			var basePickType = AccessTools.TypeByName("Game.UI.Session.Picks.BasePick");
+			var pickContainerType = AccessTools.TypeByName("Game.UI.Session.Picks.PickContainer");
+			var basePickSetPositionAndVisibility = basePickType?.GetMethod("SetPositionAndVisibility", BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(Vector2), typeof(bool) }, null);
+			if (basePickSetPositionAndVisibility != null)
+			{
+				harmony.Patch(
+					basePickSetPositionAndVisibility,
+					prefix: new HarmonyMethod(typeof(BuildingPickPositionVisibilityPatch), nameof(BuildingPickPositionVisibilityPatch.SetPositionAndVisibilityPrefix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: BuildingPick.SetPositionAndVisibility travel visibility grace applied");
+			}
+			var pickContainerRefreshAll = pickContainerType != null ? AccessTools.Method(pickContainerType, "RefreshAll") : null;
+			if (pickContainerRefreshAll != null)
+			{
+				harmony.Patch(
+					pickContainerRefreshAll,
+					prefix: new HarmonyMethod(typeof(BuildingPickLifecycleDiagnosticsPatch), nameof(BuildingPickLifecycleDiagnosticsPatch.RefreshAllPrefix)),
+					postfix: new HarmonyMethod(typeof(BuildingPickLifecycleDiagnosticsPatch), nameof(BuildingPickLifecycleDiagnosticsPatch.RefreshAllPostfix)),
+					finalizer: new HarmonyMethod(typeof(BuildingPickLifecycleDiagnosticsPatch), nameof(BuildingPickLifecycleDiagnosticsPatch.RefreshAllFinalizer)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: BuildingPick container refresh lifecycle diagnostics applied");
+			}
+			var pickContainerRemove = pickContainerType?.GetMethod("Remove", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public, null, new[] { typeof(PickTarget) }, null);
+			if (pickContainerRemove != null)
+			{
+				harmony.Patch(
+					pickContainerRemove,
+					prefix: new HarmonyMethod(typeof(BuildingPickLifecycleDiagnosticsPatch), nameof(BuildingPickLifecycleDiagnosticsPatch.RemovePrefix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: BuildingPick container remove diagnostics applied");
+			}
+			var basePickReset = basePickType?.GetMethod("Reset", BindingFlags.Instance | BindingFlags.Public);
+			if (basePickReset != null)
+			{
+				harmony.Patch(
+					basePickReset,
+					prefix: new HarmonyMethod(typeof(BuildingPickLifecycleDiagnosticsPatch), nameof(BuildingPickLifecycleDiagnosticsPatch.ResetPrefix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: BuildingPick reset diagnostics applied");
+			}
 			var buildingPickRefreshContents = buildingPickType?.GetMethod("RefreshContents", BindingFlags.Instance | BindingFlags.Public);
 			if (buildingPickRefreshContents != null)
 			{
 				harmony.Patch(
 					buildingPickRefreshContents,
 					prefix: new HarmonyMethod(typeof(HumanVehicleBuildingInteractionScopePatch), nameof(HumanVehicleBuildingInteractionScopePatch.RefreshContentsPrefix)),
+					postfix: new HarmonyMethod(typeof(HumanVehicleBuildingInteractionScopePatch), nameof(HumanVehicleBuildingInteractionScopePatch.RefreshContentsPostfix)),
 					finalizer: new HarmonyMethod(typeof(HumanVehicleBuildingInteractionScopePatch), nameof(HumanVehicleBuildingInteractionScopePatch.Finalizer)));
 				Debug.Log("[GameplayTweaks] Multi-crew vehicle: BuildingPick.RefreshContents building interaction scope applied");
 			}
@@ -10057,6 +12318,30 @@ namespace GameplayTweaks
 			{
 				harmony.Patch(buildingPickTryScopeOut, prefix: new HarmonyMethod(typeof(BuildingPickScopeOutPatch), nameof(BuildingPickScopeOutPatch.Prefix)));
 				Debug.Log("[GameplayTweaks] Multi-crew vehicle: BuildingPick.TryScopeOut target-aware scope patch applied");
+			}
+			var convoShowBuySellPopup = typeof(ConvoCallbacks).GetMethod("ShowBuySellPopup", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public, null, new[] { typeof(ConvoButton) }, null);
+			if (convoShowBuySellPopup != null)
+			{
+				harmony.Patch(
+					convoShowBuySellPopup,
+					prefix: new HarmonyMethod(typeof(HumanBuySellVehiclePhysicalGatePatch), nameof(HumanBuySellVehiclePhysicalGatePatch.ShowBuySellPopupPrefix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: ConvoCallbacks.ShowBuySellPopup physical vehicle gate applied");
+			}
+			var buySellExecuteVisit = typeof(BuySellUtils).GetMethod("ExecuteHumanBuySell", BindingFlags.Static | BindingFlags.Public, null, new[] { typeof(PlayerInfo), typeof(VisitState), typeof(ConvoDataBuySell), typeof(QtyAndDir), typeof(bool) }, null);
+			if (buySellExecuteVisit != null)
+			{
+				harmony.Patch(
+					buySellExecuteVisit,
+					prefix: new HarmonyMethod(typeof(HumanBuySellVehiclePhysicalGatePatch), nameof(HumanBuySellVehiclePhysicalGatePatch.ExecuteVisitPrefix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: BuySellUtils.ExecuteHumanBuySell visit physical vehicle gate applied");
+			}
+			var buySellExecuteCrew = typeof(BuySellUtils).GetMethod("ExecuteHumanBuySell", BindingFlags.Static | BindingFlags.Public, null, new[] { typeof(PlayerInfo), typeof(CrewAssignment), typeof(Entity), typeof(Resource), typeof(QtyAndDir), typeof(bool) }, null);
+			if (buySellExecuteCrew != null)
+			{
+				harmony.Patch(
+					buySellExecuteCrew,
+					prefix: new HarmonyMethod(typeof(HumanBuySellVehiclePhysicalGatePatch), nameof(HumanBuySellVehiclePhysicalGatePatch.ExecuteCrewPrefix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: BuySellUtils.ExecuteHumanBuySell crew physical vehicle gate applied");
 			}
 			var ownedBizControllerType = AccessTools.TypeByName("Game.UI.Session.OwnedBiz.OwnedBizController");
 			var ownedBizSetModel = ownedBizControllerType?.GetMethod("SetModel", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public, null, new[] { typeof(VisitState) }, null);
@@ -10109,7 +12394,23 @@ namespace GameplayTweaks
 					postfix: new HarmonyMethod(typeof(OwnedBizInventoryVehicleVisitPatch), nameof(OwnedBizInventoryVehicleVisitPatch.ModuleButtonClickPostfix)));
 				Debug.Log("[GameplayTweaks] Multi-crew vehicle: OwnedBizController.OnModuleButtonClick inventory physical gate applied");
 			}
+			var ownedBizModuleToggleSetOwner = ownedBizModuleToggleContextType?.GetMethod("SetOwner", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(VisitState) }, null);
+			if (ownedBizModuleToggleSetOwner != null)
+			{
+				harmony.Patch(
+					ownedBizModuleToggleSetOwner,
+					prefix: new HarmonyMethod(typeof(OwnedBizModuleToggleOwnerGuardPatch), nameof(OwnedBizModuleToggleOwnerGuardPatch.Prefix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: ModuleToggleContext.SetOwner null-owner guard applied");
+			}
 			var ownedBizDialogType = AccessTools.TypeByName("Game.UI.Session.OwnedBiz.OwnedBizDialog");
+			var ownedBizRefreshHeader = ownedBizDialogType?.GetMethod("RefreshHeader", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+			if (ownedBizRefreshHeader != null)
+			{
+				harmony.Patch(
+					ownedBizRefreshHeader,
+					prefix: new HarmonyMethod(typeof(OwnedBizVehicleVisitStatePatch), nameof(OwnedBizVehicleVisitStatePatch.RefreshHeaderPrefix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: OwnedBizDialog.RefreshHeader owner normalization applied");
+			}
 			var ownedBizRefreshFooter = ownedBizDialogType?.GetMethod("RefreshFooter", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
 			if (ownedBizRefreshFooter != null)
 			{
@@ -10234,7 +12535,7 @@ namespace GameplayTweaks
 				harmony.Patch(
 					buildingPickMakeMouseover,
 					prefix: new HarmonyMethod(typeof(HumanVehicleBuildingActivationScopePatch), nameof(HumanVehicleBuildingActivationScopePatch.BuildingPickMouseoverPrefix)),
-					finalizer: new HarmonyMethod(typeof(HumanVehicleBuildingActivationScopePatch), nameof(HumanVehicleBuildingActivationScopePatch.Finalizer)));
+					finalizer: new HarmonyMethod(typeof(BuildingPickMouseoverGuardPatch), nameof(BuildingPickMouseoverGuardPatch.Finalizer)));
 				Debug.Log("[GameplayTweaks] Multi-crew vehicle: BuildingPickUtil.MakeMouseover building interaction scope applied");
 			}
 			var mobilePickUtilType = AccessTools.TypeByName("Game.UI.Session.Picks.MobilePickUtil");
@@ -10304,8 +12605,17 @@ namespace GameplayTweaks
 			var scopeOutFeedback = typeof(PlayerTerritory).GetMethod("ScopeOutBuildingWithFeedback", BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(Entity), typeof(EntityID) }, null);
 			if (scopeOutFeedback != null)
 			{
-				harmony.Patch(scopeOutFeedback, postfix: new HarmonyMethod(typeof(ScopeOutFeedbackSelectionPatch), nameof(ScopeOutFeedbackSelectionPatch.Postfix)));
-				Debug.Log("[GameplayTweaks] Multi-crew vehicle: ScopeOutBuildingWithFeedback selection refresh patch applied");
+				harmony.Patch(
+					scopeOutFeedback,
+					prefix: new HarmonyMethod(typeof(ScopeOutFeedbackSelectionPatch), nameof(ScopeOutFeedbackSelectionPatch.Prefix)),
+					postfix: new HarmonyMethod(typeof(ScopeOutFeedbackSelectionPatch), nameof(ScopeOutFeedbackSelectionPatch.Postfix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: ScopeOutBuildingWithFeedback deferred ticker/selection refresh patch applied");
+			}
+			var performTakeover = typeof(PlayerTerritory).GetMethod("PerformTakeover", BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(CrewAssignment), typeof(PlayerTerritory.TakeoverData) }, null);
+			if (performTakeover != null)
+			{
+				harmony.Patch(performTakeover, postfix: new HarmonyMethod(typeof(OwnedBizTakeoverOwnerSocialPatch), nameof(OwnedBizTakeoverOwnerSocialPatch.PerformTakeoverPostfix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: owned business takeover owner social repair patch applied");
 			}
 			var executeCombat = typeof(ConvoCallbacks).GetMethod("ExecuteCombat", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(ConvoButton) }, null);
 			if (executeCombat != null)
@@ -10335,8 +12645,11 @@ namespace GameplayTweaks
 			MethodInfo commandHealValidate = typeof(CommandHealValidator).GetMethod("Validate", BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(PlayerID), typeof(CrewAssignment) }, null);
 			if (commandHealValidate != null)
 			{
-				harmony.Patch(commandHealValidate, postfix: new HarmonyMethod(typeof(CommandButtonHealDriverPatch), nameof(CommandButtonHealDriverPatch.ValidatePostfix)));
-				Debug.Log("[GameplayTweaks] Multi-crew vehicle: CommandHealValidator.Validate driver-only/group-heal patch applied");
+				harmony.Patch(
+					commandHealValidate,
+					prefix: new HarmonyMethod(typeof(CommandButtonHealDriverPatch), nameof(CommandButtonHealDriverPatch.ValidatePrefix)),
+					postfix: new HarmonyMethod(typeof(CommandButtonHealDriverPatch), nameof(CommandButtonHealDriverPatch.ValidatePostfix)));
+				Debug.Log("[GameplayTweaks] Multi-crew vehicle: CommandHealValidator.Validate stale crew guard and driver-only/group-heal patch applied");
 			}
 			MethodInfo commandHealPostHuman = typeof(CommandHealValidator).GetMethod("PostCommandAsHuman", BindingFlags.Instance | BindingFlags.NonPublic, null, new[] { typeof(CrewAssignment) }, null);
 			if (commandHealPostHuman != null)

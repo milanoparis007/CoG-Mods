@@ -43,6 +43,26 @@ public partial class GameplayTweaksPlugin
 
 		private static FieldInfo _cornerPickDataField;
 
+		private static bool _territoryRefreshReflectionCached;
+
+		private static MethodInfo _playerTerritoryDisplayRefreshBorderMethod;
+
+		private static FieldInfo _playerTerritoryDisplayField;
+
+		private static MethodInfo _playerTerritoryRefreshDisplayMethod;
+
+		private static MethodInfo _playerTerritoryRefreshMethod;
+
+		private static bool _mapDisplayRefreshReflectionCached;
+
+		private static MethodInfo _mapDisplayRefreshColorsMethod;
+
+		private static MethodInfo _mapDisplayRefreshMethod;
+
+		private static int _lastTerritoryColorRefreshFrame = -1;
+
+		private static int _sameFrameTerritoryColorRefreshSuppressedCount;
+
 		public static void ApplyPatch(Harmony harmony)
 		{
 
@@ -453,11 +473,158 @@ public partial class GameplayTweaksPlugin
 			}
 		}
 
+		private static void EnsureTerritoryRefreshReflectionCached()
+		{
+			if (_territoryRefreshReflectionCached)
+			{
+				return;
+			}
+
+			_territoryRefreshReflectionCached = true;
+			_playerTerritoryDisplayRefreshBorderMethod = typeof(GameClock).Assembly.GetType("Game.Session.Player.PlayerTerritoryDisplay")?.GetMethod("RefreshBorder", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+			_playerTerritoryDisplayField = typeof(PlayerTerritory).GetField("_display", BindingFlags.Instance | BindingFlags.NonPublic);
+			_playerTerritoryRefreshDisplayMethod = typeof(PlayerTerritory).GetMethod("RefreshDisplay", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+			_playerTerritoryRefreshMethod = typeof(PlayerTerritory).GetMethod("Refresh", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+		}
+
+		private static void EnsureMapDisplayRefreshReflectionCached()
+		{
+			if (_mapDisplayRefreshReflectionCached || _mapDisplayInstance == null)
+			{
+				return;
+			}
+
+			_mapDisplayRefreshReflectionCached = true;
+			Type mapDisplayType = _mapDisplayInstance.GetType();
+			_mapDisplayRefreshColorsMethod = mapDisplayType.GetMethod("RefreshColors", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+			_mapDisplayRefreshMethod = mapDisplayType.GetMethod("Refresh", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+		}
+
+		private static void EnsureMapDisplayColorCacheInstance()
+		{
+			if (_mapDisplayInstance != null && _colorsField != null)
+			{
+				return;
+			}
+
+			try
+			{
+				Type ctxType = typeof(GameClock).Assembly.GetType("Game.Core.Game");
+				if (ctxType == null)
+				{
+					return;
+				}
+
+				PropertyInfo ctxProp = ctxType.GetProperty("ctx", BindingFlags.Static | BindingFlags.Public);
+				object ctx = ctxProp?.GetValue(null);
+				if (ctx == null)
+				{
+					return;
+				}
+
+				PropertyInfo mdProp = ctx.GetType().GetProperty("mapdisplay") ?? ctx.GetType().GetProperty("MapDisplay");
+				FieldInfo mdField = ctx.GetType().GetField("mapdisplay") ?? ctx.GetType().GetField("MapDisplay");
+				object md = mdProp?.GetValue(ctx) ?? mdField?.GetValue(ctx);
+				if (md == null)
+				{
+					return;
+				}
+
+				_mapDisplayInstance = md;
+				if (_colorsField == null)
+				{
+					_colorsField = md.GetType().GetField("_colors", BindingFlags.Instance | BindingFlags.NonPublic);
+				}
+			}
+			catch
+			{
+			}
+		}
+
+		public static void RefreshTerritoryColorCacheOnly(string sourceTag)
+		{
+			try
+			{
+				if (ShouldDeferTerritoryVisualOverrides() && !ShouldPactColorWinOverGangWarsVisuals())
+				{
+					VerificationLog("Compat", $"territory-color-cache-light-skipped source={sourceTag} reason=external-territory-mod");
+					return;
+				}
+
+				EnsureMapDisplayColorCacheInstance();
+				if (_mapDisplayInstance == null || _colorsField == null || !(_colorsField.GetValue(_mapDisplayInstance) is IDictionary dictionary))
+				{
+					return;
+				}
+
+				dictionary.Clear();
+				int baseRestoreCount = 0;
+				foreach (PlayerInfo player in G.GetAllPlayers())
+				{
+					if (player == null)
+					{
+						continue;
+					}
+
+					try
+					{
+						dictionary[player.PID] = ResolveBaseTerritoryColor(player, default(Color));
+						baseRestoreCount++;
+					}
+					catch
+					{
+					}
+				}
+
+				int pactApplyCount = 0;
+				foreach (AlliancePact pact in SaveData.Pacts)
+				{
+					if (!pact.IsActive)
+					{
+						continue;
+					}
+
+					foreach (PlayerInfo player in G.GetAllPlayers())
+					{
+						if (player != null && pact.IsMember(player.PID))
+						{
+							try
+							{
+								dictionary[player.PID] = pact.SharedColor;
+								pactApplyCount++;
+							}
+							catch
+							{
+							}
+						}
+					}
+				}
+
+				VerificationLog("Compat", $"territory-color-cache-light source={sourceTag} base={baseRestoreCount} pact={pactApplyCount}");
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] RefreshTerritoryColorCacheOnly failed: " + ex.Message);
+			}
+		}
+
 		public static void RefreshAllTerritoryColors()
 		{
 
 			try
 			{
+				long refreshStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+				int currentFrame = Time.frameCount;
+				if (_lastTerritoryColorRefreshFrame == currentFrame)
+				{
+					_sameFrameTerritoryColorRefreshSuppressedCount++;
+					return;
+				}
+
+				int suppressedSameFrameRefreshes = _sameFrameTerritoryColorRefreshSuppressedCount;
+				_sameFrameTerritoryColorRefreshSuppressedCount = 0;
+				_lastTerritoryColorRefreshFrame = currentFrame;
+
 				EnsureHumanSafehouseTerritoryColorOwner("territory-color-refresh", refreshColors: false);
 				ReconcileLowRespectTerritoryOwnership("territory-color-refresh", refreshColors: false);
 				if (ShouldDeferTerritoryVisualOverrides() && !ShouldPactColorWinOverGangWarsVisuals())
@@ -539,10 +706,7 @@ public partial class GameplayTweaksPlugin
 					}
 					VerificationLog("Compat", $"territory-color-pact-applied count={pactApplyCount}");
 				}
-				MethodInfo methodInfo = typeof(GameClock).Assembly.GetType("Game.Session.Player.PlayerTerritoryDisplay")?.GetMethod("RefreshBorder", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-				FieldInfo field = typeof(PlayerTerritory).GetField("_display", BindingFlags.Instance | BindingFlags.NonPublic);
-				MethodInfo method = typeof(PlayerTerritory).GetMethod("RefreshDisplay", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-				MethodInfo method2 = typeof(PlayerTerritory).GetMethod("Refresh", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+				EnsureTerritoryRefreshReflectionCached();
 				foreach (PlayerInfo allPlayer2 in G.GetAllPlayers())
 				{
 					if (allPlayer2?.territory == null)
@@ -551,28 +715,28 @@ public partial class GameplayTweaksPlugin
 					}
 					try
 					{
-						if (method != null)
+						if (_playerTerritoryRefreshDisplayMethod != null)
 						{
-							method.Invoke(allPlayer2.territory, null);
+							_playerTerritoryRefreshDisplayMethod.Invoke(allPlayer2.territory, null);
 						}
-						else if (method2 != null)
+						else if (_playerTerritoryRefreshMethod != null)
 						{
-							method2.Invoke(allPlayer2.territory, null);
+							_playerTerritoryRefreshMethod.Invoke(allPlayer2.territory, null);
 						}
 					}
 					catch
 					{
 					}
-					object obj3 = field?.GetValue(allPlayer2.territory);
+					object obj3 = _playerTerritoryDisplayField?.GetValue(allPlayer2.territory);
 					if (obj3 == null)
 					{
 						continue;
 					}
 					try
 					{
-						if (methodInfo != null)
+						if (_playerTerritoryDisplayRefreshBorderMethod != null)
 						{
-							methodInfo.Invoke(obj3, null);
+							_playerTerritoryDisplayRefreshBorderMethod.Invoke(obj3, null);
 						}
 					}
 					catch
@@ -583,23 +747,28 @@ public partial class GameplayTweaksPlugin
 				{
 					try
 					{
-						MethodInfo method3 = _mapDisplayInstance.GetType().GetMethod("RefreshColors", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-						if (method3 != null)
+						EnsureMapDisplayRefreshReflectionCached();
+						if (_mapDisplayRefreshColorsMethod != null)
 						{
-							method3.Invoke(_mapDisplayInstance, null);
+							_mapDisplayRefreshColorsMethod.Invoke(_mapDisplayInstance, null);
 						}
-						else
+						else if (_mapDisplayRefreshMethod != null)
 						{
-							MethodInfo method4 = _mapDisplayInstance.GetType().GetMethod("Refresh", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-							if (method4 != null)
-							{
-								method4.Invoke(_mapDisplayInstance, null);
-							}
+							_mapDisplayRefreshMethod.Invoke(_mapDisplayInstance, null);
 						}
 					}
 					catch
 					{
 					}
+				}
+				if (suppressedSameFrameRefreshes > 0)
+				{
+					VerificationLog("Compat", $"territory-color-refresh-coalesced sameFrameSuppressed={suppressedSameFrameRefreshes} frame={currentFrame}");
+				}
+				long elapsedMs = (System.Diagnostics.Stopwatch.GetTimestamp() - refreshStartTicks) * 1000L / System.Diagnostics.Stopwatch.Frequency;
+				if (elapsedMs >= 20L)
+				{
+					VerificationLog("Compat", $"territory-color-refresh-all-ms ms={elapsedMs} frame={currentFrame}");
 				}
 				Debug.Log("[GameplayTweaks] Territory colors refreshed for all players");
 			}

@@ -11,6 +11,7 @@ using Game.Session.Player;
 using Game.Session.Sim;
 using Game.Session.Sim.Modules;
 using Game.UI.Session.Convo;
+using Game.UI.Session.Crew;
 using Game.UI.Session.Picks;
 using Game.UI.Util;
 using HarmonyLib;
@@ -38,7 +39,7 @@ public partial class GameplayTweaksPlugin
 					Debug.LogWarning("[GameplayTweaks] ConnectionsTabNullFixPatch: type not found");
 					return;
 				}
-				string[] array = new string[3] { "CreateFamilyLinks", "RefreshAllCards", "RefreshSubview" };
+				string[] array = new string[4] { "CreateFamilyLinks", "RefreshAllCards", "RefreshSubview", "InitializeCard" };
 				int num = 0;
 				for (int i = 0; i < array.Length; i++)
 				{
@@ -50,11 +51,17 @@ public partial class GameplayTweaksPlugin
 						continue;
 					}
 					HarmonyMethod postfix = null;
+					HarmonyMethod prefix = null;
 					if (text == "CreateFamilyLinks")
 					{
+						prefix = new HarmonyMethod(typeof(ConnectionsTabNullFixPatch), nameof(CreateFamilyLinksPrefix), (Type[])null);
 						postfix = new HarmonyMethod(typeof(ConnectionsTabNullFixPatch), nameof(CreateFamilyLinksPostfix), (Type[])null);
 					}
-					harmony.Patch((MethodBase)method, (HarmonyMethod)null, postfix, (HarmonyMethod)null, new HarmonyMethod(typeof(ConnectionsTabNullFixPatch), "NullRefFinalizer", (Type[])null), (HarmonyMethod)null);
+					else if (text == "InitializeCard")
+					{
+						prefix = new HarmonyMethod(typeof(ConnectionsTabNullFixPatch), nameof(InitializeCardPrefix), (Type[])null);
+					}
+					harmony.Patch((MethodBase)method, prefix, postfix, (HarmonyMethod)null, new HarmonyMethod(typeof(ConnectionsTabNullFixPatch), "NullRefFinalizer", (Type[])null), (HarmonyMethod)null);
 					num++;
 					GameplayTweaksPlugin.VerificationLog("ConnectionsTab", $"null-finalizer applied method={text}");
 				}
@@ -79,9 +86,61 @@ public partial class GameplayTweaksPlugin
 			return __exception;
 		}
 
+		private static void CreateFamilyLinksPrefix(object __instance)
+		{
+			try
+			{
+				Entity entity = ResolveSubviewEntity(__instance);
+				RelationshipList relationships = entity?.Id.IsValid == true
+					? global::Game.Game.ctx?.simman?.rels?.GetListOrNull(entity.Id)
+					: null;
+				if (relationships?.data == null || relationships.data.Count == 0)
+				{
+					return;
+				}
+
+				int removed = relationships.data.RemoveAll(rel => !IsRenderableConnectionRelationship(rel, entity));
+				if (removed > 0)
+				{
+					global::Game.Game.ctx?.events?.EnqueueOnce(Game.Session.SessionEventType.SomeEntityRelationshipChanged);
+					GameplayTweaksPlugin.VerificationLog("ConnectionsTab", $"invalid-relationship-targets-pruned peep={entity.Id.id} removed={removed}");
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] ConnectionsTab relationship prune failed: " + ex.Message);
+			}
+		}
+
 		private static void CreateFamilyLinksPostfix(object __instance, IList __result)
 		{
-			if (__instance == null || __result == null || !ShouldRevealHumanCrewConnections(__instance))
+			if (__instance == null || __result == null)
+			{
+				return;
+			}
+
+			int removed = 0;
+			for (int i = __result.Count - 1; i >= 0; i--)
+			{
+				object item = __result[i];
+				if (item == null)
+				{
+					__result.RemoveAt(i);
+					removed++;
+					continue;
+				}
+
+				if (!IsRenderableConnectionCard(item))
+				{
+					__result.RemoveAt(i);
+					removed++;
+				}
+			}
+			if (removed > 0)
+			{
+				GameplayTweaksPlugin.VerificationLog("ConnectionsTab", $"invalid-card-targets-filtered count={removed}");
+			}
+			if (!ShouldRevealHumanCrewConnections(__instance))
 			{
 				return;
 			}
@@ -89,37 +148,30 @@ public partial class GameplayTweaksPlugin
 			for (int i = 0; i < __result.Count; i++)
 			{
 				object item = __result[i];
-				if (item == null)
-				{
-					continue;
-				}
-
 				AccessTools.Field(item.GetType(), "isKnownByHuman")?.SetValue(item, true);
 			}
+		}
+
+		private static bool InitializeCardPrefix(GameObject card, object data)
+		{
+			if (IsRenderableConnectionCard(data))
+			{
+				return true;
+			}
+
+			if (card != null)
+			{
+				card.SetActive(false);
+			}
+			GameplayTweaksPlugin.VerificationLog("ConnectionsTab", "invalid-card-render-suppressed");
+			return false;
 		}
 
 		private static bool ShouldRevealHumanCrewConnections(object subviewInstance)
 		{
 			try
 			{
-				object model = Traverse.Create(subviewInstance).Field("Model").GetValue();
-				Entity entity = null;
-				if (model != null)
-				{
-					FieldInfo fieldInfo = AccessTools.Field(model.GetType(), "entity");
-					if (fieldInfo != null)
-					{
-						entity = fieldInfo.GetValue(model) as Entity;
-					}
-					if (entity == null)
-					{
-						PropertyInfo propertyInfo = AccessTools.Property(model.GetType(), "entity");
-						if (propertyInfo != null)
-						{
-							entity = propertyInfo.GetValue(model, null) as Entity;
-						}
-					}
-				}
+				Entity entity = ResolveSubviewEntity(subviewInstance);
 				if (entity == null || entity.data?.agent == null)
 				{
 					return false;
@@ -137,6 +189,73 @@ public partial class GameplayTweaksPlugin
 			{
 				return false;
 			}
+		}
+
+		private static Entity ResolveSubviewEntity(object subviewInstance)
+		{
+			object model = Traverse.Create(subviewInstance).Field("Model").GetValue();
+			if (model == null)
+			{
+				return null;
+			}
+
+			FieldInfo fieldInfo = AccessTools.Field(model.GetType(), "entity");
+			if (fieldInfo != null)
+			{
+				Entity entity = fieldInfo.GetValue(model) as Entity;
+				if (entity != null)
+				{
+					return entity;
+				}
+			}
+
+			PropertyInfo propertyInfo = AccessTools.Property(model.GetType(), "entity");
+			return propertyInfo?.GetValue(model, null) as Entity;
+		}
+
+		private static bool IsRenderableConnectionCard(object cardData)
+		{
+			if (cardData == null)
+			{
+				return false;
+			}
+
+			Entity cardPeep = AccessTools.Field(cardData.GetType(), "cardPeep")?.GetValue(cardData) as Entity;
+			return IsRenderablePerson(cardPeep);
+		}
+
+		private static bool IsRenderableConnectionRelationship(Relationship rel, Entity source)
+		{
+			if (rel == null || rel.to.IsNotValid)
+			{
+				return false;
+			}
+
+			Entity target = rel.to.FindEntity();
+			if (!IsRenderablePerson(target))
+			{
+				return false;
+			}
+
+			return source == null || target.Id != source.Id;
+		}
+
+		private static bool IsRenderablePerson(Entity entity)
+		{
+			PersonData person = entity?.data?.person;
+			if (person == null)
+			{
+				return false;
+			}
+
+			if (!entity.Id.IsValid)
+			{
+				return false;
+			}
+
+			string fullName = person.FullName;
+			return !string.IsNullOrWhiteSpace(fullName)
+				&& !string.Equals(fullName.Trim(), "Name", StringComparison.OrdinalIgnoreCase);
 		}
 	}
 
@@ -405,7 +524,12 @@ public partial class GameplayTweaksPlugin
 						resetMethod,
 						postfix: new HarmonyMethod(typeof(CrewPickAggroRefreshStabilityPatch), nameof(CrewPickResetPostfix)));
 				}
-				GameplayTweaksPlugin.VerificationLog("AggroUI", "crew-pick refresh stability patch applied");
+				bool delegatedScheduler = GameplayTweaksPlugin.IsAfterProhibitionUiAggroRefreshBridgeAvailableForCompat();
+				GameplayTweaksPlugin.VerificationLog(
+					"AggroUI",
+					delegatedScheduler
+						? "crew-pick refresh executor patch applied scheduler=AfterProhibitionUI fallback=GameplayTweaks"
+						: "crew-pick refresh stability patch applied scheduler=GameplayTweaks");
 			}
 			catch (Exception ex)
 			{
@@ -854,12 +978,7 @@ public partial class GameplayTweaksPlugin
 				return true;
 			}
 
-			if (IsFederalPlayer(player))
-			{
-				return true;
-			}
-
-			if (!IsJustCopPlayer(player))
+			if (!IsCopOrFedPlayer(player) && !IsJustCopPlayer(player))
 			{
 				return false;
 			}
@@ -1330,6 +1449,18 @@ public partial class GameplayTweaksPlugin
 
 			try
 			{
+				Text text = pickGo.transform.Find("Button/Text")?.GetComponent<Text>();
+				if (text != null)
+				{
+					text.text = string.Empty;
+				}
+			}
+			catch
+			{
+			}
+
+			try
+			{
 				Transform warnBorder = pickGo.transform.Find("Warn Border");
 				if (warnBorder != null)
 				{
@@ -1366,6 +1497,55 @@ public partial class GameplayTweaksPlugin
 		}
 	}
 
+	internal static class CrewSidebarJailBarsPatch
+	{
+		public static void ApplyPatch(Harmony harmony)
+		{
+			try
+			{
+				MethodInfo refreshPanel = AccessTools.Method(typeof(CrewCardContext), "RefreshPanel");
+				if (refreshPanel == null)
+				{
+					Debug.LogWarning("[GameplayTweaks] CrewSidebarJailBarsPatch: RefreshPanel not found");
+					return;
+				}
+
+				harmony.Patch(refreshPanel, postfix: new HarmonyMethod(typeof(CrewSidebarJailBarsPatch), nameof(RefreshPanelPostfix)));
+				VerificationLog("Jail", "crew sidebar jail-bars patch applied");
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] CrewSidebarJailBarsPatch failed: " + ex.Message);
+			}
+		}
+
+		private static void RefreshPanelPostfix(CrewCardContext __instance)
+		{
+			try
+			{
+				if (__instance == null || __instance.data == null)
+				{
+					return;
+				}
+
+				CrewAssignment crew = __instance.data.crew;
+				if (!crew.peepId.IsValid || !IsCrewCurrentlyJailed(crew.peepId))
+				{
+					return;
+				}
+
+				Transform bars = __instance.card?.transform.Find("Info/Panel/First/Bars");
+				if (bars != null)
+				{
+					bars.gameObject.SetActive(true);
+				}
+			}
+			catch
+			{
+			}
+		}
+	}
+
 	internal static class PactColorUiPatch
 	{
 		private static readonly FieldInfo CrewPickPidField = AccessTools.Field(AccessTools.TypeByName("Game.UI.Session.Picks.CrewPick"), "_pid");
@@ -1378,6 +1558,7 @@ public partial class GameplayTweaksPlugin
 		private static bool _pendingFullCrewPickRefresh;
 		private static int _pendingFullCrewPickRefreshEarliestFrame = -1;
 		private static int _pendingFullCrewPickRefreshRemainingPasses;
+		private static int _pendingFullCrewPickRefreshCursor;
 		private static string _pendingFullCrewPickRefreshSource = string.Empty;
 
 		public static void ApplyPatch(Harmony harmony)
@@ -1414,6 +1595,11 @@ public partial class GameplayTweaksPlugin
 
 			int requestedPasses = GetRequestedFullCrewPickRefreshPasses(sourceTag);
 			int requestedEarliestFrame = Time.frameCount + Mathf.Max(0, delayFrames);
+			string normalizedSource = string.IsNullOrEmpty(sourceTag) ? "unknown" : sourceTag;
+			if (!_pendingFullCrewPickRefresh || !string.Equals(_pendingFullCrewPickRefreshSource, normalizedSource, StringComparison.Ordinal))
+			{
+				_pendingFullCrewPickRefreshCursor = 0;
+			}
 			_pendingFullCrewPickRefresh = true;
 			if (_pendingFullCrewPickRefreshEarliestFrame < 0)
 			{
@@ -1424,7 +1610,7 @@ public partial class GameplayTweaksPlugin
 				_pendingFullCrewPickRefreshEarliestFrame = Mathf.Min(_pendingFullCrewPickRefreshEarliestFrame, requestedEarliestFrame);
 			}
 			_pendingFullCrewPickRefreshRemainingPasses = Mathf.Max(_pendingFullCrewPickRefreshRemainingPasses, requestedPasses);
-			_pendingFullCrewPickRefreshSource = string.IsNullOrEmpty(sourceTag) ? "unknown" : sourceTag;
+			_pendingFullCrewPickRefreshSource = normalizedSource;
 		}
 
 		private static bool ShouldSkipFullCrewPickRefresh(string sourceTag)
@@ -1454,6 +1640,7 @@ public partial class GameplayTweaksPlugin
 			case "refresh-pact-cache":
 				return 3;
 			case "human-turn":
+			case "vehicle-travel":
 				return 1;
 			default:
 				return 2;
@@ -1505,10 +1692,13 @@ public partial class GameplayTweaksPlugin
 					return;
 				}
 
-				foreach (EntityID targetId in refreshTargets)
+				int maxThisFlush = GetFullCrewPickRefreshMaxTargetsPerFlush(_pendingFullCrewPickRefreshSource);
+				int startIndex = Mathf.Clamp(_pendingFullCrewPickRefreshCursor, 0, refreshTargets.Count);
+				for (int index = startIndex; index < refreshTargets.Count && refreshed < maxThisFlush; index++)
 				{
 					try
 					{
+						EntityID targetId = refreshTargets[index];
 						crewContainer.AddOrRefreshPick(new PickTarget(targetId), resetExisting: true);
 						refreshed++;
 					}
@@ -1517,6 +1707,15 @@ public partial class GameplayTweaksPlugin
 					}
 				}
 
+				_pendingFullCrewPickRefreshCursor = startIndex + refreshed;
+				if (_pendingFullCrewPickRefreshCursor < refreshTargets.Count)
+				{
+					_pendingFullCrewPickRefreshEarliestFrame = Time.frameCount + 1;
+					VerificationLog("PactColorUI", $"full crew-pick refresh slice count={refreshed} cursor={_pendingFullCrewPickRefreshCursor}/{refreshTargets.Count} source={_pendingFullCrewPickRefreshSource}->{sourceTag}");
+					return;
+				}
+
+				_pendingFullCrewPickRefreshCursor = 0;
 				AdvancePendingFullCrewPickRefresh(refreshed);
 				VerificationLog("PactColorUI", $"full crew-pick refresh count={refreshed} remaining={_pendingFullCrewPickRefreshRemainingPasses} source={_pendingFullCrewPickRefreshSource}->{sourceTag}");
 			}
@@ -1524,6 +1723,16 @@ public partial class GameplayTweaksPlugin
 			{
 				Debug.LogWarning("[GameplayTweaks] PactColorUiPatch full refresh failed: " + ex.Message);
 			}
+		}
+
+		private static int GetFullCrewPickRefreshMaxTargetsPerFlush(string sourceTag)
+		{
+			if (IsLoadFullCrewPickRefreshSource(sourceTag))
+			{
+				return 12;
+			}
+
+			return 6;
 		}
 
 		private static bool ShouldDeferFullCrewPickRefresh(out string reason)
@@ -1661,6 +1870,7 @@ public partial class GameplayTweaksPlugin
 			_pendingFullCrewPickRefresh = false;
 			_pendingFullCrewPickRefreshEarliestFrame = -1;
 			_pendingFullCrewPickRefreshRemainingPasses = 0;
+			_pendingFullCrewPickRefreshCursor = 0;
 			_pendingFullCrewPickRefreshSource = string.Empty;
 		}
 
@@ -1844,6 +2054,7 @@ public partial class GameplayTweaksPlugin
 				TryPatchDoesPassFinalizer(harmony, "Game.Session.Data.CheckHasSponsoredPoliticianInWard");
 				TryPatchDoesPassFinalizer(harmony, "Game.Session.Data.CheckCrewRole");
 				TryPatchDoesPassFinalizer(harmony, "Game.Session.Data.CheckCanBoostForGoon");
+				TryPatchDoesPassFinalizer(harmony, "Game.Session.Data.CheckConvoQuery");
 			}
 			catch (Exception arg)
 			{
@@ -2272,6 +2483,10 @@ public partial class GameplayTweaksPlugin
 				button.grants = null;
 				changed = true;
 			}
+			if (EnsureGangRobberyBossRequirement(button))
+			{
+				changed = true;
+			}
 			if (!HasExplicitConvoNext(button.next))
 			{
 				button.next = new NextStateDef
@@ -2282,6 +2497,30 @@ public partial class GameplayTweaksPlugin
 			}
 		}
 		return changed;
+	}
+
+	private static bool EnsureGangRobberyBossRequirement(ConvoButtonDef button)
+	{
+		if (button == null)
+		{
+			return false;
+		}
+		if (button.visreqs == null)
+		{
+			button.visreqs = new ConvoButtonRequirementList();
+		}
+		foreach (IRequirement requirement in button.visreqs)
+		{
+			if (requirement is CheckCrewRank rankRequirement && rankRequirement.@is == CheckCrewRank.Rank.Boss)
+			{
+				return false;
+			}
+		}
+		button.visreqs.Add(new CheckCrewRank
+		{
+			@is = CheckCrewRank.Rank.Boss
+		});
+		return true;
 	}
 
 	private static bool IsRobberyConvoStateId(string stateId)
@@ -2785,6 +3024,12 @@ public partial class GameplayTweaksPlugin
 				result = OnClickResult.CONTINUE;
 				return false;
 			}
+			if (!IsGangRobberyBossConversationTarget(visit, targetGang))
+			{
+				VerificationLog("GangRobbery", $"blocked reason=non-boss-target target={targetGang.PID.id} human={humanPlayer.PID.id} npc={(visit.npc?.Id.id ?? 0UL)} boss={(GetCrewPeepForPlayer(targetGang).IsValid ? GetCrewPeepForPlayer(targetGang).id : 0UL)}");
+				result = OnClickResult.CONTINUE;
+				return false;
+			}
 			ulong crewId = visit.crew.peepId.IsValid ? visit.crew.peepId.id : 0UL;
 			ulong actorId = visit.crew.IsInVehicle && visit.crew.VehicleID.IsValid ? visit.crew.VehicleID.id : crewId;
 			ulong npcId = visit.npc?.Id.id ?? 0UL;
@@ -2817,7 +3062,11 @@ public partial class GameplayTweaksPlugin
 			float heatGain = success ? (highValue ? 8f : 5f) : (highValue ? 18f : 12f);
 
 			visit.ConsumeConvoActionsHelper();
-			AddDirectedRelationshipBuff(targetGang, humanPlayer, success ? "relbuff-gangs-robbery2-table-on-finish" : "relbuff-gangs-robbery1-buff", GetCrewPeepForPlayer(targetGang));
+			AddDirectedRelationshipBuff(targetGang, humanPlayer, success ? "relbuff-gangs-robbery2-table-on-finish" : "relbuff-gangs-robbery1-table-on-finish", GetCrewPeepForPlayer(targetGang));
+			if (!success)
+			{
+				AddDirectedRelationshipBuff(targetGang, humanPlayer, "relbuff-gangs-robbery1-buff", GetCrewPeepForPlayer(targetGang));
+			}
 			AddWarHeat(channel, targetGang.PID.id, humanPlayer.PID.id, heatGain, success ? "convo-robbery-success" : "convo-robbery-failed");
 			if (success)
 			{
@@ -2851,6 +3100,27 @@ public partial class GameplayTweaksPlugin
 			result = OnClickResult.CONTINUE;
 		}
 		return false;
+	}
+
+	private static bool IsGangRobberyBossConversationTarget(VisitState visit, PlayerInfo targetGang)
+	{
+		Entity npc = visit?.npc;
+		if (npc?.components?.agent == null || targetGang == null)
+		{
+			return false;
+		}
+		try
+		{
+			if (npc.components.agent.IsBoss().pass)
+			{
+				return true;
+			}
+		}
+		catch
+		{
+		}
+		EntityID bossPeepId = GetCrewPeepForPlayer(targetGang);
+		return bossPeepId.IsValid && npc.Id == bossPeepId;
 	}
 
 	private static bool IsHighValueGangRobberyKey(string textKey)
@@ -3101,7 +3371,7 @@ public partial class GameplayTweaksPlugin
 			int targetDirtyBefore = ReadInventoryAmount(dirtyTarget, dirtyCashLabel);
 			GrantContext grantContext = new GrantContext(visit);
 			humanPlayer.finances.DoChangeMoneyOnCrew(visit, cleanDelta, MoneyReason.Other);
-			AddDirtyCash(dirtyTarget, dirtyQty);
+			AddDirtyCash(dirtyTarget, dirtyQty, "gang-money-in");
 			visit.ConsumeConvoActionsHelper();
 			new AddRelBuff
 			{
@@ -3414,15 +3684,17 @@ public partial class GameplayTweaksPlugin
 
 	internal static class CombatAdvisorNullFixPatch
 	{
+		private static readonly Dictionary<string, int> NullRefCountByMethod = new Dictionary<string, int>(StringComparer.Ordinal);
+
 		public static void ApplyPatch(Harmony harmony)
 		{
 			try
 			{
 				PatchTypeMethodsWithNullFinalizer(harmony, "Game.Session.Player.AI.CombatAdvisor", "MaybeAskForTruce", "UpdateRequestsAfterAggro");
 				PatchTypeMethodsWithNullFinalizer(harmony, "Game.Session.Player.AI.PrecinctAdvisor", "FindCarToCollect", "ProduceRequests");
-				PatchTypeMethodsWithNullFinalizer(harmony, "Game.Session.Sim.VictoryTracker", "OnHumanTurnStarted");
+				PatchTypeMethodsWithNullFinalizer(harmony, "Game.Session.Sim.VictoryTracker", "OnHumanTurnStarted", "OnAfterEntityLoad", "RecomputeAllGoals");
+				PatchTypeMethodsWithNullFinalizer(harmony, "Game.Session.Sim.VictoryAbstractWorthSubgoal", "RecomputeState");
 				PatchTypeMethodsWithNullFinalizer(harmony, "Game.UI.Session.Ledger.LedgerReportGenerator", "MakeResourcesList", "GetNetWorthOfPlayer");
-				PatchTypeMethodsWithNullFinalizer(harmony, "Game.Session.Sim.VictoryNetWorthSubgoal", "ProduceWorthPerPlayer");
 			}
 			catch (Exception arg)
 			{
@@ -3456,10 +3728,27 @@ public partial class GameplayTweaksPlugin
 			Debug.Log("[GameplayTweaks] CombatAdvisorNullFixPatch finalizer applied to " + methodName);
 		}
 
-		private static Exception NullRefFinalizer(Exception __exception)
+		private static Exception NullRefFinalizer(Exception __exception, MethodBase __originalMethod)
 		{
 			if (__exception is NullReferenceException)
 			{
+				try
+				{
+					string methodName = $"{__originalMethod?.DeclaringType?.FullName ?? "unknown"}.{__originalMethod?.Name ?? "unknown"}";
+					NullRefCountByMethod.TryGetValue(methodName, out int count);
+					count++;
+					NullRefCountByMethod[methodName] = count;
+					if (count == 1 || count % 100 == 0)
+					{
+						VerificationLog(
+							"LoadStability",
+							$"nullref-swallowed method={methodName} message={__exception.Message} count={count}");
+					}
+				}
+				catch
+				{
+				}
+
 				return null;
 			}
 			return __exception;

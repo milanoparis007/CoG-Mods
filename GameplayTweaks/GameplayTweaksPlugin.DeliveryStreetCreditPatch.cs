@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Game.Core;
 using Game.Services;
+using Game.Session.Data;
 using Game.Session.Entities;
 using Game.Session.Player;
 using Game.Session.Player.Commands;
@@ -23,6 +24,8 @@ public partial class GameplayTweaksPlugin
 
 		private const float PassengerStreetCredShare = 0.25f;
 
+		private static readonly Dictionary<string, int> _automationNullRefLogDayByKey = new Dictionary<string, int>();
+
 		public static void ApplyPatch(Harmony harmony)
 		{
 			try
@@ -30,7 +33,8 @@ public partial class GameplayTweaksPlugin
 				harmony.Patch(
 					AccessTools.Method(typeof(CommandAutomationStep), "OnStarted"),
 					prefix: new HarmonyMethod(typeof(DeliveryStreetCreditPatch), nameof(OnStartedPrefix)),
-					postfix: new HarmonyMethod(typeof(DeliveryStreetCreditPatch), nameof(OnStartedPostfix)));
+					postfix: new HarmonyMethod(typeof(DeliveryStreetCreditPatch), nameof(OnStartedPostfix)),
+					finalizer: new HarmonyMethod(typeof(DeliveryStreetCreditPatch), nameof(OnStartedFinalizer)));
 			}
 			catch (Exception ex)
 			{
@@ -92,6 +96,134 @@ public partial class GameplayTweaksPlugin
 			catch (Exception ex)
 			{
 				UnityEngine.Debug.LogWarning("[GameplayTweaks] DeliveryStreetCreditPatch OnStartedPostfix failed: " + ex.Message);
+			}
+		}
+
+		private static Exception OnStartedFinalizer(CommandAutomationStep __instance, Exception __exception)
+		{
+			if (__exception == null)
+			{
+				return null;
+			}
+			if (__exception is NullReferenceException
+				&& ShouldSuppressHumanAutomationNullRef(__instance, out string context))
+			{
+				LogSuppressedAutomationNullRef(context);
+				return null;
+			}
+
+			return __exception;
+		}
+
+		private static bool ShouldSuppressHumanAutomationNullRef(CommandAutomationStep command, out string context)
+		{
+			context = "reason=unknown";
+			if (command == null || !command.pid.IsHumanPlayer)
+			{
+				return false;
+			}
+
+			PlayerInfo player = G.FindPlayerById(command.pid.id);
+			if (player?.crew == null)
+			{
+				context = $"player={command.pid.id} peep={command.peepId.id} building={command.buildingId.id} reason=no-human-crew";
+				return true;
+			}
+
+			CrewAssignment assignment = player.crew.GetCrewForPeep(command.peepId);
+			EntityID vehicleId = assignment.IsValid ? assignment.VehicleID : EntityID.INVALID;
+			AutomationSequence sequence = null;
+			AutomationStep step = null;
+			try
+			{
+				sequence = assignment.IsValid ? player.automation?.GetAutoOrNull(assignment) : null;
+				step = sequence?.GetNextStep();
+			}
+			catch
+			{
+			}
+
+			string staleReason = GetAutomationNullRefStaleReason(command, player, assignment, sequence, step);
+			bool routeOwned = vehicleId.IsValid
+				&& (MultiCrewVehicleHelper.IsHumanVehicleTravelActive(vehicleId)
+					|| MultiCrewVehicleHelper.HasQueuedHumanVehiclePendingResume(vehicleId)
+					|| MultiCrewVehicleHelper.TryGetPendingHumanVehicleTravel(vehicleId, out _, out NodeID expectedNodeId, out NodeID goalNodeId)
+						&& (expectedNodeId.IsValid || goalNodeId.IsValid));
+			if (sequence != null && (staleReason != null || !routeOwned))
+			{
+				try
+				{
+					sequence.Stop();
+				}
+				catch
+				{
+				}
+			}
+			context = $"player={command.pid.id} peep={command.peepId.id} vehicle={vehicleId.id} building={command.buildingId.id} routeOwned={routeOwned} assignmentValid={assignment.IsValid} inVehicle={assignment.IsInVehicle} seq={(sequence != null ? sequence.id.id.ToString() : "none")} step={(sequence != null ? sequence.nextstep.ToString() : "-1")} action={(step != null ? step.action.ToString() : "none")} target={(step != null ? step.target.id.ToString() : "0")} stopped={(sequence != null && (staleReason != null || !routeOwned))} reason={staleReason ?? (routeOwned ? "route-owned" : "automation-step-nullref")}";
+			return true;
+		}
+
+		private static string GetAutomationNullRefStaleReason(CommandAutomationStep command, PlayerInfo player, CrewAssignment assignment, AutomationSequence sequence, AutomationStep step)
+		{
+			try
+			{
+				if (!assignment.IsValid)
+				{
+					return "missing-crew-assignment";
+				}
+				Entity peep = command.peepId.FindEntity();
+				if (peep?.components?.agent == null)
+				{
+					return "missing-peep-agent";
+				}
+				if (sequence == null)
+				{
+					return "missing-automation-sequence";
+				}
+				if (step == null)
+				{
+					return "missing-automation-step";
+				}
+				if (!command.buildingId.IsValid && !step.target.IsValid)
+				{
+					return "missing-target";
+				}
+				Entity target = (command.buildingId.IsValid ? command.buildingId : step.target).FindEntity();
+				if (target == null)
+				{
+					return "missing-target-entity";
+				}
+				if (step.action != AutoAction.None && step.target.IsValid && step.target.FindEntity() == null)
+				{
+					return "missing-step-target";
+				}
+				if (player?.automation == null)
+				{
+					return "missing-automation-executor";
+				}
+			}
+			catch
+			{
+				return "inspection-failed";
+			}
+			return null;
+		}
+
+		private static void LogSuppressedAutomationNullRef(string context)
+		{
+			try
+			{
+				int day = G.GetNow().days;
+				string key = context ?? "unknown";
+				if (_automationNullRefLogDayByKey.TryGetValue(key, out int lastDay) && lastDay == day)
+				{
+					return;
+				}
+				_automationNullRefLogDayByKey[key] = day;
+				VerificationLog("VehicleNodeAuthority", $"automation-step-nullref-swallowed {context}");
+			}
+			catch
+			{
 			}
 		}
 

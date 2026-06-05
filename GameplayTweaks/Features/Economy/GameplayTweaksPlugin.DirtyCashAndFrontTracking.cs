@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using Game.Core;
 using Game.Session.Board;
 using Game.Session.Data;
 using Game.Session.Entities;
 using Game.Session.Player;
+using Game.Session.Player.AI;
 using Game.Session.Sim;
 using Game.Session.Sim.Modules;
 using HarmonyLib;
@@ -188,7 +190,7 @@ public partial class GameplayTweaksPlugin
 				{
 					return true;
 				}
-				GameplayTweaksPlugin.AddDirtyCash(val2, num2);
+				GameplayTweaksPlugin.AddDirtyCash(val2, num2, "money-prefix:" + obj);
 				return false;
 			}
 			catch
@@ -322,6 +324,8 @@ public partial class GameplayTweaksPlugin
 						(HarmonyMethod)null, (HarmonyMethod)null, (HarmonyMethod)null);
 					Debug.Log("[GameplayTweaks] Front tracking patch applied (prefix + postfix)");
 				}
+				PatchBusinessAdvisorTakeover(harmony, "TryTakeOver");
+				PatchBusinessAdvisorTakeover(harmony, "TryTakeOverCasino");
 			}
 			catch (Exception arg)
 			{
@@ -329,17 +333,28 @@ public partial class GameplayTweaksPlugin
 			}
 		}
 
+		private static void PatchBusinessAdvisorTakeover(Harmony harmony, string methodName)
+		{
+			MethodInfo method = typeof(BusinessAdvisor).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
+			if (method == null)
+			{
+				Debug.LogWarning($"[GameplayTweaks] Front tracking could not find BusinessAdvisor.{methodName}");
+				return;
+			}
+			harmony.Patch((MethodBase)method,
+				new HarmonyMethod(typeof(FrontTrackingPatch), "BusinessAdvisorTakeoverPresencePrefix", (Type[])null),
+				(HarmonyMethod)null, (HarmonyMethod)null, (HarmonyMethod)null, (HarmonyMethod)null);
+			Debug.Log($"[GameplayTweaks] Front tracking presence guard applied to BusinessAdvisor.{methodName}");
+		}
+
 		private static bool TakeoverPrefix(object __instance, object[] __args)
 		{
 			try
 			{
-				if (!GameplayTweaksPlugin.EnableAIAlliances.Value) return true;
 				PlayerTerritory val = __instance as PlayerTerritory;
 				if (val == null) return true;
 				PlayerInfo attacker = ((PlayerSubmanager)val).PlayerInfo;
 				if (attacker == null) return true;
-				AlliancePact attackerPact = GameplayTweaksPlugin.GetPactForPlayer(attacker.PID);
-				if (attackerPact == null) return true;
 				object td = (__args != null && __args.Length > 1) ? __args[1] : null;
 				if (td == null) return true;
 				if (_findBuildingMethod == null)
@@ -348,6 +363,13 @@ public partial class GameplayTweaksPlugin
 				}
 				Entity building = _findBuildingMethod?.Invoke(td, null) as Entity;
 				if (building == null) return true;
+				if (ShouldBlockAiTakeoverForHumanPhysicalPresence(attacker, building, "perform-takeover"))
+				{
+					return false;
+				}
+				if (!GameplayTweaksPlugin.EnableAIAlliances.Value) return true;
+				AlliancePact attackerPact = GameplayTweaksPlugin.GetPactForPlayer(attacker.PID);
+				if (attackerPact == null) return true;
 				PlayerID ownerId = building.data.building.controlled.Get();
 				if (!ownerId.IsValid) return true;
 				if (ownerId.id == attacker.PID.id) return true;
@@ -364,6 +386,180 @@ public partial class GameplayTweaksPlugin
 				Debug.LogWarning($"[GameplayTweaks] TakeoverPrefix error: {ex.Message}");
 			}
 			return true;
+		}
+
+		private static bool BusinessAdvisorTakeoverPresencePrefix(object __instance, Entity building)
+		{
+			try
+			{
+				if (building == null)
+				{
+					return true;
+				}
+				PlayerInfo attacker = Traverse.Create(__instance).Field("_player").GetValue<PlayerInfo>();
+				return !ShouldBlockAiTakeoverForHumanPhysicalPresence(attacker, building, "business-advisor");
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning($"[GameplayTweaks] BusinessAdvisor takeover presence guard error: {ex.Message}");
+				return true;
+			}
+		}
+
+		private static bool ShouldBlockAiTakeoverForHumanPhysicalPresence(PlayerInfo attacker, Entity building, string source)
+		{
+			try
+			{
+				if (attacker == null || attacker.PID.IsHumanPlayer || building == null)
+				{
+					return false;
+				}
+				PlayerID ownerId = building.data.building.controlled.Get();
+				if (!ownerId.IsHumanPlayer)
+				{
+					return false;
+				}
+				if (!TryFindHumanPhysicalFrontDefender(building, out CrewAssignment defender, out NodeID defenderNodeId, out string defenderSource, out int presentCrewCount))
+				{
+					return false;
+				}
+
+				GameplayTweaksPlugin.VerificationLog(
+					"FrontTracking",
+					$"front-takeover-blocked-human-present source={source} attacker={attacker.PID.id} building={building.Id.id} node={defenderNodeId} defender={defender.peepId.id} vehicle={(defender.IsInVehicle ? defender.VehicleID.id.ToString() : "0")} crewPresent={presentCrewCount} defenderSource={defenderSource}");
+				return true;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning($"[GameplayTweaks] human front presence guard failed: {ex.Message}");
+				return false;
+			}
+		}
+
+		private static bool TryFindHumanPhysicalFrontDefender(Entity building, out CrewAssignment defender, out NodeID defenderNodeId, out string defenderSource, out int presentCrewCount)
+		{
+			defender = CrewAssignment.EMPTY;
+			defenderNodeId = NodeID.INVALID;
+			defenderSource = "none";
+			presentCrewCount = 0;
+			PlayerInfo humanPlayer = Game.Game.ctx?.players?.Human;
+			PlayerCrew humanCrew = humanPlayer?.crew;
+			if (building == null || humanCrew == null)
+			{
+				return false;
+			}
+
+			List<NodeID> comparisonNodeIds = CollectTakeoverPresenceNodeIds(building);
+			if (comparisonNodeIds.Count <= 0)
+			{
+				return false;
+			}
+
+			foreach (CrewAssignment assignment in humanCrew.GetLiving())
+			{
+				if (!assignment.IsValid || assignment.IsDead)
+				{
+					continue;
+				}
+
+				if (assignment.IsInVehicle && assignment.VehicleID.IsValid)
+				{
+					if (!MultiCrewVehicleHelper.TryGetStrictPhysicalVehicleNode(assignment.VehicleID, out Node vehicleNode, out string vehicleSource)
+						|| vehicleNode == null
+						|| !ContainsNodeId(comparisonNodeIds, vehicleNode.id))
+					{
+						continue;
+					}
+
+					presentCrewCount++;
+					if (!defender.IsValid)
+					{
+						defender = assignment;
+						defenderNodeId = vehicleNode.id;
+						defenderSource = string.IsNullOrWhiteSpace(vehicleSource) ? "vehicle-physical" : "vehicle-" + vehicleSource;
+					}
+					continue;
+				}
+
+				Entity peep = assignment.GetPeep();
+				Node peepNode = peep?.components?.agent?.GetNode();
+				if (peepNode == null || !ContainsNodeId(comparisonNodeIds, peepNode.id))
+				{
+					continue;
+				}
+
+				presentCrewCount++;
+				if (!defender.IsValid)
+				{
+					defender = assignment;
+					defenderNodeId = peepNode.id;
+					defenderSource = "agent";
+				}
+			}
+
+			return defender.IsValid;
+		}
+
+		private static List<NodeID> CollectTakeoverPresenceNodeIds(Entity building)
+		{
+			List<NodeID> nodeIds = new List<NodeID>();
+			if (building == null)
+			{
+				return nodeIds;
+			}
+
+			try
+			{
+				if (building.data?.board != null)
+				{
+					AddNodeId(nodeIds, building.data.board.bead.nodeId);
+				}
+			}
+			catch
+			{
+			}
+
+			try
+			{
+				if (CommandButtonScopeOutPatch.TryGetScopeComparisonNodeIds(building, out _, out List<NodeID> comparisonNodeIds, out _)
+					&& comparisonNodeIds != null)
+				{
+					foreach (NodeID comparisonNodeId in comparisonNodeIds)
+					{
+						AddNodeId(nodeIds, comparisonNodeId);
+					}
+				}
+			}
+			catch
+			{
+			}
+
+			return nodeIds;
+		}
+
+		private static void AddNodeId(List<NodeID> nodeIds, NodeID nodeId)
+		{
+			if (!nodeId.IsValid || ContainsNodeId(nodeIds, nodeId))
+			{
+				return;
+			}
+			nodeIds.Add(nodeId);
+		}
+
+		private static bool ContainsNodeId(List<NodeID> nodeIds, NodeID nodeId)
+		{
+			if (nodeIds == null || !nodeId.IsValid)
+			{
+				return false;
+			}
+			for (int i = 0; i < nodeIds.Count; i++)
+			{
+				if (nodeIds[i] == nodeId)
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 		private static void TakeoverPostfix(object __instance, Entity __result)

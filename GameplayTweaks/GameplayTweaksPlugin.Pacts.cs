@@ -4,20 +4,25 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using Game.Core;
+using Game.Session;
+using Game.Session.Board;
 using Game.Session.Data;
 using Game.Session.Entities;
 using Game.Session.Player;
+using Game.Session.Player.AI;
 using Game.Session.Sim;
 using Game.Session.Sim.Modules;
+using Game.UI.Session;
 using HarmonyLib;
 using SomaSim.Util;
 using UnityEngine;
+using Stopwatch = System.Diagnostics.Stopwatch;
 namespace GameplayTweaks
 {
 public partial class GameplayTweaksPlugin
 {
 
-	private static class TurnUpdatePatch
+	internal static class TurnUpdatePatch
 	{
 		private static class PactWarManager
 		{
@@ -98,11 +103,120 @@ public partial class GameplayTweaksPlugin
 		private static readonly Dictionary<int, ulong> _lastKnownBossPeepByGang = new Dictionary<int, ulong>();
 
 		private static int _lastBossTrackDay = -1;
+		private static int _aiCrewTurnMaintenanceCursor;
+		private static readonly Dictionary<int, int> _aiCrewTurnMaintenanceCrewCursorByGang = new Dictionary<int, int>();
+		private static readonly AiCrewLevelupDiagnostics _aiCrewLevelupDiagnostics = new AiCrewLevelupDiagnostics();
+		private static readonly Dictionary<ulong, int> _aiCrewLevelupThresholdStateLoggedByPeep = new Dictionary<ulong, int>();
+		private static readonly Dictionary<string, AiRobberyPendingContact> _pendingAiHumanRobberyContacts = new Dictionary<string, AiRobberyPendingContact>(StringComparer.Ordinal);
+		private static readonly Dictionary<string, int> _aiHumanRobberyDiagnosticCooldownUntilDay = new Dictionary<string, int>(StringComparer.Ordinal);
+		private static readonly Dictionary<string, int> _aiHumanRobberySameNodeMissLogDayByKey = new Dictionary<string, int>(StringComparer.Ordinal);
+		private static readonly Dictionary<string, int> _aiHumanRobberyApproachWarningDayByKey = new Dictionary<string, int>(StringComparer.Ordinal);
+		private static readonly Dictionary<string, int> _aiGangRobberyCooldownUntilDayByPair = new Dictionary<string, int>(StringComparer.Ordinal);
+		private static readonly Dictionary<string, int> _aiHumanRobberyPairCooldownUntilDay = new Dictionary<string, int>(StringComparer.Ordinal);
+		private static readonly Dictionary<string, DeferredAiHumanRobberyResponse> _deferredAiHumanRobberyResponsesByKey = new Dictionary<string, DeferredAiHumanRobberyResponse>(StringComparer.Ordinal);
+		private static readonly HashSet<string> _activeAiHumanRobberyResponseKeys = new HashSet<string>(StringComparer.Ordinal);
+		private static readonly Dictionary<string, int> _activeAiHumanRobberyResponseDayByKey = new Dictionary<string, int>(StringComparer.Ordinal);
+		private static readonly HashSet<int> _activeAiHumanRobberyResponseHumanPids = new HashSet<int>();
+		private static int _lastAiHumanRobberyContactScanDay = int.MinValue;
+		private static int _lastAiHumanRobberyArrivalScanFrame = -1;
+		private static readonly Dictionary<int, int> _lastAiHumanRobberyAiTurnScanDayByPid = new Dictionary<int, int>();
+		private static int _lastAiHumanRobberyTrespassDiscoveryLogDay = int.MinValue;
+		private const long HUMAN_TURN_PHASE_THRESHOLD_MS = 20;
+		private const long HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS = 8;
+		private const int DEFERRED_ALLIANCE_PACT_GANG_OPS_INITIAL_GRACE_FRAMES = 20;
+		private const int DEFERRED_ALLIANCE_PACT_GANG_OPS_INPUT_YIELD_LIMIT = 30;
+		private const int DEFERRED_ALLIANCE_PACT_GANG_OPS_SAVE_DELAY_FRAMES = 18;
+		private const int HUMAN_TURN_START_SAVE_DELAY_FRAMES = 48;
+		private static int _deferredAlliancePactGangOpsDay = int.MinValue;
+		private static bool _deferredAlliancePactGangOpsQueued;
+		private static int _deferredAlliancePactGangOpsStage;
+		private static int _deferredAlliancePactGangOpsEarliestFrame = -1;
+		private static int _deferredAlliancePactGangOpsGraceDeferrals;
+		private static int _deferredAlliancePactGangOpsInputDeferrals;
+		private static long _deferredAlliancePactGangOpsStartedTicks;
+		private static long _deferredAlliancePactGangOpsCpuMs;
+		private static int _lastDeferredAlliancePactGangOpsCancelLogDay = int.MinValue;
+
+		private sealed class AiCrewLevelupDiagnostics
+		{
+			internal int Checked;
+			internal int AppliedCrew;
+			internal int Grants;
+			internal int MissingData;
+			internal int HumanSkipped;
+			internal int NoXp;
+			internal int BelowThreshold;
+			internal int NoNextThreshold;
+			internal int NoAvailable;
+			internal int InvalidSelection;
+			internal int Failed;
+			internal int MaxXp;
+			internal int MaxNextXp;
+			internal EntityID MaxXpPeep = EntityID.INVALID;
+
+			internal void Reset()
+			{
+				Checked = 0;
+				AppliedCrew = 0;
+				Grants = 0;
+				MissingData = 0;
+				HumanSkipped = 0;
+				NoXp = 0;
+				BelowThreshold = 0;
+				NoNextThreshold = 0;
+				NoAvailable = 0;
+				InvalidSelection = 0;
+				Failed = 0;
+				MaxXp = 0;
+				MaxNextXp = 0;
+				MaxXpPeep = EntityID.INVALID;
+			}
+
+			internal void TrackXp(Entity peep, int xp, int nextXp)
+			{
+				if (xp <= MaxXp)
+				{
+					return;
+				}
+
+				MaxXp = xp;
+				MaxNextXp = nextXp;
+				MaxXpPeep = peep?.Id ?? EntityID.INVALID;
+			}
+		}
+
+		private static readonly FieldInfo PlayerSubmanagerPlayerField = AccessTools.Field(typeof(PlayerSubmanager), "_player");
 
 		internal static void ResetRuntime()
 		{
 			_lastKnownBossPeepByGang.Clear();
 			_lastBossTrackDay = -1;
+			_aiCrewTurnMaintenanceCursor = 0;
+			_aiCrewTurnMaintenanceCrewCursorByGang.Clear();
+			_aiCrewLevelupDiagnostics.Reset();
+			_aiCrewLevelupThresholdStateLoggedByPeep.Clear();
+			_pendingAiHumanRobberyContacts.Clear();
+			_aiHumanRobberyDiagnosticCooldownUntilDay.Clear();
+			_aiHumanRobberySameNodeMissLogDayByKey.Clear();
+			_aiGangRobberyCooldownUntilDayByPair.Clear();
+			_aiHumanRobberyPairCooldownUntilDay.Clear();
+			_deferredAiHumanRobberyResponsesByKey.Clear();
+			_activeAiHumanRobberyResponseKeys.Clear();
+			_activeAiHumanRobberyResponseDayByKey.Clear();
+			_activeAiHumanRobberyResponseHumanPids.Clear();
+			_lastAiHumanRobberyContactScanDay = int.MinValue;
+			_lastAiHumanRobberyTrespassDiscoveryLogDay = int.MinValue;
+			_deferredAlliancePactGangOpsDay = int.MinValue;
+			_deferredAlliancePactGangOpsQueued = false;
+			_deferredAlliancePactGangOpsStage = 0;
+			_deferredAlliancePactGangOpsEarliestFrame = -1;
+			_deferredAlliancePactGangOpsGraceDeferrals = 0;
+			_deferredAlliancePactGangOpsInputDeferrals = 0;
+			_deferredAlliancePactGangOpsStartedTicks = 0L;
+			_deferredAlliancePactGangOpsCpuMs = 0L;
+			_lastDeferredAlliancePactGangOpsCancelLogDay = int.MinValue;
+			_lastAiHumanRobberyAiTurnScanDayByPid.Clear();
+			ResetGrapevineRuntimeState();
 		}
 
 		public static void ApplyPatch(Harmony harmony)
@@ -115,6 +229,17 @@ public partial class GameplayTweaksPlugin
 				{
 					harmony.Patch((MethodBase)method, (HarmonyMethod)null, new HarmonyMethod(typeof(TurnUpdatePatch), "OnTurnPostfix", (Type[])null), (HarmonyMethod)null, (HarmonyMethod)null, (HarmonyMethod)null);
 					Debug.Log("[GameplayTweaks] Turn update enabled");
+				}
+				MethodInfo aiTurnStartedMethod = typeof(PlayerAI).GetMethod("OnPlayerTurnStarted", BindingFlags.Instance | BindingFlags.Public);
+				if (aiTurnStartedMethod != null)
+				{
+					harmony.Patch((MethodBase)aiTurnStartedMethod, (HarmonyMethod)null, new HarmonyMethod(typeof(TurnUpdatePatch), nameof(OnPlayerAiTurnStartedPostfix)), (HarmonyMethod)null, (HarmonyMethod)null, (HarmonyMethod)null);
+					Debug.Log("[GameplayTweaks] AI human robbery turn contact scan enabled");
+				}
+				MethodInfo finishActivePlayerTurnMethod = AccessTools.Method(typeof(AllPlayersManager), "FinishActivePlayerTurn");
+				if (finishActivePlayerTurnMethod != null)
+				{
+					harmony.Patch(finishActivePlayerTurnMethod, prefix: new HarmonyMethod(typeof(TurnUpdatePatch), nameof(FinishActivePlayerTurnPrefix)));
 				}
 			}
 			catch (Exception arg)
@@ -134,9 +259,19 @@ public partial class GameplayTweaksPlugin
 					return;
 				}
 				SimTime now = G.GetNow();
+				long humanTurnStartTicks = Stopwatch.GetTimestamp();
+				long phaseStartTicks = humanTurnStartTicks;
+				void MarkHumanTurnPhase(string phase)
+				{
+					LogHumanTurnPhase(phase, phaseStartTicks, now, humanPlayer);
+					phaseStartTicks = Stopwatch.GetTimestamp();
+				}
 				ProcessHumanHideoutPrepass(humanPlayer, now);
 				ProcessNationalHeatTurn(humanPlayer, now);
 				ReconcileAllCrewJailStates("turn");
+				MarkHumanTurnPhase("prepass");
+				HashSet<long> activeImportantWitnessCrewIds = BuildActiveImportantWitnessCrewIdSet(out int activeImportantWitnessEntries);
+				bool hasAnyActiveImportantWitness = activeImportantWitnessEntries > 0;
 				foreach (CrewAssignment item in __instance.GetLiving().ToList())
 				{
 					CrewAssignment current = item;
@@ -148,32 +283,22 @@ public partial class GameplayTweaksPlugin
 					Entity peep = current.GetPeep();
 					if (peep != null)
 					{
-						ProcessCrewMemberTurn(peep, now, humanPlayer);
+						ProcessCrewMemberTurn(peep, now, humanPlayer, activeImportantWitnessCrewIds, hasAnyActiveImportantWitness);
 					}
 				}
+				MarkHumanTurnPhase("crew-member-turns");
 				ProcessSnitchCaseTurn(humanPlayer, now);
-				foreach (PlayerInfo gang in G.GetAllPlayers())
-				{
-					if (gang == null || !gang.IsJustGang || gang.crew == null || gang.crew.IsCrewDefeated)
-					{
-						continue;
-					}
-					if (gang.PID.IsHumanPlayer)
-					{
-						continue;
-					}
-					foreach (CrewAssignment assignment in gang.crew.GetLiving().ToList())
-					{
-						Entity aiPeep = assignment.GetPeep();
-						if (aiPeep != null)
-						{
-							ProcessCrewMemberTurn(aiPeep, now, gang);
-						}
-					}
-				}
+				MarkHumanTurnPhase("snitch-case");
+				int aiCrewRelationsProcessed = 0;
+				int aiCrewRelationsDeferred = 0;
+				ProcessAiCrewTurnMaintenance(now);
 				ReconcileRaidedGangSafehouseTerritory("pact-turn");
 				EnsureHumanSafehouseTerritoryColorOwner("pact-turn", refreshColors: false);
-				ReconcileLowRespectTerritoryOwnership("pact-turn");
+				int lowRespectTerritoryClears = ReconcileLowRespectTerritoryOwnership("pact-turn", refreshColors: false);
+				if (lowRespectTerritoryClears > 0)
+				{
+					DirtyCashEconomyCompatibilityPatch.RequestDeferredHumanTerritoryVisualOnlyRefresh("pact-turn-low-respect", delayFrames: 12, lightweight: true);
+				}
 				int days = now.days;
 				if (days != _lastGangTrackDay)
 				{
@@ -181,34 +306,13 @@ public partial class GameplayTweaksPlugin
 					RefreshGangTracker();
 					ReconcilePersistentGangRelationshipBuffs("pact-turn-day");
 				}
-				if (EnableAIAlliances.Value)
-				{
-					ProcessAIAlliances(now);
-					ProcessPactVotes(now);
-					ProcessAIInterPactAlliances(now);
-					ProcessInterPactAllianceVotes(now);
-					ShareLeaderEnemiesAcrossInterPactAlliances();
-					ProcessPactEarnings();
-					EnforcePactPeace();
-					CheckPlayerPactWarKick(now);
-				}
-				if (_lastPactOpsTurnDay != now.days)
-				{
-					_lastPactOpsTurnDay = now.days;
-					RunGangOpsTurn(GangOpsChannel.Pact, humanPlayer, now);
-					RunGangOpsTurn(GangOpsChannel.Independent, humanPlayer, now);
-				}
-				if (ShouldDeferRetaliationWarReconciliation())
-				{
-					VerificationLog("Compat", $"retaliation war reconciliation deferred day={now.days} reason=external-gangwars");
-				}
-				else
-				{
-					EnforceGangWarFromRetaliationBuffs(humanPlayer);
-				}
-				GangWarsAdapterPatch.RunTurnAllianceProjection(now);
-				GangWarsAdapterPatch.RunTurnPactAggroBoost(humanPlayer, now);
-				FlushCrewPickAggroRefreshes("turn-reconcile");
+				MarkHumanTurnPhase("ai-maintenance-territory");
+				QueueDeferredAlliancePactGangOps(humanPlayer, now);
+				MarkHumanTurnPhase("alliances-pacts-gangops-queued");
+				RunAiHumanRobberyContactPhase(humanPlayer, now);
+				MarkHumanTurnPhase("ai-robbery-contact");
+				TryRunWeeklyGrapevinePulse(now, "human-turn-start");
+				MarkHumanTurnPhase("grapevine-weekly-pulse");
 				int days2 = now.days;
 				int gangMeetingIntervalDays = GANG_MEETING_INTERVAL_DAYS;
 				if (SaveData.GangMeetingIntervalDays != gangMeetingIntervalDays)
@@ -237,6 +341,7 @@ public partial class GameplayTweaksPlugin
 						break;
 					}
 				}
+				MarkHumanTurnPhase("gang-meeting");
 				foreach (PlayerInfo gang in G.GetAllPlayers())
 				{
 					if (gang == null)
@@ -252,18 +357,29 @@ public partial class GameplayTweaksPlugin
 					{
 						continue;
 					}
+					if (aiCrewRelationsProcessed >= AI_CREW_RELATIONS_MAINTENANCE_GANG_BUDGET_PER_TURN)
+					{
+						aiCrewRelationsDeferred++;
+						continue;
+					}
 					try
 					{
 						SaveData.AiGangLastSnitchMeetingDayByGang[gang.PID.id] = days2;
 						RunAIGangSnitchMeeting(gang, now);
 						RunAiCrewRelationsDecisions(gang, now);
 						RunRelationshipDrivenInternalCrewEvents(gang, now);
+						aiCrewRelationsProcessed++;
 					}
 					catch (Exception ex4)
 					{
 						Debug.LogError($"[GameplayTweaks] AI gang snitch meeting failed for gang={gang.PID.id}: {ex4}");
 					}
 				}
+				if (aiCrewRelationsDeferred > 0)
+				{
+					VerificationLog("AiCrewRelations", $"deferred gangs={aiCrewRelationsDeferred} processed={aiCrewRelationsProcessed} budget={AI_CREW_RELATIONS_MAINTENANCE_GANG_BUDGET_PER_TURN} day={days2}");
+				}
+				MarkHumanTurnPhase("ai-crew-relations");
 				if (EnableDirtyCash.Value && !ShouldDeferDirtyCashRuntime())
 				{
 					try
@@ -275,6 +391,7 @@ public partial class GameplayTweaksPlugin
 						Debug.LogError($"[GameplayTweaks] Laundering failed: {arg2}");
 					}
 				}
+				MarkHumanTurnPhase("dirty-cash");
 				// CopWarSystem truce logic handled by CopKilling mod
 				if (EnableAIAlliances.Value && days2 % 90 == 0 && !SaveData.NeverAcceptPacts && SaveData.PlayerJoinedPactIndex < 0 && !SaveData.Pacts.Any((AlliancePact p) => p.ColorIndex == PLAYER_PACT_SLOT_INDEX) && CalculateGangPower(humanPlayer) >= 30 && SharedRng.NextDouble() < 0.35)
 				{
@@ -292,8 +409,12 @@ public partial class GameplayTweaksPlugin
 						}
 					}
 				}
+				MarkHumanTurnPhase("pact-invitation");
 				PactColorUiPatch.RequestFullCrewPickRefresh("human-turn", 5);
-				SaveModData();
+				MarkHumanTurnPhase("pact-ui-refresh");
+				QueueDeferredModDataSave("human-turn-start", now, HUMAN_TURN_START_SAVE_DELAY_FRAMES);
+				MarkHumanTurnPhase("save-mod-data-queued");
+				LogHumanTurnPhase("total", humanTurnStartTicks, now, humanPlayer, 40);
 			}
 			catch (Exception arg4)
 			{
@@ -301,10 +422,476 @@ public partial class GameplayTweaksPlugin
 			}
 		}
 
+		private static void FinishActivePlayerTurnPrefix()
+		{
+			try
+			{
+				CancelDeferredAlliancePactGangOpsForNextTurn("finish-active-player-turn");
+			}
+			catch
+			{
+			}
+		}
+
+		private static void QueueDeferredAlliancePactGangOps(PlayerInfo humanPlayer, SimTime scheduledNow)
+		{
+			try
+			{
+				int scheduledDay = scheduledNow.days;
+				if (_deferredAlliancePactGangOpsQueued && _deferredAlliancePactGangOpsDay == scheduledDay)
+				{
+					return;
+				}
+
+				_deferredAlliancePactGangOpsQueued = true;
+				_deferredAlliancePactGangOpsDay = scheduledDay;
+				_deferredAlliancePactGangOpsStage = 0;
+				_deferredAlliancePactGangOpsEarliestFrame = Time.frameCount + DEFERRED_ALLIANCE_PACT_GANG_OPS_INITIAL_GRACE_FRAMES;
+				_deferredAlliancePactGangOpsGraceDeferrals = 0;
+				_deferredAlliancePactGangOpsInputDeferrals = 0;
+				_deferredAlliancePactGangOpsStartedTicks = Stopwatch.GetTimestamp();
+				_deferredAlliancePactGangOpsCpuMs = 0L;
+				global::Game.TimerUtil.RunNextFrame(delegate
+				{
+					RunDeferredAlliancePactGangOpsStage(humanPlayer, scheduledDay, 0);
+				});
+			}
+			catch (Exception ex)
+			{
+				_deferredAlliancePactGangOpsQueued = false;
+				Debug.LogWarning("[GameplayTweaks] Deferred alliance/pact/gang-ops scheduling failed; running inline. " + ex.Message);
+				RunDeferredAlliancePactGangOps(humanPlayer, scheduledNow.days);
+			}
+		}
+
+		private static void RunDeferredAlliancePactGangOps(PlayerInfo humanPlayer, int scheduledDay)
+		{
+			long totalStartTicks = Stopwatch.GetTimestamp();
+			try
+			{
+				_deferredAlliancePactGangOpsQueued = false;
+				if (global::Game.Game.ctx == null || !global::Game.Game.ctx.IsInteractive)
+				{
+					return;
+				}
+
+				SimTime now = G.GetNow();
+				if (now.days != scheduledDay)
+				{
+					VerificationLog("Perf", $"deferred alliance-pact-gangops skipped scheduledDay={scheduledDay} currentDay={now.days}");
+					return;
+				}
+
+				PlayerInfo currentHuman = G.GetHumanPlayer();
+				if (currentHuman != null)
+				{
+					humanPlayer = currentHuman;
+				}
+
+				long phaseStartTicks = Stopwatch.GetTimestamp();
+				if (EnableAIAlliances.Value)
+				{
+					ProcessAIAlliances(now);
+					LogHumanTurnPhase("deferred-ai-alliances", phaseStartTicks, now, humanPlayer, HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS);
+					phaseStartTicks = Stopwatch.GetTimestamp();
+					ProcessPactVotes(now);
+					ProcessAIInterPactAlliances(now);
+					ProcessInterPactAllianceVotes(now);
+					ShareLeaderEnemiesAcrossInterPactAlliances();
+					LogHumanTurnPhase("deferred-pact-votes", phaseStartTicks, now, humanPlayer, HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS);
+					phaseStartTicks = Stopwatch.GetTimestamp();
+					ProcessPactEarnings();
+					EnforcePactPeace();
+					CheckPlayerPactWarKick(now);
+					LogHumanTurnPhase("deferred-pact-economy-peace", phaseStartTicks, now, humanPlayer, HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS);
+					phaseStartTicks = Stopwatch.GetTimestamp();
+				}
+
+				if (_lastPactOpsTurnDay != now.days)
+				{
+					_lastPactOpsTurnDay = now.days;
+					RunGangOpsTurn(GangOpsChannel.Pact, humanPlayer, now);
+					RunGangOpsTurn(GangOpsChannel.Independent, humanPlayer, now);
+				}
+				LogHumanTurnPhase("deferred-gangops", phaseStartTicks, now, humanPlayer, HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS);
+				phaseStartTicks = Stopwatch.GetTimestamp();
+
+				if (ShouldDeferRetaliationWarReconciliation())
+				{
+					VerificationLog("Compat", $"retaliation war reconciliation deferred day={now.days} reason=external-gangwars");
+				}
+				else
+				{
+					EnforceGangWarFromRetaliationBuffs(humanPlayer);
+				}
+				GangWarsAdapterPatch.RunTurnAllianceProjection(now);
+				GangWarsAdapterPatch.RunTurnPactAggroBoost(humanPlayer, now);
+				FlushCrewPickAggroRefreshes("turn-reconcile-deferred");
+				LogHumanTurnPhase("deferred-war-adapters-refresh", phaseStartTicks, now, humanPlayer, HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS);
+
+				PactColorUiPatch.RequestFullCrewPickRefresh("human-turn-deferred", 5);
+				QueueDeferredModDataSave("deferred-alliance-pact-gangops", now, DEFERRED_ALLIANCE_PACT_GANG_OPS_SAVE_DELAY_FRAMES);
+				LogHumanTurnPhase("deferred-alliances-pacts-gangops-wall-total", totalStartTicks, now, humanPlayer, HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogError("[GameplayTweaks] Deferred alliance/pact/gang-ops failed: " + ex);
+			}
+			finally
+			{
+				_deferredAlliancePactGangOpsQueued = false;
+			}
+		}
+
+		private static void RunDeferredAlliancePactGangOpsStage(PlayerInfo humanPlayer, int scheduledDay, int stage)
+		{
+			long phaseStartTicks = Stopwatch.GetTimestamp();
+			try
+			{
+				if (!_deferredAlliancePactGangOpsQueued || _deferredAlliancePactGangOpsDay != scheduledDay)
+				{
+					return;
+				}
+
+				if (global::Game.Game.ctx == null || !global::Game.Game.ctx.IsInteractive)
+				{
+					_deferredAlliancePactGangOpsQueued = false;
+					_deferredAlliancePactGangOpsCpuMs = 0L;
+					return;
+				}
+
+				SimTime now = G.GetNow();
+				if (now.days != scheduledDay)
+				{
+					_deferredAlliancePactGangOpsQueued = false;
+					_deferredAlliancePactGangOpsInputDeferrals = 0;
+					_deferredAlliancePactGangOpsCpuMs = 0L;
+					VerificationLog("Perf", $"deferred alliance-pact-gangops staged skipped scheduledDay={scheduledDay} currentDay={now.days} stage={stage}");
+					return;
+				}
+
+				if (ShouldYieldDeferredAlliancePactGangOpsStageForInput(stage, scheduledDay))
+				{
+					QueueDeferredAlliancePactGangOpsStage(humanPlayer, scheduledDay, stage);
+					return;
+				}
+
+				PlayerInfo currentHuman = G.GetHumanPlayer();
+				if (currentHuman != null)
+				{
+					humanPlayer = currentHuman;
+				}
+
+				if (stage == 0)
+				{
+					_deferredAlliancePactGangOpsStartedTicks = phaseStartTicks;
+				}
+
+				_deferredAlliancePactGangOpsStage = stage;
+				switch (stage)
+				{
+					case 0:
+						if (EnableAIAlliances.Value)
+						{
+							ProcessAIAlliances(now);
+						}
+						LogHumanTurnPhase("deferred-ai-alliances", phaseStartTicks, now, humanPlayer, HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS);
+						RecordDeferredAlliancePactGangOpsCpu(phaseStartTicks);
+						QueueDeferredAlliancePactGangOpsStage(humanPlayer, scheduledDay, 1);
+						return;
+					case 1:
+						if (EnableAIAlliances.Value)
+						{
+							ProcessPactVotes(now);
+							ProcessAIInterPactAlliances(now);
+							ProcessInterPactAllianceVotes(now);
+							ShareLeaderEnemiesAcrossInterPactAlliances();
+						}
+						LogHumanTurnPhase("deferred-pact-votes", phaseStartTicks, now, humanPlayer, HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS);
+						RecordDeferredAlliancePactGangOpsCpu(phaseStartTicks);
+						QueueDeferredAlliancePactGangOpsStage(humanPlayer, scheduledDay, 2);
+						return;
+					case 2:
+						if (EnableAIAlliances.Value)
+						{
+							ProcessPactEarnings();
+							EnforcePactPeace();
+							CheckPlayerPactWarKick(now);
+						}
+						LogHumanTurnPhase("deferred-pact-economy-peace", phaseStartTicks, now, humanPlayer, HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS);
+						RecordDeferredAlliancePactGangOpsCpu(phaseStartTicks);
+						QueueDeferredAlliancePactGangOpsStage(humanPlayer, scheduledDay, 3);
+						return;
+					case 3:
+						if (_lastPactOpsTurnDay != now.days)
+						{
+							RunGangOpsTurn(GangOpsChannel.Pact, humanPlayer, now);
+						}
+						LogHumanTurnPhase("deferred-gangops-pact", phaseStartTicks, now, humanPlayer, HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS);
+						RecordDeferredAlliancePactGangOpsCpu(phaseStartTicks);
+						QueueDeferredAlliancePactGangOpsStage(humanPlayer, scheduledDay, 4);
+						return;
+					case 4:
+						if (_lastPactOpsTurnDay != now.days)
+						{
+							_lastPactOpsTurnDay = now.days;
+							RunGangOpsTurn(GangOpsChannel.Independent, humanPlayer, now);
+						}
+						LogHumanTurnPhase("deferred-gangops-independent", phaseStartTicks, now, humanPlayer, HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS);
+						RecordDeferredAlliancePactGangOpsCpu(phaseStartTicks);
+						QueueDeferredAlliancePactGangOpsStage(humanPlayer, scheduledDay, 5);
+						return;
+					default:
+						if (ShouldDeferRetaliationWarReconciliation())
+						{
+							VerificationLog("Compat", $"retaliation war reconciliation deferred day={now.days} reason=external-gangwars");
+						}
+						else
+						{
+							EnforceGangWarFromRetaliationBuffs(humanPlayer);
+						}
+						GangWarsAdapterPatch.RunTurnAllianceProjection(now);
+						GangWarsAdapterPatch.RunTurnPactAggroBoost(humanPlayer, now);
+						FlushCrewPickAggroRefreshes("turn-reconcile-deferred");
+						LogHumanTurnPhase("deferred-war-adapters-refresh", phaseStartTicks, now, humanPlayer, HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS);
+						PactColorUiPatch.RequestFullCrewPickRefresh("human-turn-deferred", 5);
+						QueueDeferredModDataSave("deferred-alliance-pact-gangops", now, DEFERRED_ALLIANCE_PACT_GANG_OPS_SAVE_DELAY_FRAMES);
+						RecordDeferredAlliancePactGangOpsCpu(phaseStartTicks);
+						long totalStartTicks = _deferredAlliancePactGangOpsStartedTicks != 0L ? _deferredAlliancePactGangOpsStartedTicks : phaseStartTicks;
+						LogHumanTurnPhase("deferred-alliances-pacts-gangops-wall-total", totalStartTicks, now, humanPlayer, HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS);
+						LogDeferredAlliancePactGangOpsCpuTotal(totalStartTicks, now, humanPlayer);
+						_deferredAlliancePactGangOpsQueued = false;
+						_deferredAlliancePactGangOpsStage = 0;
+						_deferredAlliancePactGangOpsInputDeferrals = 0;
+						_deferredAlliancePactGangOpsStartedTicks = 0L;
+						_deferredAlliancePactGangOpsCpuMs = 0L;
+						return;
+				}
+			}
+			catch (Exception ex)
+			{
+				_deferredAlliancePactGangOpsQueued = false;
+				_deferredAlliancePactGangOpsCpuMs = 0L;
+				Debug.LogError("[GameplayTweaks] Deferred alliance/pact/gang-ops staged failed: " + ex);
+			}
+		}
+
+		internal static void CancelDeferredAlliancePactGangOpsForNextTurn(string source)
+		{
+			if (!_deferredAlliancePactGangOpsQueued)
+			{
+				return;
+			}
+
+			int scheduledDay = _deferredAlliancePactGangOpsDay;
+			int stage = _deferredAlliancePactGangOpsStage;
+			int deferrals = _deferredAlliancePactGangOpsInputDeferrals;
+			TryFlushCriticalGangOpsBeforeDeferredCancel(scheduledDay, stage, source);
+			_deferredAlliancePactGangOpsQueued = false;
+			_deferredAlliancePactGangOpsDay = int.MinValue;
+			_deferredAlliancePactGangOpsStage = 0;
+			_deferredAlliancePactGangOpsEarliestFrame = -1;
+			_deferredAlliancePactGangOpsGraceDeferrals = 0;
+			_deferredAlliancePactGangOpsInputDeferrals = 0;
+			_deferredAlliancePactGangOpsStartedTicks = 0L;
+			_deferredAlliancePactGangOpsCpuMs = 0L;
+			if (_lastDeferredAlliancePactGangOpsCancelLogDay != scheduledDay)
+			{
+				_lastDeferredAlliancePactGangOpsCancelLogDay = scheduledDay;
+				VerificationLog("Perf", $"deferred alliance-pact-gangops canceled-for-next-turn day={scheduledDay} stage={stage} deferrals={deferrals} source={source}");
+			}
+		}
+
+		private static void TryFlushCriticalGangOpsBeforeDeferredCancel(int scheduledDay, int stage, string source)
+		{
+			try
+			{
+				if (scheduledDay == int.MinValue
+					|| global::Game.Game.ctx == null
+					|| !global::Game.Game.ctx.IsInteractive
+					|| _lastPactOpsTurnDay == scheduledDay)
+				{
+					return;
+				}
+
+				SimTime now = G.GetNow();
+				if (now.days != scheduledDay)
+				{
+					return;
+				}
+
+				PlayerInfo humanPlayer = G.GetHumanPlayer();
+				bool ranPact = false;
+				bool ranIndependent = false;
+				long startTicks = Stopwatch.GetTimestamp();
+				if (stage <= 2)
+				{
+					RunGangOpsTurn(GangOpsChannel.Pact, humanPlayer, now);
+					ranPact = true;
+				}
+				if (stage <= 3)
+				{
+					_lastPactOpsTurnDay = scheduledDay;
+					RunGangOpsTurn(GangOpsChannel.Independent, humanPlayer, now);
+					ranIndependent = true;
+				}
+				long elapsedMs = GetElapsedMilliseconds(startTicks);
+				if (ranPact || ranIndependent)
+				{
+					VerificationLog("Perf", $"deferred alliance-pact-gangops critical-flush-before-cancel day={scheduledDay} stage={stage} ranPact={ranPact} ranIndependent={ranIndependent} ms={elapsedMs} source={source}");
+				}
+			}
+			catch (Exception ex)
+			{
+				VerificationLog("Perf", $"deferred alliance-pact-gangops critical-flush-failed day={scheduledDay} stage={stage} reason={ex.GetType().Name}:{ex.Message} source={source}");
+			}
+		}
+
+		private static bool ShouldYieldDeferredAlliancePactGangOpsStageForInput(int stage, int scheduledDay)
+		{
+			try
+			{
+				if (Time.frameCount < _deferredAlliancePactGangOpsEarliestFrame)
+				{
+					_deferredAlliancePactGangOpsGraceDeferrals++;
+					if (_deferredAlliancePactGangOpsGraceDeferrals == 1 || _deferredAlliancePactGangOpsGraceDeferrals % 30 == 0)
+					{
+						VerificationLog("Perf", $"deferred alliance-pact-gangops initial-grace day={scheduledDay} stage={stage} deferrals={_deferredAlliancePactGangOpsGraceDeferrals} frame={Time.frameCount} earliest={_deferredAlliancePactGangOpsEarliestFrame}");
+					}
+					return true;
+				}
+
+				if (!ShouldDeferUiMaintenanceForMouseInput())
+				{
+					_deferredAlliancePactGangOpsInputDeferrals = 0;
+					return false;
+				}
+
+				if (_deferredAlliancePactGangOpsInputDeferrals >= DEFERRED_ALLIANCE_PACT_GANG_OPS_INPUT_YIELD_LIMIT)
+				{
+					VerificationLog("Perf", $"deferred alliance-pact-gangops input-yield-exhausted day={scheduledDay} stage={stage} deferrals={_deferredAlliancePactGangOpsInputDeferrals}");
+					_deferredAlliancePactGangOpsInputDeferrals = 0;
+					return false;
+				}
+
+				_deferredAlliancePactGangOpsInputDeferrals++;
+				if (_deferredAlliancePactGangOpsInputDeferrals == 1 || _deferredAlliancePactGangOpsInputDeferrals % 10 == 0)
+				{
+					VerificationLog("Perf", $"deferred alliance-pact-gangops input-yield day={scheduledDay} stage={stage} deferrals={_deferredAlliancePactGangOpsInputDeferrals}");
+				}
+				return true;
+			}
+			catch
+			{
+				_deferredAlliancePactGangOpsInputDeferrals = 0;
+				return false;
+			}
+		}
+
+		private static void QueueDeferredAlliancePactGangOpsStage(PlayerInfo humanPlayer, int scheduledDay, int nextStage)
+		{
+			try
+			{
+				global::Game.TimerUtil.RunNextFrame(delegate
+				{
+					RunDeferredAlliancePactGangOpsStage(humanPlayer, scheduledDay, nextStage);
+				});
+			}
+			catch
+			{
+				RunDeferredAlliancePactGangOpsStage(humanPlayer, scheduledDay, nextStage);
+			}
+		}
+
+		private static void RecordDeferredAlliancePactGangOpsCpu(long startTicks)
+		{
+			_deferredAlliancePactGangOpsCpuMs += GetElapsedMilliseconds(startTicks);
+		}
+
+		private static void LogDeferredAlliancePactGangOpsCpuTotal(long wallStartTicks, SimTime now, PlayerInfo humanPlayer)
+		{
+			try
+			{
+				long cpuMs = _deferredAlliancePactGangOpsCpuMs;
+				long wallMs = GetElapsedMilliseconds(wallStartTicks);
+				if (cpuMs < HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS && wallMs < HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS)
+				{
+					return;
+				}
+
+				int totalPlayers = -1;
+				try
+				{
+					totalPlayers = global::Game.Game.ctx?.players?.all?.Count ?? -1;
+				}
+				catch
+				{
+				}
+
+				int turn = -1;
+				try
+				{
+					turn = global::Game.Game.ctx?.clock?.CurrentTurn ?? -1;
+				}
+				catch
+				{
+				}
+
+				Debug.Log($"[PERF][HumanTurnPhase] phase=deferred-alliances-pacts-gangops-cpu-total ms={cpuMs} wallMs={wallMs} day={now.days} year={now.YearsInt} turn={turn} pid={humanPlayer?.PID.id ?? -1} totalPlayers={totalPlayers}");
+			}
+			catch
+			{
+			}
+		}
+
+		private static void LogHumanTurnPhase(string phase, long startTicks, SimTime now, PlayerInfo humanPlayer, long thresholdMs = HUMAN_TURN_PHASE_THRESHOLD_MS)
+		{
+			try
+			{
+				long elapsedMs = GetElapsedMilliseconds(startTicks);
+				if (elapsedMs < thresholdMs)
+				{
+					return;
+				}
+				int totalPlayers = -1;
+				try
+				{
+					totalPlayers = global::Game.Game.ctx?.players?.all?.Count ?? -1;
+				}
+				catch
+				{
+				}
+				int turn = -1;
+				try
+				{
+					turn = global::Game.Game.ctx?.clock?.CurrentTurn ?? -1;
+				}
+				catch
+				{
+				}
+				Debug.Log($"[PERF][HumanTurnPhase] phase={phase} ms={elapsedMs} day={now.days} year={now.YearsInt} turn={turn} pid={humanPlayer?.PID.id ?? -1} totalPlayers={totalPlayers}");
+			}
+			catch
+			{
+			}
+		}
+
+		private static long GetElapsedMilliseconds(long startTicks)
+		{
+			return (Stopwatch.GetTimestamp() - startTicks) * 1000L / Stopwatch.Frequency;
+		}
+
 		// Tunable: AI crew-relations decisions (bribes / meetings)
 		private const int AI_LEGAL_ACTION_COOLDOWN_DAYS = 14;  // Min days between expensive legal actions (mayor/judge) per gang
 		private const int AI_MIN_CASH_RESERVE = 2000;         // Do not spend below this (clean+dirty) for bribes/meetings
 		private const float AI_MORALE_MEETING_HAPPINESS_THRESHOLD = 0.45f;  // Run morale meeting when avg crew happiness below this
+		private const int AI_CREW_TURN_MAINTENANCE_GANG_BUDGET_PER_TURN = 1;
+		private const int AI_CREW_TURN_MAINTENANCE_CREW_BUDGET_PER_TURN = 2;
+		private const long AI_CREW_TURN_MAINTENANCE_MS_BUDGET = 18L;
+		private const int AI_CREW_LEVELUP_PRIORITY_SCAN_CREW_BUDGET_PER_TURN = 80;
+		private const int AI_CREW_LEVELUP_PRIORITY_APPLY_BUDGET_PER_TURN = 4;
+		private const int AI_CREW_LEVELUPS_MAX_PER_CREW_TURN = 12;
+		private const int AI_CREW_RELATIONS_MAINTENANCE_GANG_BUDGET_PER_TURN = 6;
 
 		// Tunable: relationship-driven internal crew events (AI-only)
 		private const float AI_INTERNAL_EVENT_FAMILY_HAPPINESS_GAIN = 0.07f;
@@ -327,6 +914,8 @@ public partial class GameplayTweaksPlugin
 		private const float AI_SUPPORT_GIFT_LOYALTY_RATIO_THRESHOLD = 0.65f;
 		private const float AI_SUPPORT_VACATION_HAPPINESS_THRESHOLD = 0.25f;
 		private const float AI_SUPPORT_VACATION_LOYALTY_RATIO_THRESHOLD = 0.5f;
+		private const float CREW_PASSIVE_HAPPINESS_DECAY_HUMAN_LOW_CREDIT = 0.006f;
+		private const float CREW_PASSIVE_HAPPINESS_DECAY_AI_LOW_CREDIT = 0.012f;
 		private const int AI_CREW_RELATIONS_MAX_SUPPORT_TARGETS = 3;
 		private const int AI_CREW_RELATIONS_MINOR_RETAINER = 500;
 		private const int AI_CREW_RELATIONS_UNDERBOSS_MIN_CREW = 3;
@@ -335,7 +924,9 @@ public partial class GameplayTweaksPlugin
 		private const float AI_CREW_RELATIONS_MORALE_MEETING_LOYALTY_THRESHOLD = 0.55f;
 		private const int AI_PACT_TRADE_INTERVAL_DAYS = 21;
 		private const int AI_NETWORK_TRADE_INTERVAL_DAYS = 42;
-		private const int AI_NETWORK_TRADE_MAX_SUCCESS_COUNT = 3;
+		private const int AI_NETWORK_TRADE_MAX_SUCCESS_COUNT = 1;
+		private const int AI_NETWORK_TRADE_CANDIDATE_POOL_LIMIT = 24;
+		private const int AI_NETWORK_TRADE_MAX_EVALUATED_PAIRS = 16;
 		private const int AI_PACT_TRADE_MIN_CLEAN_RESERVE = 1200;
 		private const int AI_PACT_TRADE_LAUNDER_CLEAN_COST = 1100;
 		private const int AI_PACT_TRADE_LAUNDER_DIRTY_QTY = 1400;
@@ -346,12 +937,453 @@ public partial class GameplayTweaksPlugin
 		private const int AI_PACT_TRADE_DRUGS_QTY = 80;
 		private const int AI_ROBBERY_MIN_CASH_RESERVE = 900;
 		private const int AI_ROBBERY_LOW_CASH_MIN = 450;
+		private const int AI_ROBBERY_CONTACT_LOW_CASH_MIN = 300;
 		private const int AI_ROBBERY_LOW_CASH_MAX = 900;
 		private const int AI_ROBBERY_HIGH_CASH_MIN = 900;
 		private const int AI_ROBBERY_HIGH_CASH_MAX = 1800;
 		private const float AI_ROBBERY_PLAYER_TARGET_CHANCE = 0.12f;
+		private const bool AI_ROBBERY_HUMAN_CASH_MUTATION_ENABLED = false;
+		private static readonly bool AI_ROBBERY_CONTACT_PLAYER_RESPONSE_ENABLED = true;
+		private const bool AI_ROBBERY_CONTACT_VEHICLE_DEBIT_ENABLED = true;
+		private const float AI_ROBBERY_CONTACT_VEHICLE_HEAT_GAIN = 4f;
+		private const float AI_ROBBERY_CONTACT_REFUSE_HEAT_GAIN = 6f;
+		private const float AI_ROBBERY_CONTACT_EVADE_HEAT_GAIN = 4f;
+		private const float AI_ROBBERY_REFUSAL_ESCALATION_CHANCE = 0.2f;
+		private const float AI_ROBBERY_NEARBY_WORLD_DISTANCE = 24f;
+		private const float AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE = 14f;
+		private const float AI_ROBBERY_HUMAN_TERRITORY_MAX_CONTACT_DISTANCE = 14f;
+		private const int AI_ROBBERY_DIAGNOSTIC_MAX_CANDIDATES_PER_RUN = 3;
+		private const int AI_ROBBERY_MAX_CONTACTS_PER_SCAN = 1;
+		private const int AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS = 14;
+		private const int AI_ROBBERY_RESPONSE_LOCK_STALE_DAYS = 30;
+	private const int AI_ROBBERY_COOLDOWN_DAYS_SIX_MONTHS = 180;
+	private const int AI_ROBBERY_HUMAN_DIAGNOSTIC_COOLDOWN_DAYS = AI_ROBBERY_COOLDOWN_DAYS_SIX_MONTHS;
+		private const int AI_ROBBERY_TRESPASS_GRACE_FAST_DAYS = 1;
+		private const int AI_ROBBERY_TRESPASS_GRACE_DEFAULT_DAYS = 2;
+		private const int AI_ROBBERY_TRESPASS_GRACE_SLOW_DAYS = 3;
+		private const int AI_ROBBERY_TRESPASS_DISCOVERY_LOG_DAYS = 14;
+	private const int AI_ROBBERY_HUMAN_NODE_DIAGNOSTIC_COOLDOWN_DAYS = AI_ROBBERY_COOLDOWN_DAYS_SIX_MONTHS;
+	private const int AI_ROBBERY_HUMAN_TARGET_DIAGNOSTIC_COOLDOWN_DAYS = AI_ROBBERY_COOLDOWN_DAYS_SIX_MONTHS;
+	private const int AI_ROBBERY_HUMAN_VEHICLE_DIAGNOSTIC_COOLDOWN_DAYS = AI_ROBBERY_COOLDOWN_DAYS_SIX_MONTHS;
+		private const int AI_ROBBERY_GANG_PAIR_COOLDOWN_DAYS = AI_ROBBERY_COOLDOWN_DAYS_SIX_MONTHS;
+		private const string AI_ROBBERY_TRESPASS_RELBUFF_ID = "relbuff-social-gang-trespass";
+		private const float AI_ROBBERY_TERRITORY_EDGE_WORLD_DISTANCE = 30f;
+		private const float AI_ROBBERY_TERRITORY_PRESSURE_MAX_CONTACT_DISTANCE = 40f;
+		private const int AI_ROBBERY_TERRITORY_PRESSURE_POWER_MARGIN = 20;
+		private const int AI_ROBBERY_SAME_NODE_MISS_LOG_COOLDOWN_DAYS = 21;
+		private const int AI_ROBBERY_APPROACH_WARNING_COOLDOWN_DAYS = AI_ROBBERY_COOLDOWN_DAYS_SIX_MONTHS;
+		private const int AI_ROBBERY_REFUSE_MIN_DAMAGE = 8;
+		private const int AI_ROBBERY_REFUSE_MAX_DAMAGE = 22;
+		private const int AI_ROBBERY_REFUSE_MIN_HEALTH_LEFT = 25;
+		private static readonly Label AI_LEVELUP_HOODS = new Label("levelup-hoods");
+		private static readonly Label AI_LEVELUP_HOODSGANG = new Label("levelup-hoodsgang");
 		private static readonly string[] AI_PACT_TRADE_LIQUOR_LABELS = new string[8] { "home-brew", "moonshine", "cider", "brick-wine", "fake-beer", "fake-wine", "bathtub-gin", "sparkling-cider" };
 		private static readonly string[] AI_PACT_TRADE_DRUG_LABELS = new string[7] { "cannabis", "cannabis-joints", "heroin", "opium", "opiumlow", "cocaine", "cocainelow" };
+
+		private static void ProcessAiCrewTurnMaintenance(SimTime now)
+		{
+			try
+			{
+				List<PlayerInfo> gangs = G.GetAllPlayers()
+					.Where(gang => gang != null
+						&& !gang.PID.IsHumanPlayer
+						&& gang.IsJustGang
+						&& gang.crew != null
+						&& !gang.crew.IsCrewDefeated)
+					.OrderBy(gang => gang.PID.id)
+					.ToList();
+				if (gangs.Count == 0)
+				{
+					_aiCrewTurnMaintenanceCursor = 0;
+					return;
+				}
+
+				int budget = Math.Max(1, AI_CREW_TURN_MAINTENANCE_GANG_BUDGET_PER_TURN);
+				int crewBudget = Math.Max(1, AI_CREW_TURN_MAINTENANCE_CREW_BUDGET_PER_TURN);
+				int start = _aiCrewTurnMaintenanceCursor % gangs.Count;
+				int processedGangs = 0;
+				int processedCrew = 0;
+				int scannedGangs = 0;
+				bool partialGang = false;
+				bool budgetHit = false;
+				bool timeBudgetHit = false;
+				int nextGangCursor = start;
+				_aiCrewLevelupDiagnostics.Reset();
+				Stopwatch stopwatch = Stopwatch.StartNew();
+				ProcessPriorityAiCrewLevelups(gangs, now, stopwatch, out int priorityScannedCrew, out int priorityEligibleCrew, out int priorityAppliedCrew, out int priorityGrants);
+				for (int offset = 0; offset < gangs.Count && processedGangs < budget && processedCrew < crewBudget; offset++)
+				{
+					int gangIndex = (start + offset) % gangs.Count;
+					PlayerInfo gang = gangs[gangIndex];
+					scannedGangs++;
+					int gangId = gang.PID.id;
+					List<CrewAssignment> livingCrew = gang.crew.GetLiving().ToList();
+					if (livingCrew.Count == 0)
+					{
+						_aiCrewTurnMaintenanceCrewCursorByGang.Remove(gangId);
+						processedGangs++;
+						nextGangCursor = (gangIndex + 1) % gangs.Count;
+						continue;
+					}
+
+					int crewCursor = 0;
+					if (_aiCrewTurnMaintenanceCrewCursorByGang.TryGetValue(gangId, out int savedCrewCursor))
+					{
+						crewCursor = Math.Max(0, savedCrewCursor) % livingCrew.Count;
+					}
+
+					int crewVisited = 0;
+					while (crewVisited < livingCrew.Count && processedCrew < crewBudget)
+					{
+						CrewAssignment assignment = livingCrew[crewCursor];
+						Entity aiPeep = assignment.GetPeep();
+						if (aiPeep == null)
+						{
+							crewCursor = (crewCursor + 1) % livingCrew.Count;
+							crewVisited++;
+							continue;
+						}
+
+						ProcessCrewMemberTurn(aiPeep, now, gang);
+						processedCrew++;
+						crewCursor = (crewCursor + 1) % livingCrew.Count;
+						crewVisited++;
+						if (stopwatch.ElapsedMilliseconds >= AI_CREW_TURN_MAINTENANCE_MS_BUDGET)
+						{
+							timeBudgetHit = true;
+							break;
+						}
+					}
+
+					if (crewVisited >= livingCrew.Count)
+					{
+						_aiCrewTurnMaintenanceCrewCursorByGang.Remove(gangId);
+						processedGangs++;
+						nextGangCursor = (gangIndex + 1) % gangs.Count;
+					}
+					else
+					{
+						_aiCrewTurnMaintenanceCrewCursorByGang[gangId] = crewCursor;
+						partialGang = true;
+						nextGangCursor = gangIndex;
+					}
+
+					budgetHit = processedCrew >= crewBudget || processedGangs >= budget || timeBudgetHit;
+					if (budgetHit)
+					{
+						break;
+					}
+				}
+				stopwatch.Stop();
+				_aiCrewTurnMaintenanceCursor = nextGangCursor % gangs.Count;
+				int deferredGangs = Math.Max(0, gangs.Count - processedGangs);
+				if (priorityScannedCrew > 0 && (priorityEligibleCrew > 0 || priorityAppliedCrew > 0 || stopwatch.ElapsedMilliseconds >= 20))
+				{
+					VerificationLog(
+						"AiCrewLevelup",
+						$"priority-scan scannedCrew={priorityScannedCrew} eligibleCrew={priorityEligibleCrew} appliedCrew={priorityAppliedCrew} grants={priorityGrants} applyBudget={AI_CREW_LEVELUP_PRIORITY_APPLY_BUDGET_PER_TURN} day={now.days} ms={stopwatch.ElapsedMilliseconds}");
+				}
+				if (partialGang || deferredGangs > 0 || stopwatch.ElapsedMilliseconds >= 20)
+				{
+					VerificationLog(
+						"AiCrewTurn",
+						$"maintenance processedGangs={processedGangs} scannedGangs={scannedGangs} deferredGangs={deferredGangs} partialGang={partialGang} processedCrew={processedCrew} totalGangs={gangs.Count} gangBudget={budget} crewBudget={crewBudget} budgetHit={budgetHit} timeBudgetHit={timeBudgetHit} cursor={_aiCrewTurnMaintenanceCursor} ms={stopwatch.ElapsedMilliseconds} day={now.days}");
+				}
+				if (processedCrew > 0)
+				{
+					VerificationLog(
+						"AiCrewLevelup",
+						$"summary checked={_aiCrewLevelupDiagnostics.Checked} appliedCrew={_aiCrewLevelupDiagnostics.AppliedCrew} grants={_aiCrewLevelupDiagnostics.Grants} missingData={_aiCrewLevelupDiagnostics.MissingData} humanSkipped={_aiCrewLevelupDiagnostics.HumanSkipped} noXp={_aiCrewLevelupDiagnostics.NoXp} belowThreshold={_aiCrewLevelupDiagnostics.BelowThreshold} noNextThreshold={_aiCrewLevelupDiagnostics.NoNextThreshold} noAvailable={_aiCrewLevelupDiagnostics.NoAvailable} invalidSelection={_aiCrewLevelupDiagnostics.InvalidSelection} failed={_aiCrewLevelupDiagnostics.Failed} maxXp={_aiCrewLevelupDiagnostics.MaxXp} maxNextXp={_aiCrewLevelupDiagnostics.MaxNextXp} maxXpPeep={_aiCrewLevelupDiagnostics.MaxXpPeep.id} processedCrew={processedCrew} day={now.days}");
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning($"[GameplayTweaks] AI crew turn maintenance failed: {ex.Message}");
+			}
+		}
+
+		private static void OnPlayerAiTurnStartedPostfix(PlayerAI __instance)
+		{
+			try
+			{
+				if (!TryResolvePlayerAiOwner(__instance, out PlayerInfo actor) || actor == null || actor.PID.IsHumanPlayer)
+				{
+					return;
+				}
+				TryRunAiHumanRobberyContactScanForActor(actor, G.GetNow(), "ai-turn-contact");
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] AI turn robbery contact scan failed: " + ex.Message);
+			}
+		}
+
+		private static bool TryResolvePlayerAiOwner(PlayerAI ai, out PlayerInfo player)
+		{
+			player = null;
+			try
+			{
+				player = PlayerSubmanagerPlayerField?.GetValue(ai) as PlayerInfo;
+				return player != null;
+			}
+			catch
+			{
+				return false;
+			}
+		}
+
+		private static void ProcessPriorityAiCrewLevelups(List<PlayerInfo> gangs, SimTime now, Stopwatch stopwatch, out int scannedCrew, out int eligibleCrew, out int appliedCrew, out int grants)
+		{
+			scannedCrew = 0;
+			eligibleCrew = 0;
+			appliedCrew = 0;
+			grants = 0;
+			if (gangs == null || gangs.Count == 0)
+			{
+				return;
+			}
+
+			foreach (PlayerInfo gang in gangs)
+			{
+				if (gang?.crew == null)
+				{
+					continue;
+				}
+				if (stopwatch.ElapsedMilliseconds >= AI_CREW_TURN_MAINTENANCE_MS_BUDGET)
+				{
+					return;
+				}
+
+				List<CrewAssignment> livingCrew = gang.crew.GetLiving().ToList();
+				foreach (CrewAssignment assignment in livingCrew)
+				{
+					if (scannedCrew >= AI_CREW_LEVELUP_PRIORITY_SCAN_CREW_BUDGET_PER_TURN)
+					{
+						return;
+					}
+					Entity peep = assignment.GetPeep();
+					scannedCrew++;
+					if (!IsAiCrewLevelupSpendableNow(gang, peep))
+					{
+						continue;
+					}
+
+					eligibleCrew++;
+					if (appliedCrew >= AI_CREW_LEVELUP_PRIORITY_APPLY_BUDGET_PER_TURN)
+					{
+						continue;
+					}
+
+					int applied = TryApplyAiCrewLevelups(gang, peep, now, "priority-scan");
+					if (applied > 0)
+					{
+						appliedCrew++;
+						grants += applied;
+					}
+					if (stopwatch.ElapsedMilliseconds >= AI_CREW_TURN_MAINTENANCE_MS_BUDGET)
+					{
+						return;
+					}
+				}
+			}
+		}
+
+		private static bool IsAiCrewLevelupSpendableNow(PlayerInfo gang, Entity peep)
+		{
+			if (gang?.crew == null || gang.PID.IsHumanPlayer || peep?.components?.agent == null || peep.data?.agent?.xp == null)
+			{
+				return false;
+			}
+			try
+			{
+				(int nextXP, string _) = peep.components.agent.FindXPForNextLevelup();
+				return nextXP > 0 && peep.components.agent.GetXP() >= nextXP;
+			}
+			catch
+			{
+				return false;
+			}
+		}
+
+		private static int TryApplyAiCrewLevelups(PlayerInfo gang, Entity peep, SimTime now, string source)
+		{
+			if (gang?.crew == null || peep?.components?.agent == null || peep.data?.agent == null)
+			{
+				_aiCrewLevelupDiagnostics.MissingData++;
+				return 0;
+			}
+			if (gang.PID.IsHumanPlayer)
+			{
+				_aiCrewLevelupDiagnostics.HumanSkipped++;
+				return 0;
+			}
+			try
+			{
+				AgentComponent agent = peep.components.agent;
+				XP xp = peep.data.agent.xp;
+				_aiCrewLevelupDiagnostics.Checked++;
+				int currentXp = agent.GetXP();
+				if (xp == null)
+				{
+					_aiCrewLevelupDiagnostics.MissingData++;
+					return 0;
+				}
+				if (currentXp <= 0)
+				{
+					_aiCrewLevelupDiagnostics.NoXp++;
+					return 0;
+				}
+
+				int grants = 0;
+				int customHoods = 0;
+				int customHoodsGang = 0;
+				List<string> applied = null;
+				string stopReason = "none";
+				int lastNextXP = 0;
+				while (grants < AI_CREW_LEVELUPS_MAX_PER_CREW_TURN)
+				{
+					(int nextXP, string _) = agent.FindXPForNextLevelup();
+					currentXp = agent.GetXP();
+					lastNextXP = nextXP;
+					_aiCrewLevelupDiagnostics.TrackXp(peep, currentXp, nextXP);
+					if (nextXP <= 0)
+					{
+						stopReason = "no-next-threshold";
+						break;
+					}
+					if (currentXp < nextXP)
+					{
+						stopReason = "below-threshold";
+						break;
+					}
+
+					List<LevelupDescription> available = agent.GetAvailableLevelups(explain: false)?.ToList();
+					if (available == null || available.Count == 0)
+					{
+						stopReason = "no-available";
+						break;
+					}
+
+					LevelupDescription selected = ChooseAiCrewLevelup(available);
+					if (selected?.levelup == null || selected.nextLevel <= selected.currentLevel)
+					{
+						stopReason = "invalid-selection";
+						break;
+					}
+
+					xp.lastThreshold++;
+					xp.SetLevelupLevel(selected.levelup.id, selected.nextLevel);
+					grants++;
+					if (selected.levelup.id == AI_LEVELUP_HOODS)
+					{
+						customHoods++;
+					}
+					else if (selected.levelup.id == AI_LEVELUP_HOODSGANG)
+					{
+						customHoodsGang++;
+					}
+					if (applied == null)
+					{
+						applied = new List<string>();
+					}
+					if (applied.Count < 8)
+					{
+						applied.Add($"{selected.levelup.id}:{selected.currentLevel}->{selected.nextLevel}");
+					}
+				}
+
+				if (grants <= 0)
+				{
+					if (string.Equals(stopReason, "no-next-threshold", StringComparison.Ordinal))
+					{
+						_aiCrewLevelupDiagnostics.NoNextThreshold++;
+					}
+					else if (string.Equals(stopReason, "below-threshold", StringComparison.Ordinal))
+					{
+						_aiCrewLevelupDiagnostics.BelowThreshold++;
+						TryLogAiCrewLevelupThresholdState(gang, peep, xp, currentXp, lastNextXP, source, now);
+					}
+					else if (string.Equals(stopReason, "no-available", StringComparison.Ordinal))
+					{
+						_aiCrewLevelupDiagnostics.NoAvailable++;
+					}
+					else if (string.Equals(stopReason, "invalid-selection", StringComparison.Ordinal))
+					{
+						_aiCrewLevelupDiagnostics.InvalidSelection++;
+					}
+					if (!string.Equals(stopReason, "below-threshold", StringComparison.Ordinal))
+					{
+						VerificationLog(
+							"AiCrewLevelup",
+							$"skipped gang={gang.PID.id} peep={peep.Id.id} reason={stopReason} xp={currentXp} nextXp={lastNextXP} lastThreshold={xp.lastThreshold} source={source} day={now.days}");
+					}
+					return 0;
+				}
+
+				global::Game.Game.ctx?.events?.EnqueueOnce(new global::Game.Session.SessionEvent(global::Game.Session.SessionEventType.CrewLevelUpsChanged, peep.Id, gang.PID));
+				string appliedText = applied == null || applied.Count == 0 ? "none" : string.Join(",", applied);
+				_aiCrewLevelupDiagnostics.AppliedCrew++;
+				_aiCrewLevelupDiagnostics.Grants += grants;
+				VerificationLog(
+					"AiCrewLevelup",
+					$"applied gang={gang.PID.id} peep={peep.Id.id} grants={grants} hoods={customHoods} hoodsgang={customHoodsGang} xp={agent.GetXP()} lastThreshold={xp.lastThreshold} source={source} applied={appliedText} day={now.days}");
+				return grants;
+			}
+			catch (Exception ex)
+			{
+				_aiCrewLevelupDiagnostics.Failed++;
+				VerificationLog("AiCrewLevelup", $"failed gang={gang.PID.id} peep={peep.Id.id} reason={ex.GetType().Name} message={ex.Message}");
+				return 0;
+			}
+		}
+
+		private static void TryLogAiCrewLevelupThresholdState(PlayerInfo gang, Entity peep, XP xp, int currentXp, int nextXp, string source, SimTime now)
+		{
+			if (gang == null || peep == null || xp == null || !peep.Id.IsValid)
+			{
+				return;
+			}
+			if (currentXp < 40 && nextXp <= 40)
+			{
+				return;
+			}
+
+			int hoods = xp.GetLevelupLevel(AI_LEVELUP_HOODS);
+			int hoodsGang = xp.GetLevelupLevel(AI_LEVELUP_HOODSGANG);
+			int signature = unchecked((nextXp * 397) ^ xp.lastThreshold ^ (hoods << 8) ^ (hoodsGang << 16));
+			if (_aiCrewLevelupThresholdStateLoggedByPeep.TryGetValue(peep.Id.id, out int previousSignature) && previousSignature == signature)
+			{
+				return;
+			}
+
+			_aiCrewLevelupThresholdStateLoggedByPeep[peep.Id.id] = signature;
+			VerificationLog(
+				"AiCrewLevelup",
+				$"threshold-state gang={gang.PID.id} peep={peep.Id.id} xp={currentXp} nextXp={nextXp} lastThreshold={xp.lastThreshold} hoods={hoods} hoodsgang={hoodsGang} source={source} day={now.days}");
+		}
+
+		private static LevelupDescription ChooseAiCrewLevelup(List<LevelupDescription> available)
+		{
+			LevelupDescription hoodsGang = available
+				.Where(desc => desc?.levelup != null && desc.levelup.id == AI_LEVELUP_HOODSGANG)
+				.OrderByDescending(desc => desc.nextLevel)
+				.FirstOrDefault();
+			if (hoodsGang != null)
+			{
+				return hoodsGang;
+			}
+
+			LevelupDescription hoods = available
+				.Where(desc => desc?.levelup != null && desc.levelup.id == AI_LEVELUP_HOODS)
+				.OrderByDescending(desc => desc.nextLevel)
+				.FirstOrDefault();
+			if (hoods != null)
+			{
+				return hoods;
+			}
+
+			return available[SharedRng.Next(available.Count)];
+		}
 
 		private sealed class AiTradeActor
 		{
@@ -377,6 +1409,161 @@ public partial class GameplayTweaksPlugin
 			public PlayerInfo Buyer;
 
 			public float Score;
+		}
+
+		private sealed class AiRobberyCandidate
+		{
+			public PlayerInfo Robber;
+
+			public CrewAssignment TargetCrew;
+
+			public Node ContactNode;
+
+			public float Distance;
+
+			public bool SameNode;
+
+			public string RobberNodeSource;
+
+			public string TargetNodeSource;
+
+			public bool DirectAggro;
+
+			public bool BroadlyHostile;
+
+			public bool EnemyTerritory;
+
+			public bool HumanTerritory;
+
+			public bool StrictTrespassNode;
+
+			public bool TerritoryPressure;
+
+			public bool RecentTrespassMemory;
+
+
+			public int RobberPower;
+
+			public int HumanPower;
+
+			public int RobberLocalPower;
+
+			public int HumanLocalPower;
+
+			public float RarityChance;
+
+			public float RarityRoll;
+
+			public bool WouldAttempt;
+
+			public int TrespassGraceDays;
+
+			public string Reason;
+		}
+
+		private sealed class AiRobberyPendingContact
+		{
+			public int RobberPid;
+
+			public long TargetCrewPeepId;
+
+			public long TargetVehicleId;
+
+			public short TargetNodeIndex;
+
+			public int CreatedDay;
+
+			public int ExpireDay;
+
+			public int ContactDay;
+
+			public int GraceDays;
+
+			public string Source = string.Empty;
+
+			public bool WarningShown;
+		}
+
+		private sealed class DeferredAiHumanRobberyResponse
+		{
+			public int RobberPid;
+
+			public long TargetCrewPeepId;
+
+			public long TargetVehicleId;
+
+			public short TargetNodeIndex;
+
+			public int EnactedDay;
+
+			public int NotBeforeDay;
+
+			public int ExpireDay;
+
+			public int CreatedDay;
+
+			public string Source = string.Empty;
+
+			public string Mode = string.Empty;
+
+			public float Distance;
+
+			public bool SameNode;
+
+			public string RobberNodeSource = string.Empty;
+
+			public string TargetNodeSource = string.Empty;
+
+			public bool DirectAggro;
+
+			public bool BroadlyHostile;
+
+			public bool EnemyTerritory;
+
+			public bool HumanTerritory;
+
+			public bool StrictTrespassNode;
+
+			public bool TerritoryPressure;
+
+			public bool RecentTrespassMemory;
+
+			public int RobberPower;
+
+			public int HumanPower;
+
+			public int RobberLocalPower;
+
+			public int HumanLocalPower;
+
+			public int TrespassGraceDays;
+
+			public string Reason = string.Empty;
+		}
+
+		private sealed class AiRobberyResolutionPreview
+		{
+			public int SafehouseCash;
+
+			public int VehicleCash;
+
+			public int PeepCash;
+
+			public int TotalCash;
+
+			public int AvailableCash;
+
+			public int Amount;
+
+			public bool CanDebitSafehouse;
+
+			public bool CanDebitCleanCash;
+
+			public bool CanDebitVehicle;
+
+			public bool CanDebitPeep;
+
+			public string Reason;
 		}
 
 		/// <summary>Returns the set of living crew member EntityIDs for the given gang.</summary>
@@ -565,7 +1752,15 @@ public partial class GameplayTweaksPlugin
 			{
 				CrewOutingEvent.TryExecuteGangMeetingEffectsForGang(gang, "ai", runSnitchReveal: false);
 			}
-			VerificationLog("AiCrewRelations", $"summary gang={gang.PID.id} avgHappy={avgHappiness:0.000} avgLoyaltyRatio={avgLoyaltyRatio:0.000} actions={relationActions} cash={totalCash}");
+			if (relationActions > 0
+				|| avgHappiness < AI_MORALE_MEETING_HAPPINESS_THRESHOLD
+				|| avgLoyaltyRatio < AI_CREW_RELATIONS_MORALE_MEETING_LOYALTY_THRESHOLD
+				|| bossState.LocalHeatLevel >= WantedLevel.Medium
+				|| bossState.FedsIncoming
+				|| bossState.WitnessCount > 0)
+			{
+				VerificationLog("AiCrewRelations", $"summary gang={gang.PID.id} avgHappy={avgHappiness:0.000} avgLoyaltyRatio={avgLoyaltyRatio:0.000} actions={relationActions} cash={totalCash}");
+			}
 		}
 
 		private static bool IsAiCrewUnavailableForRelations(Entity peep, CrewModState state)
@@ -1143,13 +2338,48 @@ public partial class GameplayTweaksPlugin
 			}
 		}
 
-		private static void ProcessCrewMemberTurn(Entity peep, SimTime now, PlayerInfo player)
+		private static HashSet<long> BuildActiveImportantWitnessCrewIdSet(out int activeEntryCount)
+		{
+			activeEntryCount = 0;
+			HashSet<long> result = new HashSet<long>();
+			try
+			{
+				List<ImportantWitnessEntry> entries = SaveData.NationalHeat?.WitnessEntries;
+				if (entries == null || entries.Count == 0)
+				{
+					return result;
+				}
+
+				for (int i = 0; i < entries.Count; i++)
+				{
+					ImportantWitnessEntry entry = entries[i];
+					if (entry == null || entry.ArrestProcessed)
+					{
+						continue;
+					}
+
+					activeEntryCount++;
+					if (entry.CrewPeepId >= 0)
+					{
+						result.Add(entry.CrewPeepId);
+					}
+				}
+			}
+			catch
+			{
+			}
+
+			return result;
+		}
+
+		private static void ProcessCrewMemberTurn(Entity peep, SimTime now, PlayerInfo player, HashSet<long> activeImportantWitnessCrewIds = null, bool? hasAnyActiveImportantWitness = null)
 		{
 
 			if (!EnableCrewStats.Value)
 			{
 				return;
 			}
+			long crewTurnStartTicks = player?.PID.IsHumanPlayer == true ? Stopwatch.GetTimestamp() : 0L;
 			CrewModState orCreateCrewState = GetOrCreateCrewState(peep.Id);
 			if (orCreateCrewState == null)
 			{
@@ -1233,12 +2463,14 @@ public partial class GameplayTweaksPlugin
 				SyncLegacyWantedFields(orCreateCrewState);
 				return;
 			}
-			bool nationalHeatActiveForCrew = SaveData.NationalHeat != null && SaveData.NationalHeat.Active && CountActiveImportantWitnessEntries() > 0;
+			bool nationalHeatActiveForCrew = SaveData.NationalHeat != null && SaveData.NationalHeat.Active && (hasAnyActiveImportantWitness ?? CountActiveImportantWitnessEntries() > 0);
 			if (nationalHeatActiveForCrew && !JailSystem.IsInJail(peep.Id))
 			{
 				RaiseLocalHeatFloor(peep.Id, LOCAL_HEAT_LOW_FLOOR, refreshDecayAnchor: true);
 			}
-			bool hasActiveImportantWitness = HasActiveImportantWitnessForCrew(peep.Id);
+			bool hasActiveImportantWitness = activeImportantWitnessCrewIds != null
+				? activeImportantWitnessCrewIds.Contains((long)peep.Id.id)
+				: HasActiveImportantWitnessForCrew(peep.Id);
 			if (hasActiveImportantWitness && !JailSystem.IsInJail(peep.Id))
 			{
 				SetLocalHeatProgress(orCreateCrewState, 1f, now.days, refreshDecayAnchor: true);
@@ -1262,10 +2494,20 @@ public partial class GameplayTweaksPlugin
 			TryProcessRecurringOddJob(peep, orCreateCrewState, player, now, "turn-update");
 			GameplayTweaksPlugin.ReconcileObservedBoozeStreetCredForCrew(player, peep, orCreateCrewState, now);
 			ResolveStreetCreditProgressLevelUps(orCreateCrewState, player, peep.Id, "turn-update");
+			if (!player.PID.IsHumanPlayer)
+			{
+				TryApplyAiCrewLevelups(player, peep, now, "turn-update");
+			}
 			if (orCreateCrewState.StreetCreditLevel < 2)
 			{
+				float beforePassiveHappiness = orCreateCrewState.HappinessValue;
 				float loyaltyMul = GetLoyaltyHappinessPenaltyMultiplier(orCreateCrewState);
-				orCreateCrewState.HappinessValue = Mathf.Clamp01(orCreateCrewState.HappinessValue - 0.03f * loyaltyMul);
+				float passiveDecay = (player.PID.IsHumanPlayer ? CREW_PASSIVE_HAPPINESS_DECAY_HUMAN_LOW_CREDIT : CREW_PASSIVE_HAPPINESS_DECAY_AI_LOW_CREDIT) * loyaltyMul;
+				orCreateCrewState.HappinessValue = Mathf.Clamp01(orCreateCrewState.HappinessValue - passiveDecay);
+				if (beforePassiveHappiness - orCreateCrewState.HappinessValue >= 0.004f)
+				{
+					VerificationLog("CrewHappiness", $"passive-decay player={player.PID.id} human={player.PID.IsHumanPlayer} peep={peep.Id.id} streetCredit={orCreateCrewState.StreetCreditLevel} before={beforePassiveHappiness:0.000} after={orCreateCrewState.HappinessValue:0.000} decay={passiveDecay:0.000} loyaltyMul={loyaltyMul:0.000}");
+				}
 			}
 			if (orCreateCrewState.HappinessValue <= 0.25f)
 			{
@@ -1319,8 +2561,8 @@ public partial class GameplayTweaksPlugin
 							if (player.PID.IsHumanPlayer)
 							{
 								CrewRelationshipHandlerPatch.ShowCrewDepartureAlert(peep, target);
+								Debug.Log($"[GameplayTweaks] {fullName} defected to {targetName} - loyalty hit zero!");
 							}
-							Debug.Log($"[GameplayTweaks] {fullName} defected to {targetName} - loyalty hit zero!");
 							VerificationLog("Loyalty", $"Zero-loyalty defection peep={peep.Id.id} fromGang={player.PID.id} toGang={target.PID.id}");
 						}
 						else
@@ -1328,8 +2570,8 @@ public partial class GameplayTweaksPlugin
 							if (player.PID.IsHumanPlayer)
 							{
 								CrewRelationshipHandlerPatch.ShowCrewDepartureAlert(peep, null);
+								Debug.Log($"[GameplayTweaks] {fullName} left the crew (couldn't join another gang)");
 							}
-							Debug.Log($"[GameplayTweaks] {fullName} left the crew (couldn't join another gang)");
 							VerificationLog("Loyalty", $"Zero-loyalty exit peep={peep.Id.id} fromGang={player.PID.id} without destination");
 						}
 					}
@@ -1343,8 +2585,8 @@ public partial class GameplayTweaksPlugin
 						if (player.PID.IsHumanPlayer)
 						{
 							CrewRelationshipHandlerPatch.ShowCrewDepartureAlert(peep, null);
+							Debug.Log($"[GameplayTweaks] {fullName} left the crew (no valid defection target)");
 						}
-						Debug.Log($"[GameplayTweaks] {fullName} left the crew (no valid defection target)");
 						VerificationLog("Loyalty", $"Zero-loyalty exit peep={peep.Id.id} fromGang={player.PID.id} no-target");
 					}
 				}
@@ -1478,6 +2720,9 @@ public partial class GameplayTweaksPlugin
 				orCreateCrewState.FedsIncoming = true;
 				orCreateCrewState.FedArrivalCountdown = FED_SEARCH_TURNS;
 				Debug.Log($"[GameplayTweaks] Feds tracking {peep.data.person.FullName}, arrival in {orCreateCrewState.FedArrivalCountdown} days");
+				VerificationLog(
+					"Jail",
+					$"federal-countdown-started peep={peep.Id.id} reason=local-heat-high localHeat={orCreateCrewState.LocalHeatLevel} progress={orCreateCrewState.LocalHeatProgress:F3} countdown={orCreateCrewState.FedArrivalCountdown} judgeBribe={orCreateCrewState.JudgeBribeActive} politicalBribe={globalMayorBribeActive}");
 			}
 			if (orCreateCrewState.FedsIncoming && !globalMayorBribeActive && !orCreateCrewState.JudgeBribeActive)
 			{
@@ -1561,6 +2806,39 @@ public partial class GameplayTweaksPlugin
 					}
 					LogGrapevine($"DEATH: {fullName2} passed away at age {num4} (natural causes)");
 				}
+			}
+			catch
+			{
+			}
+			if (crewTurnStartTicks != 0L)
+			{
+				LogSlowCrewMemberTurn(peep, orCreateCrewState, now, crewTurnStartTicks);
+			}
+		}
+
+		private static void LogSlowCrewMemberTurn(Entity peep, CrewModState state, SimTime now, long startTicks)
+		{
+			try
+			{
+				long elapsedMs = GetElapsedMilliseconds(startTicks);
+				if (elapsedMs < 12L)
+				{
+					return;
+				}
+
+				Debug.Log("[PERF][HumanTurnPhase] phase=crew-member-detail ms=" + elapsedMs
+					+ " peep=" + (peep != null && !peep.Id.IsNotValid ? peep.Id.id.ToString(CultureInfo.InvariantCulture) : "-1")
+					+ " onHideout=" + (state != null && state.OnHideout)
+					+ " vacation=" + (state != null && (state.OnVacation || state.VacationPending))
+					+ " fedsIncoming=" + (state != null && state.FedsIncoming)
+					+ " localHeat=" + (state != null ? state.LocalHeatLevel.ToString() : "none")
+					+ " witness=" + (state != null && (state.HasWitness || state.FederalWitnessCount > 0))
+					+ " loyalty=" + (state != null ? state.LoyaltyValue.ToString("0.000", CultureInfo.InvariantCulture) : "n/a")
+					+ " day=" + now.days
+					+ " year=" + now.YearsInt
+					+ " turn=" + (Game.Game.ctx?.clock?.CurrentTurn ?? -1)
+					+ " pid=" + (Game.Game.ctx?.clock?.CurrentPlayer.id ?? -1)
+					+ " totalPlayers=" + (Game.Game.ctx?.players?.all?.Count ?? -1));
 			}
 			catch
 			{
@@ -1749,24 +3027,24 @@ public partial class GameplayTweaksPlugin
 			try
 			{
 				GameplayTweaksPlugin.NormalizePactSlots();
-				List<PlayerInfo> source = G.GetAllPlayers().ToList();
-				List<PlayerInfo> list = source.Where(delegate(PlayerInfo p)
+				List<PlayerInfo> source = G.GetAllPlayers().Where(p => p != null).ToList();
+				Dictionary<int, PlayerInfo> playerById = new Dictionary<int, PlayerInfo>();
+				List<PlayerInfo> list = new List<PlayerInfo>();
+				foreach (PlayerInfo p in source)
 				{
-
-					if (p.IsJustGang && !p.crew.IsCrewDefeated)
+					playerById[p.PID.id] = p;
+					if (p.IsJustGang && p.crew != null && !p.crew.IsCrewDefeated && !p.PID.IsHumanPlayer)
 					{
-						PlayerID pID = p.PID;
-						return !pID.IsHumanPlayer;
+						list.Add(p);
 					}
-					return false;
-				}).ToList();
+				}
 				List<AlliancePact> list2 = new List<AlliancePact>();
 				Dictionary<AlliancePact, string> removalReasons = new Dictionary<AlliancePact, string>();
 				int unlockedAIPactSlots = GetUnlockedAIPactSlots(now);
 				Dictionary<int, ulong> currentBossByGang = new Dictionary<int, ulong>();
 				foreach (PlayerInfo p in source)
 				{
-					if (p != null && p.IsJustGang && !p.crew.IsCrewDefeated)
+					if (p.IsJustGang && p.crew != null && !p.crew.IsCrewDefeated)
 					{
 						currentBossByGang[p.PID.id] = GetBossPeepId(p);
 					}
@@ -1796,8 +3074,8 @@ public partial class GameplayTweaksPlugin
 					List<int> killedBossMembers = new List<int>();
 					foreach (int mid in allPactMembers.Distinct())
 					{
-						PlayerInfo memberP = source.FirstOrDefault(p => p.PID.id == mid);
-						if (memberP == null || memberP.crew.IsCrewDefeated)
+						playerById.TryGetValue(mid, out PlayerInfo memberP);
+						if (memberP == null || memberP.crew == null || memberP.crew.IsCrewDefeated)
 						{
 							killedMembers.Add(mid);
 							continue;
@@ -1815,7 +3093,7 @@ public partial class GameplayTweaksPlugin
 					}
 					foreach (int killedMemberId in killedMembers.Distinct().ToList())
 					{
-						PlayerInfo killedMember = source.FirstOrDefault(p => p.PID.id == killedMemberId);
+						playerById.TryGetValue(killedMemberId, out PlayerInfo killedMember);
 						string killedName = killedMember?.social?.PlayerGroupName ?? ("Gang#" + killedMemberId);
 						TriggerPactRetaliation(pact, allPactMembers, killedMemberId, killedName, pact.LeaderGangId == killedMemberId, source);
 						GameplayTweaksPlugin.RemoveGangFromPactMembership(pact, killedMemberId, "pact-member-killed");
@@ -1826,7 +3104,7 @@ public partial class GameplayTweaksPlugin
 						{
 							continue;
 						}
-						PlayerInfo bossKilledGang = source.FirstOrDefault(p => p.PID.id == bossKilledGangId);
+						playerById.TryGetValue(bossKilledGangId, out PlayerInfo bossKilledGang);
 						string killedName2 = bossKilledGang?.social?.PlayerGroupName ?? ("Gang#" + bossKilledGangId);
 						TriggerPactRetaliation(pact, allPactMembers, bossKilledGangId, killedName2, pact.LeaderGangId == bossKilledGangId, source);
 					}
@@ -1858,13 +3136,15 @@ public partial class GameplayTweaksPlugin
 					select new
 					{
 						Gang = g,
-						Power = CalculateGangPower(g)
+						Power = CalculateGangPower(g),
+						Territory = GetGangTerritoryCount(g),
+						StreetCred = GetGangStreetCredLevel(g)
 					} into x
 					orderby x.Power descending
 					select x).ToList();
 				int num = SaveData.Pacts.Count((AlliancePact p) => p.ColorIndex < AI_PACT_SLOT_COUNT);
 				int maxAIPacts = GetUnlockedAIPactSlots(now);
-				if (now.days % 30 == 0 && num < maxAIPacts)
+				if (now.days % 7 == 0 && num < maxAIPacts)
 				{
 					int num2 = -1;
 					HashSet<int> hashSet = new HashSet<int>(SaveData.Pacts.Select((AlliancePact p) => p.ColorIndex));
@@ -1888,7 +3168,7 @@ public partial class GameplayTweaksPlugin
 							.Select(x => new
 							{
 								Entry = x,
-								Score = CalculateAIPactFoundingScore(x.Gang)
+								Score = x.Territory < AI_PACT_FOUNDER_MIN_TERRITORIES ? 0f : x.Power + x.StreetCred * 6f
 							})
 							.Where(x => x.Score > 0f)
 							.OrderByDescending(x => x.Score)
@@ -1897,9 +3177,9 @@ public partial class GameplayTweaksPlugin
 						if (leader != null)
 						{
 							int leaderId = leader.Gang.PID.id;
-							int leaderTerritory = GetGangTerritoryCount(leader.Gang);
-							int leaderSc = GetGangStreetCredLevel(leader.Gang);
-							float leaderScore = CalculateAIPactFoundingScore(leader.Gang);
+							int leaderTerritory = leader.Territory;
+							int leaderSc = leader.StreetCred;
+							float leaderScore = leaderTerritory < AI_PACT_FOUNDER_MIN_TERRITORIES ? 0f : leader.Power + leader.StreetCred * 6f;
 							var partnerCandidates = list4
 								.Where(x => x.Gang.PID.id != leader.Gang.PID.id && x.Power > leader.Power / 3)
 								.ToList();
@@ -1907,7 +3187,7 @@ public partial class GameplayTweaksPlugin
 								.Select(x => new
 								{
 									Entry = x,
-									Score = CalculateAIPactPartnerScore(leader.Gang, x.Gang)
+									Score = x.Power + GetInterGangRelationshipScore(leader.Gang, x.Gang) * 50f
 								})
 								.OrderByDescending(x => x.Score)
 								.Select(x => x.Entry)
@@ -1915,8 +3195,8 @@ public partial class GameplayTweaksPlugin
 							if (anon != null)
 							{
 								int partnerId = anon.Gang.PID.id;
-								int partnerTerritory = GetGangTerritoryCount(anon.Gang);
-								int partnerSc = GetGangStreetCredLevel(anon.Gang);
+								int partnerTerritory = anon.Territory;
+								int partnerSc = anon.StreetCred;
 								float relScore = GetInterGangRelationshipScore(leader.Gang, anon.Gang);
 								Debug.Log($"[GameplayTweaks] AI Alliance select founder={leaderId} terr={leaderTerritory} sc={leaderSc} score={leaderScore:0.0} partner={partnerId} terr={partnerTerritory} sc={partnerSc} rel={relScore:0.00}");
 								AlliancePact alliancePact = new AlliancePact
@@ -1932,6 +3212,7 @@ public partial class GameplayTweaksPlugin
 								SaveData.Pacts.Add(alliancePact);
 								ApplyPactJoinRelationshipBoost(alliancePact, leader.Gang.PID.id, leader.Gang.social?.PlayerGroupName ?? ("Gang#" + leader.Gang.PID.id));
 								ApplyPactJoinRelationshipBoost(alliancePact, anon.Gang.PID.id, anon.Gang.social?.PlayerGroupName ?? ("Gang#" + anon.Gang.PID.id));
+								VerificationLog("Pact", $"created-ai-pact slot={num2} unlocked={maxAIPacts} activeBefore={num} day={now.days} leader={leader.Gang.PID.id} partner={anon.Gang.PID.id} epoch={GetOrInitPactEpochDay(now)}");
 								Debug.Log(("[GameplayTweaks] AI Alliance: " + leader.Gang.social.PlayerGroupName + " + " + anon.Gang.social.PlayerGroupName + " (" + alliancePact.PactName + ")"));
 								LogGrapevine("PACT: " + leader.Gang.social.PlayerGroupName + " and " + anon.Gang.social.PlayerGroupName + " formed " + alliancePact.PactName);
 							}
@@ -2022,9 +3303,11 @@ public partial class GameplayTweaksPlugin
 					.ToList();
 				if (list.Count < 2)
 				{
+					VerificationLog("AIPactTrade", $"cadence day={now.days} pact={pact.PactId ?? "unknown"} actors={list.Count} result=insufficient-actors");
 					return;
 				}
 				AiTradeProposal aiTradeProposal = null;
+				int evaluatedPairs = 0;
 				foreach (AiTradeActor item in list)
 				{
 					foreach (AiTradeActor item2 in list)
@@ -2033,6 +3316,7 @@ public partial class GameplayTweaksPlugin
 						{
 							continue;
 						}
+						evaluatedPairs++;
 						AiTradeProposal aiTradeProposal2 = EvaluateAiTradeProposal(item, item2, isInternalPactTrade: true);
 						if (aiTradeProposal2 != null && (aiTradeProposal == null || aiTradeProposal2.Score > aiTradeProposal.Score))
 						{
@@ -2040,8 +3324,20 @@ public partial class GameplayTweaksPlugin
 						}
 					}
 				}
-				if (aiTradeProposal == null || aiTradeProposal.Score < 0.48f || SharedRng.NextDouble() > aiTradeProposal.Score)
+				if (aiTradeProposal == null)
 				{
+					VerificationLog("AIPactTrade", $"cadence day={now.days} pact={pact.PactId ?? "unknown"} actors={list.Count} evaluatedPairs={evaluatedPairs} candidates=0 result=no-candidate");
+					return;
+				}
+				if (aiTradeProposal.Score < 0.48f)
+				{
+					VerificationLog("AIPactTrade", $"cadence day={now.days} pact={pact.PactId ?? "unknown"} actors={list.Count} evaluatedPairs={evaluatedPairs} best={aiTradeProposal.TradeKey} score={aiTradeProposal.Score:0.00} result=below-threshold");
+					return;
+				}
+				double roll = SharedRng.NextDouble();
+				if (roll > aiTradeProposal.Score)
+				{
+					VerificationLog("AIPactTrade", $"cadence day={now.days} pact={pact.PactId ?? "unknown"} actors={list.Count} evaluatedPairs={evaluatedPairs} best={aiTradeProposal.TradeKey} score={aiTradeProposal.Score:0.00} roll={roll:0.00} result=roll-miss");
 					return;
 				}
 				if (TryExecuteAiTradeProposal(aiTradeProposal, now, pact, "AIPactTrade", externalNetwork: false))
@@ -2064,32 +3360,56 @@ public partial class GameplayTweaksPlugin
 				List<AiTradeActor> list = BuildAiExternalTradeActors(humanGangId);
 				if (list.Count < 2)
 				{
+					VerificationLog("AINetworkTrade", $"cadence day={now.days} actors={list.Count} result=insufficient-actors");
 					return;
 				}
-				List<AiTradeProposal> list2 = new List<AiTradeProposal>();
-				foreach (AiTradeActor item in list)
+				if (TryRunAiExternalTrespassRobberyCycle(now, list))
 				{
-					foreach (AiTradeActor item2 in list)
+					TryRunRareAiRobberyAgainstHuman(humanPlayer, now);
+					return;
+				}
+				List<AiTradeProposal> list2 = new List<AiTradeProposal>(Math.Min(AI_NETWORK_TRADE_CANDIDATE_POOL_LIMIT, 8));
+				int evaluatedPairs = 0;
+				int attempts = 0;
+				int maxEvaluatedPairs = Math.Min(AI_NETWORK_TRADE_MAX_EVALUATED_PAIRS, list.Count * Math.Max(0, list.Count - 1));
+				int maxAttempts = Math.Max(maxEvaluatedPairs * 4, list.Count * 2);
+				HashSet<string> evaluatedPairKeys = new HashSet<string>(StringComparer.Ordinal);
+				while (evaluatedPairs < maxEvaluatedPairs && attempts < maxAttempts)
+				{
+					attempts++;
+					int sellerIndex = SharedRng.Next(list.Count);
+					int buyerIndex = SharedRng.Next(list.Count - 1);
+					if (buyerIndex >= sellerIndex)
 					{
-						if (ShouldSkipExternalTradePair(item, item2))
-						{
-							continue;
-						}
-						AiTradeProposal aiTradeProposal = EvaluateAiTradeProposal(item, item2, isInternalPactTrade: false);
-						if (aiTradeProposal != null && aiTradeProposal.Score >= 0.5f)
-						{
-							list2.Add(aiTradeProposal);
-						}
+						buyerIndex++;
+					}
+					AiTradeActor item = list[sellerIndex];
+					AiTradeActor item2 = list[buyerIndex];
+					if (ShouldSkipExternalTradePair(item, item2))
+					{
+						continue;
+					}
+					string pairKey = (item?.ActorKey ?? "?") + ">" + (item2?.ActorKey ?? "?");
+					if (!evaluatedPairKeys.Add(pairKey))
+					{
+						continue;
+					}
+					evaluatedPairs++;
+					AiTradeProposal aiTradeProposal = EvaluateAiTradeProposal(item, item2, isInternalPactTrade: false);
+					if (aiTradeProposal != null && aiTradeProposal.Score >= 0.5f)
+					{
+						AddAiTradeCandidate(list2, aiTradeProposal, AI_NETWORK_TRADE_CANDIDATE_POOL_LIMIT);
 					}
 				}
 				if (list2.Count == 0)
 				{
+					VerificationLog("AINetworkTrade", $"cadence day={now.days} actors={list.Count} evaluatedPairs={evaluatedPairs} attempts={attempts} candidates=0 result=no-candidate");
 					TryRunRareAiRobberyAgainstHuman(humanPlayer, now);
 					return;
 				}
 				HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
 				int num = 0;
-				foreach (AiTradeProposal item3 in list2.OrderByDescending(p => p.Score).ToList())
+				foreach (AiTradeProposal item3 in list2)
 				{
 					if (item3 == null || item3.Score < 0.5f)
 					{
@@ -2121,11 +3441,179 @@ public partial class GameplayTweaksPlugin
 						break;
 					}
 				}
+				VerificationLog("AINetworkTrade", $"cadence day={now.days} actors={list.Count} evaluatedPairs={evaluatedPairs} attempts={attempts} candidates={list2.Count} executed={num} result={(num > 0 ? "executed" : "no-execution")}");
 				TryRunRareAiRobberyAgainstHuman(humanPlayer, now);
 			}
 			catch (Exception ex)
 			{
 				Debug.LogWarning("[GameplayTweaks] TryRunAiExternalTradeCycle failed: " + ex.Message);
+			}
+		}
+
+		private static bool TryRunAiExternalTrespassRobberyCycle(SimTime now, List<AiTradeActor> actors)
+		{
+			try
+			{
+				if (actors == null || actors.Count < 2)
+				{
+					return false;
+				}
+
+				AiTradeProposal best = null;
+				int scannedPairs = 0;
+				int recentTrespassPairs = 0;
+				int trespassPairs = 0;
+				int adjacentPressurePairs = 0;
+				int blockedGoodRelations = 0;
+				int blockedProtected = 0;
+				int blockedCash = 0;
+				int blockedCooldown = 0;
+				foreach (AiTradeActor robberActor in actors)
+				{
+					foreach (AiTradeActor victimActor in actors)
+					{
+						if (ShouldSkipExternalTradePair(robberActor, victimActor))
+						{
+							continue;
+						}
+
+						foreach (PlayerInfo robber in GetTradeActorGangCandidates(robberActor))
+						{
+							foreach (PlayerInfo victim in GetTradeActorGangCandidates(victimActor))
+							{
+								if (robber == null || victim == null || robber.PID.id == victim.PID.id || robber.PID.IsHumanPlayer || victim.PID.IsHumanPlayer)
+								{
+									continue;
+								}
+
+								scannedPairs++;
+								if (ArePlayersProtectedByPactAlliance(robber, victim) || HasMutualTruce(robber, victim))
+								{
+									blockedProtected++;
+									continue;
+								}
+								bool recentTrespassMemory = HasRecentGangTrespassMemory(victim, robber);
+								bool territoryPressure = IsGangTrespassingOrPressuringGangTerritory(victim, robber, allowAdjacentPressure: true, out int trespassCrew, out int trespassNodes, out int adjacentCrew, out int adjacentNodes);
+								if (!recentTrespassMemory && !territoryPressure)
+								{
+									continue;
+								}
+
+								if (recentTrespassMemory)
+								{
+									recentTrespassPairs++;
+								}
+								if (trespassCrew > 0)
+								{
+									trespassPairs++;
+								}
+								else
+								{
+									adjacentPressurePairs++;
+								}
+								int rel = GetInterGangRelationshipDisplayScore(robber, victim);
+								float relationBias = GetSignedGangRelationshipBias(robber, victim);
+								if (relationBias >= 0.2f || rel >= 20)
+								{
+									blockedGoodRelations++;
+									continue;
+								}
+								int victimCash = GetGangCleanCash(victim);
+								if (victimCash < AI_ROBBERY_LOW_CASH_MIN + AI_ROBBERY_MIN_CASH_RESERVE)
+								{
+									blockedCash++;
+									continue;
+								}
+								if (TryGetAiGangRobberyPairCooldown(robber, victim, now, out _))
+								{
+									blockedCooldown++;
+									continue;
+								}
+								if (IsAiPersonalityPeaceful(robber))
+								{
+									VerificationLog("AINetworkTrade", $"robbery-scan blocked reason=peaceful-personality day={now.days} robber={robber.PID.id} victim={victim.PID.id}");
+									continue;
+								}
+
+								bool robberTraits = HasAnyGangBossTrait(robber, "trait-aggressive", "trait-vindictive", "trait-bold", "trait-cruel");
+								bool aggressivePersonality = IsAiPersonalityAggressive(robber);
+								bool expansionistPersonality = IsAiPersonalityExpansionist(robber);
+								int powerEdge = CalculateGangPower(robber) - CalculateGangPower(victim);
+								bool highValue = victimCash >= AI_ROBBERY_HIGH_CASH_MIN + AI_ROBBERY_MIN_CASH_RESERVE && (robberTraits || aggressivePersonality || powerEdge > 35);
+								bool strictTrespass = trespassCrew > 0;
+								float score = (strictTrespass ? 0.62f : (recentTrespassMemory ? 0.6f : 0.54f))
+									+ (recentTrespassMemory ? 0.08f : 0f)
+									+ Mathf.Clamp(trespassCrew * 0.04f + adjacentCrew * 0.025f, 0f, 0.16f)
+									+ Mathf.Clamp(trespassNodes * 0.03f + adjacentNodes * 0.02f, 0f, 0.12f)
+									+ Mathf.Clamp(powerEdge / 350f, -0.08f, 0.16f)
+									+ (robberTraits ? 0.08f : 0f)
+									+ (aggressivePersonality ? 0.12f : 0f)
+									+ (expansionistPersonality ? 0.04f : 0f)
+									+ (IsAggroWithoutTruceEitherWay(robber, victim) ? 0.06f : 0f)
+									- (HasAnyGangBossTrait(robber, "trait-cautious") ? 0.05f : 0f);
+								score = Mathf.Clamp(score, 0.5f, 0.95f);
+								if (best == null || score > best.Score)
+								{
+									best = new AiTradeProposal
+									{
+										TradeKey = highValue ? "gang-robbery-high" : "gang-robbery-low",
+										SellerActor = robberActor,
+										BuyerActor = victimActor,
+										Seller = robber,
+										Buyer = victim,
+										Score = score
+									};
+								}
+							}
+						}
+					}
+				}
+
+				if (best == null)
+				{
+					VerificationLog("AINetworkTrade", $"robbery-scan day={now.days} scannedPairs={scannedPairs} recentTrespassPairs={recentTrespassPairs} trespassPairs={trespassPairs} adjacentPressurePairs={adjacentPressurePairs} eligible=0 blockedProtected={blockedProtected} blockedGoodRelations={blockedGoodRelations} blockedCash={blockedCash} blockedCooldown={blockedCooldown} result=no-candidate");
+					return false;
+				}
+				if (SharedRng.NextDouble() > best.Score)
+				{
+					VerificationLog("AINetworkTrade", $"robbery-scan day={now.days} scannedPairs={scannedPairs} recentTrespassPairs={recentTrespassPairs} trespassPairs={trespassPairs} adjacentPressurePairs={adjacentPressurePairs} eligible=1 best={best.TradeKey} robber={best.Seller.PID.id} victim={best.Buyer.PID.id} score={best.Score:0.00} result=roll-miss");
+					return false;
+				}
+				if (TryRunAiFrontClosureBeforeRobbery(best, now, "AINetworkTrade", externalNetwork: true))
+				{
+					VerificationLog("AINetworkTrade", $"robbery-scan day={now.days} scannedPairs={scannedPairs} recentTrespassPairs={recentTrespassPairs} trespassPairs={trespassPairs} adjacentPressurePairs={adjacentPressurePairs} eligible=1 best={best.TradeKey} robber={best.Seller.PID.id} victim={best.Buyer.PID.id} score={best.Score:0.00} result=front-closure-before-robbery");
+					return true;
+				}
+				bool executed = TryExecuteAiTradeProposal(best, now, null, "AINetworkTrade", externalNetwork: true);
+				VerificationLog("AINetworkTrade", $"robbery-scan day={now.days} scannedPairs={scannedPairs} recentTrespassPairs={recentTrespassPairs} trespassPairs={trespassPairs} adjacentPressurePairs={adjacentPressurePairs} eligible=1 best={best.TradeKey} robber={best.Seller.PID.id} victim={best.Buyer.PID.id} score={best.Score:0.00} result={(executed ? "executed" : "execute-failed")}");
+				return executed;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] TryRunAiExternalTrespassRobberyCycle failed: " + ex.Message);
+				return false;
+			}
+		}
+
+		private static void AddAiTradeCandidate(List<AiTradeProposal> candidates, AiTradeProposal proposal, int maxCandidates)
+		{
+			if (candidates == null || proposal == null || maxCandidates <= 0)
+			{
+				return;
+			}
+			int insertIndex = 0;
+			while (insertIndex < candidates.Count && candidates[insertIndex] != null && candidates[insertIndex].Score >= proposal.Score)
+			{
+				insertIndex++;
+			}
+			if (insertIndex >= maxCandidates)
+			{
+				return;
+			}
+			candidates.Insert(insertIndex, proposal);
+			if (candidates.Count > maxCandidates)
+			{
+				candidates.RemoveAt(candidates.Count - 1);
 			}
 		}
 
@@ -2209,24 +3697,37 @@ public partial class GameplayTweaksPlugin
 					bool flag6 = HasAnyGangBossTrait(item2, "trait-cautious");
 					bool flag7 = HasAnyGangBossTrait(item, "trait-aggressive");
 					bool flag8 = HasAnyGangBossTrait(item2, "trait-aggressive");
+					bool sellerPeacefulPersonality = IsAiPersonalityPeaceful(item);
+					bool sellerAggressivePersonality = IsAiPersonalityAggressive(item);
+					bool sellerExpansionistPersonality = IsAiPersonalityExpansionist(item);
 					bool alreadyAggro = IsAggroWithoutTruceEitherWay(item, item2);
 					if (!isInternalPactTrade && !ArePlayersProtectedByPactAlliance(item, item2) && !HasMutualTruce(item, item2))
 					{
 						int victimCleanCash = GetGangCleanCash(item2);
 						bool robberTraits = flag7 || HasAnyGangBossTrait(item, "trait-vindictive", "trait-bold", "trait-cruel");
 						int powerEdge = CalculateGangPower(item) - CalculateGangPower(item2);
+						bool victimTrespassing = IsGangTrespassingOnGangTerritory(item2, item, out int trespassCrew, out int trespassNodes);
+						bool recentTrespassMemory = HasRecentGangTrespassMemory(item2, item);
+						bool goodRelations = signedGangRelationshipBias >= 0.2f || interGangRelationshipDisplayScore >= 20;
 						if (victimCleanCash >= AI_ROBBERY_LOW_CASH_MIN + AI_ROBBERY_MIN_CASH_RESERVE
-							&& interGangRelationshipDisplayScore <= -18
-							&& (robberTraits || alreadyAggro || powerEdge > -25))
+							&& !sellerPeacefulPersonality
+							&& !goodRelations
+							&& (victimTrespassing || recentTrespassMemory || interGangRelationshipDisplayScore <= -18)
+							&& (victimTrespassing || recentTrespassMemory || robberTraits || sellerAggressivePersonality || alreadyAggro || powerEdge > -25))
 						{
 							float robberyScore = 0.42f
 								+ Mathf.Clamp01((-interGangRelationshipDisplayScore - 15) / 80f) * 0.22f
 								+ Mathf.Clamp(powerEdge / 300f, -0.08f, 0.16f)
 								+ (robberTraits ? 0.08f : 0f)
+								+ (sellerAggressivePersonality ? 0.12f : 0f)
+								+ (sellerExpansionistPersonality ? 0.04f : 0f)
 								+ (alreadyAggro ? 0.06f : 0f)
+								+ (victimTrespassing ? 0.12f : 0f)
+								+ (recentTrespassMemory ? 0.1f : 0f)
+								+ Mathf.Clamp(trespassCrew * 0.02f, 0f, 0.08f)
 								- (flag5 ? 0.04f : 0f)
 								- (flag6 ? 0.03f : 0f);
-							consider(victimCleanCash >= AI_ROBBERY_HIGH_CASH_MIN + AI_ROBBERY_MIN_CASH_RESERVE && (robberTraits || powerEdge > 35) ? "gang-robbery-high" : "gang-robbery-low", item, item2, robberyScore);
+							consider(victimCleanCash >= AI_ROBBERY_HIGH_CASH_MIN + AI_ROBBERY_MIN_CASH_RESERVE && (robberTraits || sellerAggressivePersonality || powerEdge > 35) ? "gang-robbery-high" : "gang-robbery-low", item, item2, robberyScore);
 						}
 					}
 					if (alreadyAggro)
@@ -2315,9 +3816,10 @@ public partial class GameplayTweaksPlugin
 			{
 				return false;
 		}
-		AddMutualRelationshipBuff(seller, buyer, "relbuff-gangs-leisure-table-on-finish", GetCrewPeepForPlayer(seller), GetCrewPeepForPlayer(buyer));
-		AddMutualRelationshipBuff(seller, buyer, "relbuff-gangs-leisure-buff", GetCrewPeepForPlayer(seller), GetCrewPeepForPlayer(buyer));
-		ApplyPactTradeRelationshipBuff(seller, buyer);
+		bool logRelationshipBuffs = ShouldLogAiTradeRelationshipBuffs(seller, buyer);
+		AddMutualRelationshipBuff(seller, buyer, "relbuff-gangs-leisure-table-on-finish", GetCrewPeepForPlayer(seller), GetCrewPeepForPlayer(buyer), logRelationshipBuffs);
+		AddMutualRelationshipBuff(seller, buyer, "relbuff-gangs-leisure-buff", GetCrewPeepForPlayer(seller), GetCrewPeepForPlayer(buyer), logRelationshipBuffs);
+		ApplyPactTradeRelationshipBuff(seller, buyer, logRelationshipBuffs);
 		ApplyAiTradeMoodDelta(proposal, pact, 0.05f);
 		AwardHumanPactTradeStreetCredit(seller, buyer, "pact-trade-leisure", 0.03f, 0.05f);
 		LogGrapevine($"{GetAiTradeGrapevinePrefix(externalNetwork)}: {GetAiTradeActorDisplayName(proposal.SellerActor, seller)} picked up the tab for a leisure sitdown with {GetAiTradeActorDisplayName(proposal.BuyerActor, buyer)}.");
@@ -2349,8 +3851,9 @@ public partial class GameplayTweaksPlugin
 				TryTransferCleanCashBetweenGangs(seller, buyer, AI_PACT_TRADE_LAUNDER_CLEAN_COST, 0);
 				return false;
 		}
-		AddMutualRelationshipBuff(seller, buyer, "relbuff-gangs-loot5-table-on-finish", GetCrewPeepForPlayer(seller), GetCrewPeepForPlayer(buyer));
-		ApplyPactTradeRelationshipBuff(seller, buyer);
+		bool logRelationshipBuffs = ShouldLogAiTradeRelationshipBuffs(seller, buyer);
+		AddMutualRelationshipBuff(seller, buyer, "relbuff-gangs-loot5-table-on-finish", GetCrewPeepForPlayer(seller), GetCrewPeepForPlayer(buyer), logRelationshipBuffs);
+		ApplyPactTradeRelationshipBuff(seller, buyer, logRelationshipBuffs);
 		ApplyAiTradeMoodDelta(proposal, pact, 0.04f);
 		AwardHumanPactTradeStreetCredit(seller, buyer, "pact-trade-laundering", 0.04f, 0.06f);
 		LogGrapevine($"{GetAiTradeGrapevinePrefix(externalNetwork)}: {GetAiTradeActorDisplayName(proposal.BuyerActor, buyer)} bought dirty money from {GetAiTradeActorDisplayName(proposal.SellerActor, seller)}.");
@@ -2371,15 +3874,86 @@ public partial class GameplayTweaksPlugin
 				TryTransferCleanCashBetweenGangs(seller, buyer, cleanCost, 0);
 				return false;
 		}
-		AddMutualRelationshipBuff(seller, buyer, finishBuffId, GetCrewPeepForPlayer(seller), GetCrewPeepForPlayer(buyer));
-		AddMutualRelationshipBuff(seller, buyer, flavorBuffId, GetCrewPeepForPlayer(seller), GetCrewPeepForPlayer(buyer));
-		ApplyPactTradeRelationshipBuff(seller, buyer);
+		bool logRelationshipBuffs = ShouldLogAiTradeRelationshipBuffs(seller, buyer);
+		AddMutualRelationshipBuff(seller, buyer, finishBuffId, GetCrewPeepForPlayer(seller), GetCrewPeepForPlayer(buyer), logRelationshipBuffs);
+		AddMutualRelationshipBuff(seller, buyer, flavorBuffId, GetCrewPeepForPlayer(seller), GetCrewPeepForPlayer(buyer), logRelationshipBuffs);
+		ApplyPactTradeRelationshipBuff(seller, buyer, logRelationshipBuffs);
 		ApplyAiTradeMoodDelta(proposal, pact, moodDelta);
 		string text = string.Equals(tradeKey, "gang-trade-drugs-low", StringComparison.Ordinal) ? "drug" : "liquor";
 		AwardHumanPactTradeStreetCredit(seller, buyer, string.Equals(tradeKey, "gang-trade-drugs-low", StringComparison.Ordinal) ? "pact-trade-drugs" : "pact-trade-liquor", 0.03f, 0.06f);
 		LogGrapevine($"{GetAiTradeGrapevinePrefix(externalNetwork)}: {GetAiTradeActorDisplayName(proposal.BuyerActor, buyer)} stocked up on {text} from {GetAiTradeActorDisplayName(proposal.SellerActor, seller)}.");
 		VerificationLog(verificationChannel, $"type={tradeKey} day={now.days} sellerActor={proposal.SellerActor?.ActorKey} buyerActor={proposal.BuyerActor?.ActorKey} sellerGang={seller.PID.id} buyerGang={buyer.PID.id} clean={cleanCost} moved={moved} summary={movedSummary}");
 		return true;
+	}
+
+	private static bool TryRunAiFrontClosureBeforeRobbery(AiTradeProposal proposal, SimTime now, string verificationChannel, bool externalNetwork)
+	{
+		try
+		{
+			PlayerInfo robber = proposal?.Seller;
+			PlayerInfo victim = proposal?.Buyer;
+			if (robber == null
+				|| victim == null
+				|| robber.PID.id == victim.PID.id
+				|| robber.PID.IsHumanPlayer
+				|| victim.PID.IsHumanPlayer
+				|| ArePlayersProtectedByPactAlliance(robber, victim)
+				|| HasMutualTruce(robber, victim))
+			{
+				return false;
+			}
+			if (!TryFindRetaliationClosureTarget(robber, victim, out _, out _))
+			{
+				return false;
+			}
+			if (IsAiPersonalityPeaceful(robber))
+			{
+				VerificationLog(verificationChannel, $"type={proposal.TradeKey} phase=front-closure-before-robbery result=blocked-peaceful-personality day={now.days} robber={robber.PID.id} victim={victim.PID.id}");
+				return false;
+			}
+
+			bool aggressivePersonality = IsAiPersonalityAggressive(robber);
+			bool expansionistPersonality = IsAiPersonalityExpansionist(robber);
+			float closureChance = expansionistPersonality ? 0.42f : (aggressivePersonality ? 0.14f : 0.28f);
+			if (proposal.Score < 0.68f)
+			{
+				closureChance += expansionistPersonality ? 0.04f : 0.05f;
+			}
+			if (HasAnyGangBossTrait(robber, "trait-cautious", "trait-nervous", "trait-upright"))
+			{
+				closureChance += 0.04f;
+			}
+			if (CalculateGangPower(robber) < CalculateGangPower(victim) + 20)
+			{
+				closureChance += 0.04f;
+			}
+			closureChance = Mathf.Clamp(closureChance, aggressivePersonality ? 0.08f : 0.18f, expansionistPersonality ? 0.58f : 0.42f);
+			double roll = SharedRng.NextDouble();
+			if (roll >= closureChance)
+			{
+				VerificationLog(verificationChannel, $"type={proposal.TradeKey} phase=front-closure-before-robbery result=roll-miss day={now.days} robber={robber.PID.id} victim={victim.PID.id} chance={closureChance:0.00} roll={roll:0.00}");
+				return false;
+			}
+
+			GangOpsChannel channel = ResolveGangOpsChannelForGang(robber.PID.id);
+			string sourceTag = externalNetwork ? "ai-robbery-pre-front" : "pact-robbery-pre-front";
+			if (!TryForceCloseRetaliationBusiness(channel, robber, victim, sourceTag, out string actionSummary))
+			{
+				VerificationLog(verificationChannel, $"type={proposal.TradeKey} phase=front-closure-before-robbery result=unavailable day={now.days} robber={robber.PID.id} victim={victim.PID.id} chance={closureChance:0.00} roll={roll:0.00}");
+				return false;
+			}
+
+			AddWarHeat(channel, victim.PID.id, robber.PID.id, 4f, sourceTag);
+			RecordAiGangRobberyPairCooldown(robber, victim, now);
+			LogGrapevine($"{(externalNetwork ? "ROBBERY" : "PACT")}: {GetGangDisplayName(robber.PID.id)} skipped the shakedown and leaned on one of {GetGangDisplayName(victim.PID.id)}'s fronts instead.");
+			VerificationLog(verificationChannel, $"type={proposal.TradeKey} phase=front-closure-before-robbery result=closed day={now.days} robber={robber.PID.id} victim={victim.PID.id} action={actionSummary} chance={closureChance:0.00} roll={roll:0.00} cooldownDays={AI_ROBBERY_GANG_PAIR_COOLDOWN_DAYS}");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] TryRunAiFrontClosureBeforeRobbery failed: " + ex.Message);
+			return false;
+		}
 	}
 
 	private static bool TryExecuteAiGangRobbery(AiTradeProposal proposal, SimTime now, string verificationChannel, bool externalNetwork)
@@ -2390,8 +3964,23 @@ public partial class GameplayTweaksPlugin
 		{
 			return false;
 		}
+		if (victim.PID.IsHumanPlayer && !AI_ROBBERY_HUMAN_CASH_MUTATION_ENABLED)
+		{
+			VerificationLog("AIPlayerRobbery", $"blocked phase=diagnostic-only reason=human-cash-mutation-disabled robber={robber.PID.id} victim={victim.PID.id} trade={proposal.TradeKey} day={now.days}");
+			return false;
+		}
 		if (ArePlayersProtectedByPactAlliance(robber, victim) || HasMutualTruce(robber, victim))
 		{
+			return false;
+		}
+		if (IsAiPersonalityPeaceful(robber))
+		{
+			VerificationLog(verificationChannel, $"type={proposal.TradeKey} result=blocked reason=peaceful-personality day={now.days} robber={robber.PID.id} victim={victim.PID.id}");
+			return false;
+		}
+		if (TryGetAiGangRobberyPairCooldown(robber, victim, now, out int pairCooldownUntilDay))
+		{
+			VerificationLog(verificationChannel, $"type={proposal.TradeKey} result=blocked reason=gang-robbery-cooldown day={now.days} robber={robber.PID.id} victim={victim.PID.id} untilDay={pairCooldownUntilDay} cooldownDays={AI_ROBBERY_GANG_PAIR_COOLDOWN_DAYS}");
 			return false;
 		}
 		bool highValue = string.Equals(proposal.TradeKey, "gang-robbery-high", StringComparison.Ordinal);
@@ -2413,30 +4002,82 @@ public partial class GameplayTweaksPlugin
 			{
 				return false;
 			}
-			AddDirectedRelationshipBuff(victim, robber, "relbuff-gangs-robbery2-table-on-finish", GetCrewPeepForPlayer(victim));
+			AddDirectedRelationshipBuff(victim, robber, "relbuff-gangs-robbery2-table-on-finish", GetCrewPeepForPlayer(victim), ShouldLogAiTradeRelationshipBuffs(victim, robber));
 			AddWarHeat(channel, victim.PID.id, robber.PID.id, heatGain, victim.PID.IsHumanPlayer ? "ai-robbery-player-success" : "ai-robbery-success");
 			LogGrapevine($"{(externalNetwork ? "ROBBERY" : "PACT")}: {robberName} robbed {victimName} for ${cash}. {victimName} is angry, but no shots were fired.");
-			VerificationLog(verificationChannel, $"type={proposal.TradeKey} result=success day={now.days} robber={robber.PID.id} victim={victim.PID.id} cash={cash} chance={successChance:0.00} heat={heatGain:0.0}");
+			RecordAiGangRobberyPairCooldown(robber, victim, now);
+			VerificationLog(verificationChannel, $"type={proposal.TradeKey} result=success day={now.days} robber={robber.PID.id} victim={victim.PID.id} cash={cash} chance={successChance:0.00} heat={heatGain:0.0} cooldownDays={AI_ROBBERY_GANG_PAIR_COOLDOWN_DAYS}");
 			return true;
 		}
 
-		AddDirectedRelationshipBuff(victim, robber, "relbuff-gangs-robbery1-buff", GetCrewPeepForPlayer(victim));
+		AddDirectedRelationshipBuff(victim, robber, "relbuff-gangs-robbery1-buff", GetCrewPeepForPlayer(victim), ShouldLogAiTradeRelationshipBuffs(victim, robber));
 		AddWarHeat(channel, victim.PID.id, robber.PID.id, heatGain, victim.PID.IsHumanPlayer ? "ai-robbery-player-failed" : "ai-robbery-failed");
 		ActivateWarBetweenPlayers(victim, robber);
 		bool dispatched = false;
 		int dispatchedCount = 0;
+		int approachCount = 0;
+		bool retryQueued = false;
 		if (victim.PID.IsHumanPlayer)
 		{
-			dispatched = TryDispatchRuntimeGangAttack(robber, victim, highValue ? 2 : 1, "ai-robbery-player-failed", GetCrewPeepForPlayer(victim), out dispatchedCount);
+			dispatched = TryDispatchRuntimeGangAttack(robber, victim, highValue ? 2 : 1, "ai-robbery-player-failed", GetCrewPeepForPlayer(victim), out dispatchedCount, out approachCount);
 		}
 		else
 		{
-			dispatched = TryDispatchRuntimeGangAttack(victim, robber, highValue ? 2 : 1, "ai-robbery-failed", GetCrewPeepForPlayer(robber), out dispatchedCount);
+			EntityID robberTargetPeep = GetCrewPeepForPlayer(robber);
+			dispatched = TryTriggerRobberyFailureRetaliation(channel, victim, robber, highValue ? 2 : 1, "ai-robbery-failed", robberTargetPeep, out dispatchedCount, out string retaliationAction);
+			if (!dispatched)
+			{
+				int retryDueDay = GetRuntimeGangAttackApproachRetryDueDay(now.days);
+				retryQueued = QueueImmediateRevengeIfEligible(channel, victim.PID.id, robber.PID.id, robberTargetPeep.IsValid ? (long)robberTargetPeep.id : 0L, retryDueDay, "ai-robbery-failed-retaliation-retry");
+				VerificationLog(verificationChannel, $"type={proposal.TradeKey} phase=failed-retaliation-retry day={now.days} robber={robber.PID.id} victim={victim.PID.id} action={retaliationAction} retryQueued={retryQueued} retryDueDay={retryDueDay}");
+			}
 		}
 		string attackText = victim.PID.IsHumanPlayer ? $"{robberName} started shooting when the job went bad." : $"{victimName} struck back.";
 		LogGrapevine($"{(externalNetwork ? "ROBBERY" : "PACT")}: {robberName} tried to rob {victimName}, but the job failed. {attackText}");
-		VerificationLog(verificationChannel, $"type={proposal.TradeKey} result=failed day={now.days} robber={robber.PID.id} victim={victim.PID.id} chance={successChance:0.00} heat={heatGain:0.0} attack={dispatched} crews={dispatchedCount}");
+		RecordAiGangRobberyPairCooldown(robber, victim, now);
+		VerificationLog(verificationChannel, $"type={proposal.TradeKey} result=failed day={now.days} robber={robber.PID.id} victim={victim.PID.id} chance={successChance:0.00} heat={heatGain:0.0} attack={dispatched} crews={dispatchedCount} approachCrews={approachCount} retryQueued={retryQueued} cooldownDays={AI_ROBBERY_GANG_PAIR_COOLDOWN_DAYS}");
 		return true;
+	}
+
+	private static bool TryGetAiGangRobberyPairCooldown(PlayerInfo robber, PlayerInfo victim, SimTime now, out int untilDay)
+	{
+		untilDay = int.MinValue;
+		string key = GetAiGangRobberyPairCooldownKey(robber, victim);
+		if (string.IsNullOrEmpty(key))
+		{
+			return false;
+		}
+		if (!_aiGangRobberyCooldownUntilDayByPair.TryGetValue(key, out int candidateUntilDay))
+		{
+			return false;
+		}
+		if (candidateUntilDay >= now.days)
+		{
+			untilDay = candidateUntilDay;
+			return true;
+		}
+		_aiGangRobberyCooldownUntilDayByPair.Remove(key);
+		return false;
+	}
+
+	private static void RecordAiGangRobberyPairCooldown(PlayerInfo robber, PlayerInfo victim, SimTime now)
+	{
+		string key = GetAiGangRobberyPairCooldownKey(robber, victim);
+		if (!string.IsNullOrEmpty(key))
+		{
+			_aiGangRobberyCooldownUntilDayByPair[key] = now.days + AI_ROBBERY_GANG_PAIR_COOLDOWN_DAYS;
+		}
+	}
+
+	private static string GetAiGangRobberyPairCooldownKey(PlayerInfo robber, PlayerInfo victim)
+	{
+		if (robber == null || victim == null)
+		{
+			return string.Empty;
+		}
+		int first = Math.Min(robber.PID.id, victim.PID.id);
+		int second = Math.Max(robber.PID.id, victim.PID.id);
+		return "pair:" + first.ToString(CultureInfo.InvariantCulture) + ":" + second.ToString(CultureInfo.InvariantCulture);
 	}
 
 	private static int RollAiGangRobberyCash(PlayerInfo victim, bool highValue)
@@ -2463,6 +4104,14 @@ public partial class GameplayTweaksPlugin
 		{
 			chance += 0.07f;
 		}
+		if (IsAiPersonalityAggressive(robber))
+		{
+			chance += 0.08f;
+		}
+		if (IsAiPersonalityExpansionist(robber))
+		{
+			chance += 0.03f;
+		}
 		if (HasAnyGangBossTrait(victim, "trait-cautious", "trait-connected", "trait-aggressive", "trait-vindictive"))
 		{
 			chance -= 0.08f;
@@ -2474,61 +4123,224 @@ public partial class GameplayTweaksPlugin
 		return Mathf.Clamp(chance, 0.2f, 0.9f);
 	}
 
-	private static void TryRunRareAiRobberyAgainstHuman(PlayerInfo humanPlayer, SimTime now)
+	private static void RunAiHumanRobberyContactPhase(PlayerInfo humanPlayer, SimTime now)
 	{
 		try
 		{
-			if (humanPlayer == null || humanPlayer.crew == null || humanPlayer.crew.IsCrewDefeated || GetGangCleanCash(humanPlayer) < AI_ROBBERY_LOW_CASH_MIN)
+			if (humanPlayer == null || _lastAiHumanRobberyContactScanDay == now.days)
 			{
 				return;
 			}
-			if (SharedRng.NextDouble() >= AI_ROBBERY_PLAYER_TARGET_CHANCE)
+			_lastAiHumanRobberyContactScanDay = now.days;
+			ProcessPendingAiHumanRobberyContacts(humanPlayer, now);
+			TryRunRareAiRobberyAgainstHuman(humanPlayer, now, "human-turn-contact", logAllCandidates: false);
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] RunAiHumanRobberyContactPhase failed: " + ex.Message);
+		}
+	}
+
+	internal static void TryRunAiHumanRobberyContactScanNow(string source, bool logAllCandidates = false)
+	{
+		try
+		{
+			int frame = Time.frameCount;
+			if (_lastAiHumanRobberyArrivalScanFrame == frame)
 			{
 				return;
 			}
-			List<PlayerInfo> candidates = G.GetAllPlayers()
-				.Where(gang => IsEligibleAiTradeGang(gang)
-					&& !ArePlayersProtectedByPactAlliance(gang, humanPlayer)
-					&& !HasMutualTruce(gang, humanPlayer))
+			PlayerInfo humanPlayer = G.GetHumanPlayer();
+			if (humanPlayer == null || humanPlayer.crew == null || humanPlayer.crew.IsCrewDefeated)
+			{
+				return;
+			}
+			_lastAiHumanRobberyArrivalScanFrame = frame;
+			SimTime now = G.GetNow();
+			ProcessPendingAiHumanRobberyContacts(humanPlayer, now);
+			TryRunRareAiRobberyAgainstHuman(humanPlayer, now, source ?? "human-contact-scan", logAllCandidates);
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] TryRunAiHumanRobberyContactScanNow failed: " + ex.Message);
+		}
+	}
+
+	private static void TryRunAiHumanRobberyContactScanForActor(PlayerInfo robber, SimTime now, string source)
+	{
+		try
+		{
+			PlayerInfo humanPlayer = G.GetHumanPlayer();
+			if (!IsEligibleAiTradeGang(robber) || humanPlayer == null || humanPlayer.crew == null || humanPlayer.crew.IsCrewDefeated)
+			{
+				return;
+			}
+			if (_lastAiHumanRobberyAiTurnScanDayByPid.TryGetValue(robber.PID.id, out int lastDay) && lastDay == now.days)
+			{
+				return;
+			}
+			_lastAiHumanRobberyAiTurnScanDayByPid[robber.PID.id] = now.days;
+			ProcessPendingAiHumanRobberyContacts(humanPlayer, now);
+			if (!TryBuildAiRobberyCandidateAgainstHuman(robber, humanPlayer, now, out AiRobberyCandidate candidate, out string blockReason, out bool hostile, out bool nearby))
+			{
+				if (hostile || nearby || ShouldLogAiHumanRobberyTrespassDiscovery(now, logAllCandidates: false))
+				{
+					VerificationLog("AIPlayerRobbery", $"blocked phase=ai-turn-contact source={source} robber={robber.PID.id} day={now.days} hostile={hostile} nearby={nearby} reason={blockReason}");
+				}
+				return;
+			}
+
+			AiRobberyResolutionPreview preview = BuildAiHumanRobberyResolutionPreview(humanPlayer, candidate);
+			int minCash = GetAiHumanRobberyMinimumCash(candidate);
+			bool cashBelowMinimum = preview.AvailableCash < minCash;
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"candidate phase=ai-turn-contact source={source} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} dist={candidate.Distance:0.0} sameNode={candidate.SameNode} enemyTerritory={candidate.EnemyTerritory} humanTerritory={candidate.HumanTerritory} strictTrespass={candidate.StrictTrespassNode} territoryPressure={candidate.TerritoryPressure} power={candidate.RobberPower}/{candidate.HumanPower} local={candidate.RobberLocalPower}/{candidate.HumanLocalPower} availableCash={preview.AvailableCash} vehicleCash={preview.VehicleCash} safehouseCash={preview.SafehouseCash} totalCash={preview.TotalCash} minCash={minCash} cashBelowMin={cashBelowMinimum} reason={candidate.Reason}");
+			ProcessAiHumanRobberyCandidateContact(candidate, humanPlayer, now, source, cashBelowMinimum);
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] TryRunAiHumanRobberyContactScanForActor failed: " + ex.Message);
+		}
+	}
+
+	private static void TryRunRareAiRobberyAgainstHuman(PlayerInfo humanPlayer, SimTime now, string source = "external-trade-cycle", bool logAllCandidates = true)
+	{
+		try
+		{
+			if (humanPlayer == null || humanPlayer.crew == null || humanPlayer.crew.IsCrewDefeated)
+			{
+				return;
+			}
+
+			AiRobberyResolutionPreview humanCashBasis = BuildAiHumanRobberyResolutionPreview(humanPlayer, null);
+			// A no-candidate preview has no target vehicle, so vehicle-robbable cash is decided per candidate below.
+			int humanCash = Math.Max(humanCashBasis.TotalCash, humanCashBasis.SafehouseCash);
+			bool humanCashBelowMinimum = humanCash < AI_ROBBERY_LOW_CASH_MIN;
+			bool allowContactCashProbe = IsAiHumanRobberyContactScanSource(source);
+			if (humanCashBelowMinimum && logAllCandidates && !allowContactCashProbe)
+			{
+				VerificationLog("AIPlayerRobbery", $"blocked phase=eligibility-only source={source} reason=low-total-cash cash={humanCash} availableCash={humanCashBasis.AvailableCash} safehouseCash={humanCashBasis.SafehouseCash} vehicleCash={humanCashBasis.VehicleCash} totalCash={humanCashBasis.TotalCash} min={AI_ROBBERY_LOW_CASH_MIN} day={now.days}");
+				return;
+			}
+			if (humanCashBelowMinimum && !allowContactCashProbe && ShouldLogAiHumanRobberyTrespassDiscovery(now, logAllCandidates))
+			{
+				_lastAiHumanRobberyTrespassDiscoveryLogDay = now.days;
+				VerificationLog("AIPlayerRobbery", $"discovery phase=trespass-scan source={source} day={now.days} scanned=0 hostile=0 nearby=0 eligible=0 humanCash={humanCash} safehouseCash={humanCashBasis.SafehouseCash} totalCash={humanCashBasis.TotalCash} cashBelowMin=True blocked=low-total-cash:1");
+				return;
+			}
+
+			List<PlayerInfo> gangs = G.GetAllPlayers()
+				.Where(IsEligibleAiTradeGang)
 				.ToList();
-			if (candidates.Count == 0)
+			if (gangs.Count == 0)
 			{
-				return;
-			}
-			PlayerInfo robber = candidates
-				.OrderByDescending(gang =>
+				if (ShouldLogAiHumanRobberyTrespassDiscovery(now, logAllCandidates))
 				{
-					int relationship = GetInterGangRelationshipDisplayScore(gang, humanPlayer);
-					int powerEdge = CalculateGangPower(gang) - CalculateGangPower(humanPlayer);
-					int trait = HasAnyGangBossTrait(gang, "trait-aggressive", "trait-vindictive", "trait-bold", "trait-cruel") ? 20 : 0;
-					return -relationship + powerEdge / 3 + trait + SharedRng.Next(0, 12);
-				})
-				.FirstOrDefault();
-			if (robber == null)
-			{
+					_lastAiHumanRobberyTrespassDiscoveryLogDay = now.days;
+					VerificationLog("AIPlayerRobbery", $"discovery phase=trespass-scan source={source} day={now.days} scanned=0 hostile=0 nearby=0 eligible=0 humanCash={humanCash} safehouseCash={humanCashBasis.SafehouseCash} totalCash={humanCashBasis.TotalCash} cashBelowMin={humanCashBelowMinimum} blocked=no-eligible-gangs:1");
+				}
 				return;
 			}
-			int rel = GetInterGangRelationshipDisplayScore(robber, humanPlayer);
-			if (rel > -10 && !IsAggroWithoutTruceEitherWay(robber, humanPlayer) && SharedRng.NextDouble() < 0.65)
+
+			List<AiRobberyCandidate> candidates = new List<AiRobberyCandidate>(AI_ROBBERY_DIAGNOSTIC_MAX_CANDIDATES_PER_RUN);
+			Dictionary<string, int> blockedByReason = new Dictionary<string, int>(StringComparer.Ordinal);
+			int hostileGangs = 0;
+			int nearbyGangs = 0;
+			foreach (PlayerInfo gang in gangs)
 			{
-				return;
-			}
-			bool highValue = GetGangCleanCash(humanPlayer) >= AI_ROBBERY_HIGH_CASH_MIN + AI_ROBBERY_MIN_CASH_RESERVE
-				&& (HasAnyGangBossTrait(robber, "trait-aggressive", "trait-vindictive", "trait-bold") || CalculateGangPower(robber) > CalculateGangPower(humanPlayer));
-			AiTradeProposal proposal = new AiTradeProposal
-			{
-				TradeKey = highValue ? "gang-robbery-high" : "gang-robbery-low",
-				SellerActor = CreateGangTradeActor(robber),
-				BuyerActor = new AiTradeActor
+				if (TryBuildAiRobberyCandidateAgainstHuman(gang, humanPlayer, now, out AiRobberyCandidate candidate, out string blockReason, out bool hostile, out bool nearby))
 				{
-					Gang = humanPlayer,
-					ActorKey = "human:" + humanPlayer.PID.id
-				},
-				Seller = robber,
-				Buyer = humanPlayer,
-				Score = 0.5f
-			};
-			TryExecuteAiGangRobbery(proposal, now, "AIPlayerRobbery", externalNetwork: true);
+					candidates.Add(candidate);
+					continue;
+				}
+				if (hostile)
+				{
+					hostileGangs++;
+				}
+				if (nearby)
+				{
+					nearbyGangs++;
+				}
+				if (!string.IsNullOrWhiteSpace(blockReason))
+				{
+					blockedByReason.TryGetValue(blockReason, out int count);
+					blockedByReason[blockReason] = count + 1;
+				}
+			}
+
+			List<AiRobberyCandidate> orderedCandidates = candidates
+				.OrderByDescending(c => c.WouldAttempt)
+				.ThenBy(c => c.Distance)
+				.ThenByDescending(c => c.RobberPower - c.HumanPower)
+				.Take(AI_ROBBERY_DIAGNOSTIC_MAX_CANDIDATES_PER_RUN)
+				.ToList();
+			HashSet<AiRobberyCandidate> sameNodeMissCandidatesToLog = new HashSet<AiRobberyCandidate>();
+			foreach (AiRobberyCandidate candidate in orderedCandidates)
+			{
+				if (!logAllCandidates && !candidate.WouldAttempt && ShouldLogAiHumanRobberySameNodeMiss(candidate, now, record: false))
+				{
+					sameNodeMissCandidatesToLog.Add(candidate);
+				}
+			}
+
+			string blockedSummary = blockedByReason.Count == 0
+				? "none"
+				: string.Join(",", blockedByReason.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key).Take(4).Select(kv => kv.Key + ":" + kv.Value));
+			bool shouldLogTrespassDiscovery = ShouldLogAiHumanRobberyTrespassDiscovery(now, logAllCandidates);
+			bool shouldLogDiscovery = logAllCandidates || orderedCandidates.Any(candidate => candidate.WouldAttempt) || sameNodeMissCandidatesToLog.Count > 0 || shouldLogTrespassDiscovery;
+			if (shouldLogDiscovery)
+			{
+				if (shouldLogTrespassDiscovery)
+				{
+					_lastAiHumanRobberyTrespassDiscoveryLogDay = now.days;
+				}
+				VerificationLog(
+					"AIPlayerRobbery",
+					$"discovery phase=trespass-scan source={source} day={now.days} scanned={gangs.Count} hostile={hostileGangs + candidates.Count} nearby={nearbyGangs + candidates.Count} eligible={candidates.Count} humanCash={humanCash} safehouseCash={humanCashBasis.SafehouseCash} totalCash={humanCashBasis.TotalCash} cashBelowMin={humanCashBelowMinimum} blocked={blockedSummary}");
+				if (candidates.Count == 0
+					&& (logAllCandidates || shouldLogTrespassDiscovery)
+					&& blockedByReason.TryGetValue("no-human-trespass", out int noTrespassCount)
+					&& noTrespassCount > 0)
+				{
+					LogAiHumanRobberyNoTrespassProbe(humanPlayer, gangs, now, source);
+				}
+			}
+
+			int processedContacts = 0;
+			foreach (AiRobberyCandidate candidate in orderedCandidates)
+			{
+				bool logSameNodeMiss = sameNodeMissCandidatesToLog.Contains(candidate) && ShouldLogAiHumanRobberySameNodeMiss(candidate, now, record: true);
+				AiRobberyResolutionPreview candidateCashBasis = BuildAiHumanRobberyResolutionPreview(humanPlayer, candidate);
+				int candidateMinCash = GetAiHumanRobberyMinimumCash(candidate);
+				bool candidateCashBelowMinimum = candidateCashBasis.AvailableCash < candidateMinCash;
+				if (logAllCandidates || candidate.WouldAttempt || logSameNodeMiss)
+				{
+					VerificationLog(
+						"AIPlayerRobbery",
+						$"candidate phase=eligibility-only source={source} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} dist={candidate.Distance:0.0} sameNode={candidate.SameNode} robberNodeSource={candidate.RobberNodeSource ?? "none"} targetNodeSource={candidate.TargetNodeSource ?? "none"} directAggro={candidate.DirectAggro} broadHostile={candidate.BroadlyHostile} enemyTerritory={candidate.EnemyTerritory} humanTerritory={candidate.HumanTerritory} strictTrespass={candidate.StrictTrespassNode} territoryPressure={candidate.TerritoryPressure} recentTrespass={candidate.RecentTrespassMemory} power={candidate.RobberPower}/{candidate.HumanPower} local={candidate.RobberLocalPower}/{candidate.HumanLocalPower} rarity={candidate.RarityRoll:0.00}/{candidate.RarityChance:0.00} wouldAttempt={candidate.WouldAttempt} cashBelowMin={candidateCashBelowMinimum} minCash={candidateMinCash} availableCash={candidateCashBasis.AvailableCash} safehouseCash={candidateCashBasis.SafehouseCash} vehicleCash={candidateCashBasis.VehicleCash} totalCash={candidateCashBasis.TotalCash} reason={candidate.Reason}");
+				}
+				if (logSameNodeMiss)
+				{
+					LogAiHumanRobberySameNodeMissPreview(candidate, humanPlayer, now, source);
+				}
+				if (TryGetAiHumanRobberyDiagnosticCooldown(candidate, now, out string cooldownKey, out int cooldownUntilDay))
+				{
+					if (logAllCandidates || candidate.WouldAttempt)
+					{
+						VerificationLog(
+							"AIPlayerRobbery",
+							$"blocked phase=contact-cooldown source={source} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} cooldown={cooldownKey} untilDay={cooldownUntilDay} result=skipped");
+					}
+					continue;
+				}
+				ProcessAiHumanRobberyCandidateContact(candidate, humanPlayer, now, source, candidateCashBelowMinimum);
+				if (IsAiHumanRobberyImmediateContactCandidate(candidate)
+					&& ++processedContacts >= AI_ROBBERY_MAX_CONTACTS_PER_SCAN)
+				{
+					break;
+				}
+			}
 		}
 		catch (Exception ex)
 		{
@@ -2536,15 +4348,3219 @@ public partial class GameplayTweaksPlugin
 		}
 	}
 
-	private static void ApplyPactTradeRelationshipBuff(PlayerInfo seller, PlayerInfo buyer)
+	private static bool IsAiHumanRobberyContactScanSource(string source)
+	{
+		return !string.IsNullOrWhiteSpace(source)
+			&& (source.StartsWith("human-", StringComparison.Ordinal)
+				|| string.Equals(source, "ai-turn-contact", StringComparison.Ordinal)
+				|| string.Equals(source, "pending-contact", StringComparison.Ordinal));
+	}
+
+	private static int GetAiHumanRobberyMinimumCash(AiRobberyCandidate candidate)
+	{
+		if (candidate != null
+			&& (candidate.StrictTrespassNode
+				|| candidate.TerritoryPressure
+				|| candidate.EnemyTerritory
+				|| candidate.HumanTerritory))
+		{
+			return AI_ROBBERY_CONTACT_LOW_CASH_MIN;
+		}
+		return AI_ROBBERY_LOW_CASH_MIN;
+	}
+
+	private static bool IsAiHumanRobberyImmediateContactCandidate(AiRobberyCandidate candidate)
+	{
+		return candidate != null
+			&& candidate.WouldAttempt
+			&& (candidate.StrictTrespassNode || candidate.HumanTerritory || candidate.TerritoryPressure);
+	}
+
+	private static bool ShouldLogAiHumanRobberyTrespassDiscovery(SimTime now, bool logAllCandidates)
+	{
+		return !logAllCandidates
+			&& now.days - _lastAiHumanRobberyTrespassDiscoveryLogDay >= AI_ROBBERY_TRESPASS_DISCOVERY_LOG_DAYS;
+	}
+
+	private static void ProcessAiHumanRobberyCandidateContact(AiRobberyCandidate candidate, PlayerInfo humanPlayer, SimTime now, string source, bool humanCashBelowMinimum)
+	{
+		if (candidate == null || candidate.Robber == null || humanPlayer == null || !candidate.TargetCrew.IsValid || !candidate.WouldAttempt)
+		{
+			return;
+		}
+		if (TryGetAiHumanRobberyDiagnosticCooldown(candidate, now, out string cooldownKey, out int cooldownUntilDay))
+		{
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"blocked phase=contact-cooldown source={source} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} cooldown={cooldownKey} untilDay={cooldownUntilDay} result=skipped");
+			return;
+		}
+		string key = GetAiHumanRobberyContactKey(candidate.Robber.PID.id, candidate.TargetCrew.peepId.id);
+		if (humanCashBelowMinimum)
+		{
+			LogAiHumanRobberyLowCashContactPreview(candidate, humanPlayer, now, source, candidate.SameNode ? "same-node-low-cash" : "contact-low-cash");
+			return;
+		}
+		if (candidate.StrictTrespassNode || candidate.HumanTerritory || candidate.TerritoryPressure)
+		{
+			if (_pendingAiHumanRobberyContacts.Remove(key))
+			{
+				VerificationLog(
+					"AIPlayerRobbery",
+					$"cleared phase=trespass-direct source={source} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} reason=strict-trespass-overrides-shadow");
+			}
+			string mode = candidate.StrictTrespassNode
+				? (candidate.SameNode ? "trespass-same-node" : "trespass-direct")
+				: (candidate.HumanTerritory
+					? (candidate.SameNode ? "human-territory-same-node" : "human-territory-contact")
+					: "territory-pressure-contact");
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"contact phase=trespass-direct source={source} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} dist={candidate.Distance:0.0} sameNode={candidate.SameNode} strictTrespass={candidate.StrictTrespassNode} humanTerritory={candidate.HumanTerritory} territoryPressure={candidate.TerritoryPressure} result=immediate");
+			LogAiHumanRobberyResolutionPreview(candidate, humanPlayer, now, source, mode, -1);
+			return;
+		}
+		if (_pendingAiHumanRobberyContacts.ContainsKey(key))
+		{
+			return;
+		}
+		int graceDays = Math.Max(AI_ROBBERY_TRESPASS_GRACE_FAST_DAYS, candidate.TrespassGraceDays);
+		_pendingAiHumanRobberyContacts[key] = new AiRobberyPendingContact
+		{
+			RobberPid = candidate.Robber.PID.id,
+			TargetCrewPeepId = (long)candidate.TargetCrew.peepId.id,
+			TargetVehicleId = candidate.TargetCrew.VehicleID.IsValid ? (long)candidate.TargetCrew.VehicleID.id : 0L,
+			TargetNodeIndex = candidate.ContactNode?.id.index ?? 0,
+			CreatedDay = now.days,
+			ContactDay = now.days + graceDays,
+			GraceDays = graceDays,
+			ExpireDay = now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS,
+			Source = source ?? string.Empty,
+			WarningShown = false
+		};
+		bool warningShown = TryLogAiHumanRobberyApproachWarning(candidate, now, source);
+		_pendingAiHumanRobberyContacts[key].WarningShown = warningShown;
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"pending phase=trespass-grace source={source} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} dist={candidate.Distance:0.0} sameNode={candidate.SameNode} graceDays={graceDays} contactDay={now.days + graceDays} expireDay={now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS} warningShown={warningShown} result=shadowing");
+	}
+
+	private static bool TryLogAiHumanRobberyApproachWarning(AiRobberyCandidate candidate, SimTime now, string source)
+	{
+		if (candidate == null || candidate.Robber == null || !candidate.TargetCrew.IsValid)
+		{
+			return false;
+		}
+		string key = GetAiHumanRobberyContactKey(candidate.Robber.PID.id, candidate.TargetCrew.peepId.id) + ":warning";
+		if (_aiHumanRobberyApproachWarningDayByKey.TryGetValue(key, out int lastDay)
+			&& now.days - lastDay < AI_ROBBERY_APPROACH_WARNING_COOLDOWN_DAYS)
+		{
+			return false;
+		}
+		_aiHumanRobberyApproachWarningDayByKey[key] = now.days;
+		string robberName = GetGangDisplayName(candidate.Robber.PID.id);
+		string robberyReason = FormatAiHumanRobberyReasonForPlayer(candidate);
+		LogGrapevine($"ROBBERY: {robberName} has been spotted shadowing one of your crews. {robberyReason} If they catch up, they may try to shake the crew down.");
+		bool tickerShown = TryShowAiHumanRobberyIntentTicker(candidate, now, source, "approach-diagnostic");
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"warning phase=approach-diagnostic source={source} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} dist={candidate.Distance:0.0} reasonText=\"{robberyReason}\" tickerShown={tickerShown} cooldownDays={AI_ROBBERY_APPROACH_WARNING_COOLDOWN_DAYS} result=shown");
+		return true;
+	}
+
+	private static bool TryLogAiHumanRobberyApproachClosed(AiRobberyPendingContact pending, SimTime now, string reason)
+	{
+		if (pending == null || !pending.WarningShown)
+		{
+			return false;
+		}
+		string robberName = GetGangDisplayName(pending.RobberPid);
+		string outcome = string.Equals(reason, "timeout", StringComparison.Ordinal)
+			? "lost track of your crew"
+			: "backed off";
+		LogGrapevine($"ROBBERY: {robberName} {outcome}. The crew is no longer being shadowed.");
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"warning-cleared phase=approach-diagnostic robber={pending.RobberPid} targetCrew={pending.TargetCrewPeepId} vehicle={pending.TargetVehicleId} node=NID_{pending.TargetNodeIndex} createdDay={pending.CreatedDay} day={now.days} reason={reason} result=closed");
+		return true;
+	}
+
+	private static bool IsAiHumanRobberyPendingStillActive(AiRobberyPendingContact pending, PlayerInfo humanPlayer, out string reason)
+	{
+		reason = "inactive";
+		if (pending == null || humanPlayer == null)
+		{
+			reason = "invalid";
+			return false;
+		}
+		PlayerInfo robber = G.FindPlayerById(pending.RobberPid);
+		if (!IsEligibleAiTradeGang(robber) || humanPlayer.crew == null)
+		{
+			reason = "invalid-gang";
+			return false;
+		}
+		if (ArePlayersProtectedByPactAlliance(robber, humanPlayer))
+		{
+			reason = "pact-protected";
+			return false;
+		}
+		if (HasMutualTruce(robber, humanPlayer))
+		{
+			reason = "truce";
+			return false;
+		}
+		if (IsAiHumanRobberyBlockedByGoodRelations(robber, humanPlayer, out _))
+		{
+			reason = "friendly-relations";
+			return false;
+		}
+		if (!TryFindAiRobberyTrespassContact(robber, humanPlayer, out CrewAssignment targetCrew, out Node contactNode, out _, out bool sameNode, out int robberLocalPower, out int humanLocalPower, out _, out _, out bool strictTrespassNode, out bool territoryPressure, out bool recentTrespassMemory, out reason))
+		{
+			return false;
+		}
+		if (!targetCrew.IsValid || (long)targetCrew.peepId.id != pending.TargetCrewPeepId)
+		{
+			reason = "target-changed";
+			return false;
+		}
+		int robberPower = CalculateGangPower(robber);
+		int humanPower = CalculateGangPower(humanPlayer);
+		PlayerID owner = contactNode != null ? PlayerTerritory.GetNodeOwner(contactNode) : PlayerID.INVALID;
+		bool humanTerritory = owner == humanPlayer.PID;
+		bool pressureTrespass = territoryPressure && !humanTerritory;
+		if (!strictTrespassNode && !pressureTrespass)
+		{
+			reason = territoryPressure
+				? "territory-pressure-not-trespass"
+				: (recentTrespassMemory ? "recent-trespass-not-current" : "not-trespassing");
+			return false;
+		}
+		if (!IsAiHumanRobberyPhysicalTargetValid(humanPlayer, targetCrew, contactNode, out reason))
+		{
+			return false;
+		}
+		bool enemyTerritory = owner == robber.PID || pressureTrespass;
+		if (!enemyTerritory)
+		{
+			reason = "not-trespassing";
+			return false;
+		}
+		if (!PassesAiRobberyStrengthGate(enemyTerritory, robberPower, humanPower, robberLocalPower, humanLocalPower, out reason))
+		{
+			return false;
+		}
+		reason = sameNode ? "active-same-node" : "active-nearby";
+		return true;
+	}
+
+	private static void ProcessPendingAiHumanRobberyContacts(PlayerInfo humanPlayer, SimTime now)
+	{
+		ClearStaleAiHumanRobberyResponseLocks(humanPlayer, now);
+		if (_pendingAiHumanRobberyContacts.Count == 0)
+		{
+			return;
+		}
+		foreach (KeyValuePair<string, AiRobberyPendingContact> kv in _pendingAiHumanRobberyContacts.ToList())
+		{
+			AiRobberyPendingContact pending = kv.Value;
+			if (pending == null || pending.ExpireDay < now.days)
+			{
+				_pendingAiHumanRobberyContacts.Remove(kv.Key);
+				if (pending != null)
+				{
+					bool closureSuppressed = IsAiHumanRobberyPendingStillActive(pending, humanPlayer, out string closureReason);
+					bool warningClosed = !closureSuppressed && TryLogAiHumanRobberyApproachClosed(pending, now, "timeout");
+					VerificationLog("AIPlayerRobbery", $"expired phase=approach-diagnostic robber={pending.RobberPid} targetCrew={pending.TargetCrewPeepId} createdDay={pending.CreatedDay} expireDay={pending.ExpireDay} day={now.days} warningClosed={warningClosed} closureSuppressed={closureSuppressed} closureReason={closureReason} reason=timeout");
+				}
+				continue;
+			}
+			PlayerInfo robber = G.FindPlayerById(pending.RobberPid);
+			if (!TryBuildAiRobberyCandidateAgainstHuman(robber, humanPlayer, now, out AiRobberyCandidate candidate, out string blockReason, out _, out _))
+			{
+				if (string.Equals(blockReason, "truce", StringComparison.Ordinal)
+					|| string.Equals(blockReason, "pact-protected", StringComparison.Ordinal)
+					|| string.Equals(blockReason, "friendly-relations", StringComparison.Ordinal)
+					|| string.Equals(blockReason, "not-trespassing", StringComparison.Ordinal)
+					|| string.Equals(blockReason, "territory-pressure-not-trespass", StringComparison.Ordinal)
+					|| string.Equals(blockReason, "recent-trespass-not-current", StringComparison.Ordinal)
+					|| string.Equals(blockReason, "target-not-in-vehicle", StringComparison.Ordinal)
+					|| string.Equals(blockReason, "target-on-foot-not-at-node", StringComparison.Ordinal)
+					|| string.Equals(blockReason, "target-not-onboard", StringComparison.Ordinal)
+					|| string.Equals(blockReason, "target-vehicle-not-physical", StringComparison.Ordinal)
+					|| string.Equals(blockReason, "target-vehicle-empty", StringComparison.Ordinal))
+				{
+					_pendingAiHumanRobberyContacts.Remove(kv.Key);
+					bool warningClosed = TryLogAiHumanRobberyApproachClosed(pending, now, blockReason);
+					VerificationLog("AIPlayerRobbery", $"cleared phase=approach-diagnostic robber={pending.RobberPid} targetCrew={pending.TargetCrewPeepId} reason={blockReason} day={now.days} warningClosed={warningClosed}");
+				}
+				continue;
+			}
+			if (now.days < pending.ContactDay)
+			{
+				continue;
+			}
+			if (HasActiveAiHumanRobberyResponseForHuman(humanPlayer))
+			{
+				VerificationLog("AIPlayerRobbery", $"deferred phase=response-popup source=pending-contact reason=human-response-active robber={pending.RobberPid} targetCrew={pending.TargetCrewPeepId} vehicle={pending.TargetVehicleId} day={now.days} result=pending-kept");
+				continue;
+			}
+
+			AiRobberyResolutionPreview candidateCashBasis = BuildAiHumanRobberyResolutionPreview(humanPlayer, candidate);
+			if (candidateCashBasis.AvailableCash < GetAiHumanRobberyMinimumCash(candidate))
+			{
+				_pendingAiHumanRobberyContacts.Remove(kv.Key);
+				LogAiHumanRobberyLowCashContactPreview(candidate, humanPlayer, now, "pending-contact", candidate.SameNode ? "trespass-same-node" : "trespass-shadow");
+				continue;
+			}
+			if (candidate.EnemyTerritory || candidate.HumanTerritory)
+			{
+				_pendingAiHumanRobberyContacts.Remove(kv.Key);
+				LogAiHumanRobberyResolutionPreview(candidate, humanPlayer, now, "pending-contact", candidate.SameNode ? "trespass-same-node" : "trespass-shadow", pending.CreatedDay);
+			}
+		}
+	}
+
+	private static void LogAiHumanRobberyResolutionPreview(AiRobberyCandidate candidate, PlayerInfo humanPlayer, SimTime now, string source, string mode, int createdDay)
+	{
+		if (candidate == null || candidate.Robber == null || humanPlayer == null || !candidate.TargetCrew.IsValid)
+		{
+			return;
+		}
+		if (TryGetAiHumanRobberyDiagnosticCooldown(candidate, now, out string cooldownKey, out int cooldownUntilDay))
+		{
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"blocked phase=resolution-preview source={source} mode={mode} reason=diagnostic-cooldown cooldown={cooldownKey} untilDay={cooldownUntilDay} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} day={now.days}");
+			return;
+		}
+
+		AiRobberyResolutionPreview preview = BuildAiHumanRobberyResolutionPreview(humanPlayer, candidate);
+		if (AI_ROBBERY_CONTACT_PLAYER_RESPONSE_ENABLED)
+		{
+			if (ShouldDeferAiHumanRobberyResponsePopup(source)
+				&& QueueAiHumanRobberyResponseForNextHumanTurn(candidate, humanPlayer, now, source, mode, createdDay))
+			{
+				return;
+			}
+			if (TryShowAiHumanRobberyResponsePopup(candidate, humanPlayer, preview, now, source, mode, createdDay))
+			{
+				return;
+			}
+			RecordAiHumanRobberyDiagnosticCooldown(candidate, now);
+			string createdUnavailable = createdDay >= 0 ? $" createdDay={createdDay}" : string.Empty;
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"blocked phase=response-popup source={source} mode={mode} reason=ui-unavailable robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID}{createdUnavailable} cashPreview={preview.Amount} availableCash={preview.AvailableCash} safehouseCash={preview.SafehouseCash} vehicleCash={preview.VehicleCash} totalCash={preview.TotalCash} cooldownDays={GetAiHumanRobberyCooldownSummary()} result=no-debit");
+			return;
+		}
+		if (AI_ROBBERY_CONTACT_VEHICLE_DEBIT_ENABLED
+			&& TryResolveAiHumanVehicleRobberyContact(candidate, humanPlayer, preview, now, source, mode, createdDay))
+		{
+			return;
+		}
+		RecordAiHumanRobberyDiagnosticCooldown(candidate, now);
+		string created = createdDay >= 0 ? $" createdDay={createdDay}" : string.Empty;
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"contact phase=contact-diagnostic source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID}{created} cashPreview={preview.Amount} availableCash={preview.AvailableCash} safehouseCash={preview.SafehouseCash} vehicleCash={preview.VehicleCash} peepCash={preview.PeepCash} totalCash={preview.TotalCash} canDebitSafehouse={preview.CanDebitSafehouse} canDebitCleanCash={preview.CanDebitCleanCash} canDebitVehicle={preview.CanDebitVehicle} canDebitPeep={preview.CanDebitPeep} cashReason={preview.Reason} cooldownDays={GetAiHumanRobberyCooldownSummary()} legacyMutationEnabled={AI_ROBBERY_HUMAN_CASH_MUTATION_ENABLED} vehicleDebitEnabled={AI_ROBBERY_CONTACT_VEHICLE_DEBIT_ENABLED} result=resolution-disabled");
+	}
+
+	private static bool ShouldDeferAiHumanRobberyResponsePopup(string source)
+	{
+		return string.IsNullOrWhiteSpace(source)
+			|| !source.StartsWith("deferred-turn-start", StringComparison.Ordinal);
+	}
+
+	private static bool QueueAiHumanRobberyResponseForNextHumanTurn(AiRobberyCandidate candidate, PlayerInfo humanPlayer, SimTime now, string source, string mode, int createdDay)
+	{
+		if (candidate?.Robber == null || humanPlayer == null || !candidate.TargetCrew.IsValid)
+		{
+			return false;
+		}
+		string key = GetAiHumanRobberyDeferredResponseKey(candidate.Robber, humanPlayer);
+		if (string.IsNullOrEmpty(key))
+		{
+			return false;
+		}
+		if (_deferredAiHumanRobberyResponsesByKey.TryGetValue(key, out DeferredAiHumanRobberyResponse existing))
+		{
+			if (!ShouldReplaceDeferredAiHumanRobberyResponse(existing, candidate, now, source))
+			{
+				VerificationLog("AIPlayerRobbery", $"deferred phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} day={now.days} reason=pair-already-queued existingTarget={existing?.TargetCrewPeepId ?? 0L} existingNode=NID_{existing?.TargetNodeIndex ?? 0} existingSource={existing?.Source ?? string.Empty} result=pending-kept");
+				return true;
+			}
+			VerificationLog("AIPlayerRobbery", $"deferred phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} day={now.days} reason=pair-queued-replaced oldTarget={existing?.TargetCrewPeepId ?? 0L} oldNode=NID_{existing?.TargetNodeIndex ?? 0} oldSource={existing?.Source ?? string.Empty} result=pending-updated");
+		}
+		if (HasActiveAiHumanRobberyResponseForHuman(humanPlayer))
+		{
+			VerificationLog("AIPlayerRobbery", $"deferred phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} day={now.days} reason=human-response-active result=queued-next-turn");
+		}
+		TryShowAiHumanRobberyIntentTicker(candidate, now, source, "queued-response");
+		_deferredAiHumanRobberyResponsesByKey[key] = BuildDeferredAiHumanRobberyResponse(candidate, now, source, mode, createdDay);
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"deferred phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} enactedDay={now.days} notBeforeDay={now.days + 1} expireDay={now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS} result=queued-next-turn");
+		return true;
+	}
+
+	private static DeferredAiHumanRobberyResponse BuildDeferredAiHumanRobberyResponse(AiRobberyCandidate candidate, SimTime now, string source, string mode, int createdDay)
+	{
+		return new DeferredAiHumanRobberyResponse
+		{
+			RobberPid = candidate.Robber.PID.id,
+			TargetCrewPeepId = (long)candidate.TargetCrew.peepId.id,
+			TargetVehicleId = candidate.TargetCrew.VehicleID.IsValid ? (long)candidate.TargetCrew.VehicleID.id : 0L,
+			TargetNodeIndex = candidate.ContactNode?.id.index ?? 0,
+			EnactedDay = now.days,
+			NotBeforeDay = now.days + 1,
+			ExpireDay = now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS,
+			CreatedDay = createdDay,
+			Source = source ?? string.Empty,
+			Mode = mode ?? string.Empty,
+			Distance = candidate.Distance,
+			SameNode = candidate.SameNode,
+			RobberNodeSource = candidate.RobberNodeSource ?? string.Empty,
+			TargetNodeSource = candidate.TargetNodeSource ?? string.Empty,
+			DirectAggro = candidate.DirectAggro,
+			BroadlyHostile = candidate.BroadlyHostile,
+			EnemyTerritory = candidate.EnemyTerritory,
+			HumanTerritory = candidate.HumanTerritory,
+			StrictTrespassNode = candidate.StrictTrespassNode,
+			TerritoryPressure = candidate.TerritoryPressure,
+			RecentTrespassMemory = candidate.RecentTrespassMemory,
+			RobberPower = candidate.RobberPower,
+			HumanPower = candidate.HumanPower,
+			RobberLocalPower = candidate.RobberLocalPower,
+			HumanLocalPower = candidate.HumanLocalPower,
+			TrespassGraceDays = candidate.TrespassGraceDays,
+			Reason = candidate.Reason ?? string.Empty
+		};
+	}
+
+	private static bool ShouldReplaceDeferredAiHumanRobberyResponse(DeferredAiHumanRobberyResponse existing, AiRobberyCandidate candidate, SimTime now, string source)
+	{
+		if (existing == null)
+		{
+			return true;
+		}
+		if (existing.EnactedDay != now.days)
+		{
+			return false;
+		}
+		int newPriority = GetDeferredAiHumanRobberyPriority(candidate, source);
+		int existingPriority = GetDeferredAiHumanRobberyPriority(existing);
+		if (newPriority > existingPriority)
+		{
+			return true;
+		}
+		if (newPriority < existingPriority)
+		{
+			return false;
+		}
+		if (candidate != null && candidate.Distance + 0.25f < existing.Distance)
+		{
+			return true;
+		}
+		bool sameTarget = candidate != null && candidate.TargetCrew.IsValid && (long)candidate.TargetCrew.peepId.id == existing.TargetCrewPeepId;
+		bool sameNode = candidate?.ContactNode != null && candidate.ContactNode.id.index == existing.TargetNodeIndex;
+		return (sameTarget || sameNode) && IsAiHumanRobberyTravelFinalizeSource(source) && !IsAiHumanRobberyTravelFinalizeSource(existing.Source);
+	}
+
+	private static int GetDeferredAiHumanRobberyPriority(AiRobberyCandidate candidate, string source)
+	{
+		if (candidate == null)
+		{
+			return 0;
+		}
+		int score = 0;
+		if (candidate.SameNode)
+		{
+			score += 100;
+		}
+		if (candidate.StrictTrespassNode)
+		{
+			score += 80;
+		}
+		if (candidate.HumanTerritory)
+		{
+			score += 60;
+		}
+		if (candidate.EnemyTerritory)
+		{
+			score += 50;
+		}
+		if (candidate.TerritoryPressure)
+		{
+			score += 40;
+		}
+		if (candidate.DirectAggro)
+		{
+			score += 20;
+		}
+		if (IsAiHumanRobberyTravelFinalizeSource(source))
+		{
+			score += 5;
+		}
+		return score;
+	}
+
+	private static int GetDeferredAiHumanRobberyPriority(DeferredAiHumanRobberyResponse existing)
+	{
+		if (existing == null)
+		{
+			return 0;
+		}
+		int score = 0;
+		if (existing.SameNode)
+		{
+			score += 100;
+		}
+		if (existing.StrictTrespassNode)
+		{
+			score += 80;
+		}
+		if (existing.HumanTerritory)
+		{
+			score += 60;
+		}
+		if (existing.EnemyTerritory)
+		{
+			score += 50;
+		}
+		if (existing.TerritoryPressure)
+		{
+			score += 40;
+		}
+		if (existing.DirectAggro)
+		{
+			score += 20;
+		}
+		if (IsAiHumanRobberyTravelFinalizeSource(existing.Source))
+		{
+			score += 5;
+		}
+		return score;
+	}
+
+	private static bool IsAiHumanRobberyTravelFinalizeSource(string source)
+	{
+		return !string.IsNullOrWhiteSpace(source)
+			&& source.IndexOf("travel-finalize", StringComparison.OrdinalIgnoreCase) >= 0;
+	}
+
+	internal static void ProcessDeferredAiHumanRobberyResponsesOnHumanTurnStart(PlayerInfo humanPlayer, string sourceTag)
+	{
+		try
+		{
+			SimTime now = G.GetNow();
+			ClearStaleAiHumanRobberyResponseLocks(humanPlayer, now);
+			if (humanPlayer == null || _deferredAiHumanRobberyResponsesByKey.Count == 0 || HasActiveAiHumanRobberyResponseForHuman(humanPlayer))
+			{
+				return;
+			}
+			foreach (KeyValuePair<string, DeferredAiHumanRobberyResponse> kv in _deferredAiHumanRobberyResponsesByKey.OrderBy(item => item.Value?.EnactedDay ?? int.MaxValue).ToList())
+			{
+				DeferredAiHumanRobberyResponse deferred = kv.Value;
+				if (deferred == null)
+				{
+					_deferredAiHumanRobberyResponsesByKey.Remove(kv.Key);
+					continue;
+				}
+				if (now.days < deferred.NotBeforeDay)
+				{
+					continue;
+				}
+				if (deferred.ExpireDay < now.days)
+				{
+					_deferredAiHumanRobberyResponsesByKey.Remove(kv.Key);
+					VerificationLog("AIPlayerRobbery", $"expired phase=deferred-response robber={deferred.RobberPid} targetCrew={deferred.TargetCrewPeepId} enactedDay={deferred.EnactedDay} expireDay={deferred.ExpireDay} day={now.days} source={sourceTag}");
+					continue;
+				}
+				PlayerInfo robber = G.FindPlayerById(deferred.RobberPid);
+				if (!TryBuildAiRobberyCandidateAgainstHuman(robber, humanPlayer, now, out AiRobberyCandidate candidate, out string blockReason, out _, out _))
+				{
+					if (!TryBuildDeferredAiHumanRobberyCandidateSnapshot(deferred, robber, humanPlayer, now, blockReason, out candidate, out string snapshotReason))
+					{
+						_deferredAiHumanRobberyResponsesByKey.Remove(kv.Key);
+						VerificationLog("AIPlayerRobbery", $"cleared phase=deferred-response robber={deferred.RobberPid} targetCrew={deferred.TargetCrewPeepId} enactedDay={deferred.EnactedDay} day={now.days} reason={snapshotReason} originalReason={blockReason} source={sourceTag}");
+						continue;
+					}
+					VerificationLog("AIPlayerRobbery", $"restored phase=deferred-response robber={deferred.RobberPid} targetCrew={deferred.TargetCrewPeepId} enactedDay={deferred.EnactedDay} day={now.days} reason={blockReason} result=snapshot-valid source={sourceTag}");
+				}
+				if (!candidate.TargetCrew.IsValid || (long)candidate.TargetCrew.peepId.id != deferred.TargetCrewPeepId)
+				{
+					ulong newTarget = candidate.TargetCrew.IsValid ? candidate.TargetCrew.peepId.id : 0UL;
+					if (!TryBuildDeferredAiHumanRobberyCandidateSnapshot(deferred, robber, humanPlayer, now, "target-changed", out candidate, out string snapshotReason))
+					{
+						_deferredAiHumanRobberyResponsesByKey.Remove(kv.Key);
+						VerificationLog("AIPlayerRobbery", $"cleared phase=deferred-response robber={deferred.RobberPid} targetCrew={deferred.TargetCrewPeepId} newTarget={newTarget} enactedDay={deferred.EnactedDay} day={now.days} reason={snapshotReason} originalReason=target-changed source={sourceTag}");
+						continue;
+					}
+					VerificationLog("AIPlayerRobbery", $"restored phase=deferred-response robber={deferred.RobberPid} targetCrew={deferred.TargetCrewPeepId} newTarget={newTarget} enactedDay={deferred.EnactedDay} day={now.days} reason=target-changed result=snapshot-valid source={sourceTag}");
+				}
+				AiRobberyResolutionPreview preview = BuildAiHumanRobberyResolutionPreview(humanPlayer, candidate);
+				if (preview.AvailableCash < GetAiHumanRobberyMinimumCash(candidate))
+				{
+					_deferredAiHumanRobberyResponsesByKey.Remove(kv.Key);
+					LogAiHumanRobberyLowCashContactPreview(candidate, humanPlayer, now, "deferred-turn-start:" + deferred.Source, deferred.Mode);
+					continue;
+				}
+				string displaySource = "deferred-turn-start:" + deferred.Source;
+				if (TryShowAiHumanRobberyResponsePopup(candidate, humanPlayer, preview, now, displaySource, deferred.Mode, deferred.CreatedDay >= 0 ? deferred.CreatedDay : deferred.EnactedDay))
+				{
+					_deferredAiHumanRobberyResponsesByKey.Remove(kv.Key);
+					VerificationLog("AIPlayerRobbery", $"shown phase=deferred-response robber={deferred.RobberPid} targetCrew={deferred.TargetCrewPeepId} enactedDay={deferred.EnactedDay} day={now.days} source={sourceTag} mode={deferred.Mode} result=shown-at-turn-start");
+					return;
+				}
+				VerificationLog("AIPlayerRobbery", $"deferred phase=deferred-response robber={deferred.RobberPid} targetCrew={deferred.TargetCrewPeepId} enactedDay={deferred.EnactedDay} day={now.days} source={sourceTag} mode={deferred.Mode} result=ui-unavailable-kept");
+				return;
+			}
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] ProcessDeferredAiHumanRobberyResponsesOnHumanTurnStart failed: " + ex.Message);
+		}
+	}
+
+	private static bool TryBuildDeferredAiHumanRobberyCandidateSnapshot(DeferredAiHumanRobberyResponse deferred, PlayerInfo robber, PlayerInfo humanPlayer, SimTime now, string blockReason, out AiRobberyCandidate candidate, out string reason)
+	{
+		candidate = null;
+		reason = blockReason;
+		if (deferred == null || robber == null || humanPlayer?.crew == null)
+		{
+			reason = "invalid";
+			return false;
+		}
+		if (!IsDeferredAiHumanRobberySnapshotRecoverableReason(blockReason))
+		{
+			reason = string.IsNullOrEmpty(blockReason) ? "snapshot-not-recoverable" : blockReason;
+			return false;
+		}
+		if (!IsEligibleAiTradeGang(robber))
+		{
+			reason = "invalid-robber";
+			return false;
+		}
+		if (ArePlayersProtectedByPactAlliance(robber, humanPlayer))
+		{
+			reason = "pact-protected";
+			return false;
+		}
+		if (HasMutualTruce(robber, humanPlayer))
+		{
+			reason = "truce";
+			return false;
+		}
+		if (TryGetAiHumanRobberyPairCooldown(robber, humanPlayer, now, out _))
+		{
+			reason = "human-robbery-pair-cooldown";
+			return false;
+		}
+		if (IsAiHumanRobberyBlockedByGoodRelations(robber, humanPlayer, out _))
+		{
+			reason = "friendly-relations";
+			return false;
+		}
+		if (deferred.TargetCrewPeepId <= 0L)
+		{
+			reason = "target-missing";
+			return false;
+		}
+		EntityID targetPeepId = EntityID.FromID((ulong)deferred.TargetCrewPeepId);
+		CrewAssignment targetCrew = humanPlayer.crew.GetCrewForPeep(targetPeepId);
+		if (!targetCrew.IsValid || targetCrew.GetPeep() == null)
+		{
+			reason = "target-missing";
+			return false;
+		}
+		Node contactNode = null;
+		if (deferred.TargetNodeIndex > 0)
+		{
+			contactNode = new NodeID(deferred.TargetNodeIndex).FindNode();
+		}
+		int robberPower = deferred.RobberPower > 0 ? deferred.RobberPower : CalculateGangPower(robber);
+		int humanPower = deferred.HumanPower > 0 ? deferred.HumanPower : CalculateGangPower(humanPlayer);
+		candidate = new AiRobberyCandidate
+		{
+			Robber = robber,
+			TargetCrew = targetCrew,
+			ContactNode = contactNode,
+			Distance = deferred.Distance,
+			SameNode = deferred.SameNode,
+			RobberNodeSource = string.IsNullOrEmpty(deferred.RobberNodeSource) ? "deferred-snapshot" : deferred.RobberNodeSource,
+			TargetNodeSource = string.IsNullOrEmpty(deferred.TargetNodeSource) ? "deferred-snapshot" : deferred.TargetNodeSource,
+			DirectAggro = deferred.DirectAggro,
+			BroadlyHostile = deferred.BroadlyHostile,
+			EnemyTerritory = deferred.EnemyTerritory,
+			HumanTerritory = deferred.HumanTerritory,
+			StrictTrespassNode = deferred.StrictTrespassNode,
+			TerritoryPressure = deferred.TerritoryPressure,
+			RecentTrespassMemory = deferred.RecentTrespassMemory,
+			RobberPower = robberPower,
+			HumanPower = humanPower,
+			RobberLocalPower = deferred.RobberLocalPower,
+			HumanLocalPower = deferred.HumanLocalPower,
+			RarityChance = 1f,
+			RarityRoll = 0f,
+			WouldAttempt = true,
+			TrespassGraceDays = deferred.TrespassGraceDays,
+			Reason = string.IsNullOrEmpty(deferred.Reason) ? "deferred-snapshot" : deferred.Reason
+		};
+		reason = "snapshot-valid";
+		return true;
+	}
+
+	private static bool IsDeferredAiHumanRobberySnapshotRecoverableReason(string blockReason)
+	{
+		return string.Equals(blockReason, "nearby-contact-too-far", StringComparison.Ordinal)
+			|| string.Equals(blockReason, "human-territory-contact-too-far", StringComparison.Ordinal)
+			|| string.Equals(blockReason, "territory-pressure-too-far", StringComparison.Ordinal)
+			|| string.Equals(blockReason, "not-trespassing", StringComparison.Ordinal)
+			|| string.Equals(blockReason, "recent-trespass-not-current", StringComparison.Ordinal)
+			|| string.Equals(blockReason, "territory-pressure-not-trespass", StringComparison.Ordinal)
+			|| string.Equals(blockReason, "target-changed", StringComparison.Ordinal);
+	}
+
+	private static bool TryShowAiHumanRobberyResponsePopup(AiRobberyCandidate candidate, PlayerInfo humanPlayer, AiRobberyResolutionPreview preview, SimTime now, string source, string mode, int createdDay)
+	{
+		if (candidate == null || candidate.Robber == null || humanPlayer == null || preview == null || preview.Amount <= 0 || (!preview.CanDebitVehicle && !preview.CanDebitPeep && !preview.CanDebitSafehouse && !preview.CanDebitCleanCash))
+		{
+			return false;
+		}
+		if (global::Game.Game.serv?.ui == null || !global::Game.Game.serv.ui.IsLoadingDone)
+		{
+			return false;
+		}
+		if (HasActiveAiHumanRobberyResponseForHuman(humanPlayer))
+		{
+			VerificationLog("AIPlayerRobbery", $"blocked phase=response-popup source={source} mode={mode} reason=human-response-active robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} result=no-stack");
+			return true;
+		}
+		string key = GetAiHumanRobberyContactKey(candidate.Robber.PID.id, candidate.TargetCrew.peepId.id) + ":response";
+		if (_activeAiHumanRobberyResponseKeys.Contains(key))
+		{
+			VerificationLog("AIPlayerRobbery", $"blocked phase=response-popup source={source} mode={mode} reason=already-active robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} result=no-duplicate");
+			return true;
+		}
+
+		string robberName = GetGangDisplayName(candidate.Robber.PID.id);
+		int favors = GetAiHumanRobberyFavorCount(humanPlayer, candidate.Robber, out EntityID favorPeepId);
+		bool evadeRefuseMode = SaveData?.RobberyPromptsEvadeRefuseMode == true;
+		string created = createdDay >= 0 ? $" createdDay={createdDay}" : string.Empty;
+		string robberyReason = FormatAiHumanRobberyReasonForPlayer(candidate);
+		TryShowAiHumanRobberyIntentTicker(candidate, now, source, "response-popup");
+		if (evadeRefuseMode)
+		{
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"auto phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID}{created} cashPreview={preview.Amount} availableCash={preview.AvailableCash} safehouseCash={preview.SafehouseCash} vehicleCash={preview.VehicleCash} peepCash={preview.PeepCash} canDebitSafehouse={preview.CanDebitSafehouse} canDebitCleanCash={preview.CanDebitCleanCash} canDebitVehicle={preview.CanDebitVehicle} canDebitPeep={preview.CanDebitPeep} favors={favors} reasonText=\"{robberyReason}\" evadeRefuseMode=True cooldownDays={GetAiHumanRobberyCooldownSummary()} result=auto-evasion");
+			ResolveAiHumanRobberyEvasion(candidate, humanPlayer, preview, now, source, mode + "-standing-order", createdDay);
+			return true;
+		}
+		_activeAiHumanRobberyResponseKeys.Add(key);
+		_activeAiHumanRobberyResponseDayByKey[key] = now.days;
+		_activeAiHumanRobberyResponseHumanPids.Add(humanPlayer.PID.id);
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"prompt phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID}{created} cashPreview={preview.Amount} availableCash={preview.AvailableCash} safehouseCash={preview.SafehouseCash} vehicleCash={preview.VehicleCash} peepCash={preview.PeepCash} canDebitSafehouse={preview.CanDebitSafehouse} canDebitCleanCash={preview.CanDebitCleanCash} canDebitVehicle={preview.CanDebitVehicle} canDebitPeep={preview.CanDebitPeep} favors={favors} reasonText=\"{robberyReason}\" evadeRefuseMode={evadeRefuseMode} cooldownDays={GetAiHumanRobberyCooldownSummary()} result=shown");
+
+		Action clearActive = delegate
+		{
+			_activeAiHumanRobberyResponseKeys.Remove(key);
+			_activeAiHumanRobberyResponseDayByKey.Remove(key);
+			if (_activeAiHumanRobberyResponseKeys.Count == 0)
+			{
+				_activeAiHumanRobberyResponseHumanPids.Remove(humanPlayer.PID.id);
+			}
+		};
+		Action pay = delegate
+		{
+			try
+			{
+				TryResolveAiHumanVehicleRobberyContact(candidate, humanPlayer, preview, now, source, mode + "-pay", createdDay);
+			}
+			finally
+			{
+				clearActive();
+			}
+		};
+		Action refuse = delegate
+		{
+			try
+			{
+				ResolveAiHumanRobberyRefusal(candidate, humanPlayer, preview, now, source, mode, createdDay);
+			}
+			finally
+			{
+				clearActive();
+			}
+		};
+		Action favor = delegate
+		{
+			try
+			{
+				ResolveAiHumanRobberyFavor(candidate, humanPlayer, preview, now, source, mode, createdDay, favorPeepId);
+			}
+			finally
+			{
+				clearActive();
+			}
+		};
+		string message = FormatAiHumanRobberyPopupMessage(robberName, preview.Amount, favors, evadeRefuseMode, candidate);
+		if (favors > 0)
+		{
+			global::Game.UI.Session.Popups.OkPopup.ShowOkCancel(
+				message,
+				"Use Favor",
+				"Refuse",
+				favor,
+				refuse);
+		}
+		else
+		{
+			global::Game.UI.Session.Popups.OkPopup.ShowOkCancel(
+				message,
+				"Pay $" + preview.Amount.ToString(CultureInfo.InvariantCulture),
+				"Refuse",
+				pay,
+				refuse);
+		}
+		return true;
+	}
+
+	internal static bool HasActiveAiHumanRobberyResponseForHuman(PlayerInfo humanPlayer)
+	{
+		try
+		{
+			return humanPlayer?.PID.IsHumanPlayer == true && _activeAiHumanRobberyResponseHumanPids.Contains(humanPlayer.PID.id);
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static void ClearStaleAiHumanRobberyResponseLocks(PlayerInfo humanPlayer, SimTime now)
+	{
+		try
+		{
+			if (_activeAiHumanRobberyResponseKeys.Count == 0)
+			{
+				return;
+			}
+			int currentDay = now.days;
+			List<string> staleKeys = _activeAiHumanRobberyResponseKeys
+				.Where(key => !_activeAiHumanRobberyResponseDayByKey.TryGetValue(key, out int shownDay) || currentDay - shownDay > AI_ROBBERY_RESPONSE_LOCK_STALE_DAYS)
+				.ToList();
+			if (staleKeys.Count == 0)
+			{
+				return;
+			}
+			foreach (string staleKey in staleKeys)
+			{
+				_activeAiHumanRobberyResponseKeys.Remove(staleKey);
+				_activeAiHumanRobberyResponseDayByKey.Remove(staleKey);
+			}
+			if (_activeAiHumanRobberyResponseKeys.Count == 0)
+			{
+				_activeAiHumanRobberyResponseHumanPids.Clear();
+			}
+			VerificationLog("AIPlayerRobbery", $"cleared phase=response-popup reason=abandoned-active-locks count={staleKeys.Count} day={currentDay} staleAfterDays={AI_ROBBERY_RESPONSE_LOCK_STALE_DAYS} human={humanPlayer?.PID.id ?? -1} result=unlocked");
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] ClearStaleAiHumanRobberyResponseLocks failed: " + ex.Message);
+		}
+	}
+
+	private static string FormatAiHumanRobberyPopupMessage(string robberName, int cash, int favors, bool evadeRefuseMode, AiRobberyCandidate candidate)
+	{
+		string reasonLine = "\n\n" + FormatAiHumanRobberyReasonForPlayer(candidate);
+		string favorLine = favors > 0
+			? "\n\nYou can call in a favor with the outfit or refuse and risk injury."
+			: "\n\nYou can pay them or refuse and risk injury.";
+		return robberName + " has caught up with one of your crews and is trying to rob them for $" + cash.ToString(CultureInfo.InvariantCulture) + "." + reasonLine + favorLine;
+	}
+
+	private static string FormatAiHumanRobberyReasonForPlayer(AiRobberyCandidate candidate)
+	{
+		string reason = candidate?.Reason ?? string.Empty;
+		if (candidate?.StrictTrespassNode == true
+			|| candidate?.EnemyTerritory == true
+			|| candidate?.RecentTrespassMemory == true
+			|| reason.IndexOf("trespass", StringComparison.OrdinalIgnoreCase) >= 0)
+		{
+			return "Reason: crew was in territory.";
+		}
+		if (candidate?.HumanTerritory == true
+			|| candidate?.TerritoryPressure == true
+			|| reason.IndexOf("territory-pressure", StringComparison.OrdinalIgnoreCase) >= 0
+			|| reason.IndexOf("human-territory", StringComparison.OrdinalIgnoreCase) >= 0
+			|| reason.IndexOf("weak", StringComparison.OrdinalIgnoreCase) >= 0)
+		{
+			return "Reason: outfit deems player a weak nearby neighbor.";
+		}
+		return "Reason: outfit sees an opening against your crew.";
+	}
+
+	private static bool TryShowAiHumanRobberyIntentTicker(AiRobberyCandidate candidate, SimTime now, string source, string mode)
+	{
+		if (candidate == null || candidate.Robber == null || !candidate.TargetCrew.IsValid)
+		{
+			return false;
+		}
+		try
+		{
+			string key = GetAiHumanRobberyContactKey(candidate.Robber.PID.id, candidate.TargetCrew.peepId.id) + ":intent";
+			if (_aiHumanRobberyApproachWarningDayByKey.TryGetValue(key, out int lastDay)
+				&& now.days - lastDay < AI_ROBBERY_APPROACH_WARNING_COOLDOWN_DAYS)
+			{
+				return false;
+			}
+			_aiHumanRobberyApproachWarningDayByKey[key] = now.days;
+			string robberName = GetGangDisplayName(candidate.Robber.PID.id);
+			string message = CrewRelationshipHandlerPatch.SanitizeUiGlyphText("ROBBERY: " + robberName + " is looking to rob one of your crews.\n" + FormatAiHumanRobberyReasonForPlayer(candidate), aggressive: true).Trim();
+			TickerTarget target = candidate.ContactNode?.id.IsValid == true
+				? (TickerTarget)candidate.ContactNode.id
+				: default(TickerTarget);
+			global::Game.Game.ctx?.hud?.tickers?.AddTextTicker(TickerIcon.GANG_ATTACK, TickerTitle.GANG_ATTACK, message, target, TickerPersistType.Persist);
+			VerificationLog("AIPlayerRobbery", $"indicator phase=robbery-intent source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} reasonText=\"{FormatAiHumanRobberyReasonForPlayer(candidate)}\" result=shown");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] TryShowAiHumanRobberyIntentTicker failed: " + ex.Message);
+			return false;
+		}
+	}
+
+	private static int GetAiHumanRobberyFavorCount(PlayerInfo humanPlayer, PlayerInfo robber, out EntityID favorPeepId)
+	{
+		favorPeepId = GetCrewPeepForPlayer(robber);
+		try
+		{
+			if (humanPlayer?.social == null || favorPeepId.IsNotValid)
+			{
+				return 0;
+			}
+			return humanPlayer.social.GetRelationshipFromSourceToPlayer(favorPeepId)?.GetTicketsAvailable() ?? 0;
+		}
+		catch
+		{
+			return 0;
+		}
+	}
+
+	private static bool TrySpendAiHumanRobberyFavor(PlayerInfo humanPlayer, PlayerInfo robber, EntityID favorPeepId, out int remaining)
+	{
+		remaining = 0;
+		try
+		{
+			if (humanPlayer?.social == null)
+			{
+				return false;
+			}
+			if (favorPeepId.IsNotValid)
+			{
+				favorPeepId = GetCrewPeepForPlayer(robber);
+			}
+			Relationship relationship = favorPeepId.IsValid ? humanPlayer.social.GetRelationshipFromSourceToPlayer(favorPeepId) : null;
+			if (relationship == null || relationship.GetTicketsAvailable() <= 0 || !relationship.DoSpendTickets(1))
+			{
+				return false;
+			}
+			remaining = relationship.GetTicketsAvailable();
+			return true;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] TrySpendAiHumanRobberyFavor failed: " + ex.Message);
+			return false;
+		}
+	}
+
+	private static void ResolveAiHumanRobberyFavor(AiRobberyCandidate candidate, PlayerInfo humanPlayer, AiRobberyResolutionPreview preview, SimTime now, string source, string mode, int createdDay, EntityID favorPeepId)
+	{
+		if (TryBlockDuplicateAiHumanRobberyResponse(candidate, humanPlayer, now, source, mode + "-favor", "favor"))
+		{
+			return;
+		}
+		string created = createdDay >= 0 ? $" createdDay={createdDay}" : string.Empty;
+		string robberName = GetGangDisplayName(candidate.Robber.PID.id);
+		if (!TrySpendAiHumanRobberyFavor(humanPlayer, candidate.Robber, favorPeepId, out int remaining))
+		{
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"blocked phase=response-popup source={source} mode={mode}-favor reason=favor-missing robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID}{created} result=no-resolution");
+			global::Game.UI.Session.Popups.OkPopup.ShowOkCancel(
+				"You do not have a favor ready with " + robberName + ". Pay them or refuse and risk getting hurt.",
+				"Pay $" + preview.Amount.ToString(CultureInfo.InvariantCulture),
+				"Refuse",
+				delegate { TryResolveAiHumanVehicleRobberyContact(candidate, humanPlayer, preview, now, source, mode + "-pay-after-favor-miss", createdDay); },
+				delegate { ResolveAiHumanRobberyRefusal(candidate, humanPlayer, preview, now, source, mode + "-favor-miss", createdDay); });
+			return;
+		}
+
+		LogGrapevine($"ROBBERY: {robberName} stopped one of your crews, but you called in a favor and talked your way out.");
+		RecordAiHumanRobberyDiagnosticCooldown(candidate, now);
+		RecordAiHumanRobberyPairCooldown(candidate, humanPlayer, now, "favor");
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"resolved phase=response-popup source={source} mode={mode}-favor robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID}{created} cash=0 favorPeep={favorPeepId.id} favorRemaining={remaining} cooldownDays={GetAiHumanRobberyCooldownSummary()} result=favor");
+	}
+
+	private static void ResolveAiHumanRobberyEvasion(AiRobberyCandidate candidate, PlayerInfo humanPlayer, AiRobberyResolutionPreview preview, SimTime now, string source, string mode, int createdDay)
+	{
+		if (candidate == null || candidate.Robber == null || humanPlayer == null || preview == null)
+		{
+			return;
+		}
+		if (TryBlockDuplicateAiHumanRobberyResponse(candidate, humanPlayer, now, source, mode + "-evade", "evade"))
+		{
+			return;
+		}
+		float chance = CalculateAiHumanRobberyEvasionChance(candidate);
+		bool escaped = SharedRng.NextDouble() < (double)chance;
+		string robberName = GetGangDisplayName(candidate.Robber.PID.id);
+		string created = createdDay >= 0 ? $" createdDay={createdDay}" : string.Empty;
+		if (!escaped)
+		{
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"resolved phase=response-popup source={source} mode={mode}-evade robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID}{created} chance={chance:0.00} roll=fail cash=0 result=evade-failed");
+			ResolveAiHumanRobberyRefusal(candidate, humanPlayer, preview, now, source, mode + "-evade-failed", createdDay);
+			return;
+		}
+
+		CrewRelationshipHandlerPatch.TryAwardCrewStreetCreditProgress(humanPlayer, candidate.TargetCrew.peepId, 0.02f, 0.04f, "ai-robbery-evaded");
+		GangOpsChannel channel = ResolveGangOpsChannelForGang(candidate.Robber.PID.id);
+		int desiredCrewCount = Mathf.Clamp((candidate.Robber?.crew?.LivingCrewCount ?? 1) >= 3 || candidate.DirectAggro ? 3 : 2, 1, 3);
+		float escalationChance = CalculateAiHumanRobberyEvasionRetaliationChance(candidate);
+		double escalationRoll = SharedRng.NextDouble();
+		bool retaliationQueued = false;
+		bool retaliationInitializedSameTurn = false;
+		int attackCrewCount = 0;
+		int escalationDueDay = now.days + 1;
+		string retaliationAction = "evaded-no-retaliation";
+		string retaliationResult = "evaded";
+		string escalationReason = FormatAiHumanRobberyEvasionRetaliationReason(candidate);
+		if (escalationRoll < (double)escalationChance)
+		{
+			string successOutcome = ChooseAiHumanRobberyEvasionRetaliationOutcome(candidate, humanPlayer, out float attackChance, out double attackRoll, out string attackReason);
+			escalationReason += $"; outcome={successOutcome}; attackChance={attackChance:0.00}; attackRoll={attackRoll:0.00}; {attackReason}";
+			if (string.Equals(successOutcome, "attack", StringComparison.Ordinal))
+			{
+				retaliationQueued = TryInitializeAiHumanRobberyRefusalAttack(channel, candidate, humanPlayer, desiredCrewCount, escalationDueDay, "ai-human-robbery-evaded-attack-same-turn-init", out attackCrewCount, out retaliationAction);
+				retaliationInitializedSameTurn = retaliationQueued;
+				retaliationResult = retaliationQueued ? "evaded-attack-initialized" : "evaded-attack-init-failed";
+				if (!retaliationQueued && TryForceCloseRobberyRetaliationImportantBusiness(channel, candidate.Robber, humanPlayer, "ai-human-robbery-evaded-attack-unavailable-business", out string fallbackBusinessAction))
+				{
+					retaliationQueued = true;
+					retaliationAction = "attack-unavailable-business-closure:" + fallbackBusinessAction;
+					retaliationResult = "evaded-attack-unavailable-business-closure";
+				}
+			}
+			else if (TryForceCloseRobberyRetaliationImportantBusiness(channel, candidate.Robber, humanPlayer, "ai-human-robbery-evaded-business", out string businessAction))
+			{
+				retaliationQueued = true;
+				retaliationAction = "business-closure:" + businessAction;
+				retaliationResult = "evaded-business-closure";
+			}
+			else
+			{
+				retaliationQueued = TryInitializeAiHumanRobberyRefusalAttack(channel, candidate, humanPlayer, desiredCrewCount, escalationDueDay, "ai-human-robbery-evaded-business-unavailable-attack-same-turn-init", out attackCrewCount, out string fallbackAttackAction);
+				retaliationInitializedSameTurn = retaliationQueued;
+				retaliationAction = retaliationQueued ? "business-unavailable-" + fallbackAttackAction : "business-unavailable-attack-init-failed";
+				retaliationResult = retaliationQueued ? "evaded-business-unavailable-attack-initialized" : "evaded-business-unavailable-attack-init-failed";
+			}
+		}
+		if (retaliationQueued)
+		{
+			ActivateWarBetweenPlayers(candidate.Robber, humanPlayer);
+			AddWarHeat(channel, candidate.Robber.PID.id, humanPlayer.PID.id, AI_ROBBERY_CONTACT_EVADE_HEAT_GAIN, "ai-human-robbery-evaded");
+		}
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"evasion-escalation phase=response-popup robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} targetCrew={candidate.TargetCrew.peepId.id} chance={escalationChance:0.00} roll={escalationRoll:0.00} eligibleReason=\"{escalationReason}\" escalated={retaliationQueued} queued={retaliationQueued} initializedSameTurn={retaliationInitializedSameTurn} dueDay={(retaliationQueued && retaliationAction.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0 ? (retaliationInitializedSameTurn ? now.days : escalationDueDay) : -1)} desiredCrew={desiredCrewCount} action={retaliationAction} source={source} mode={mode}");
+		if (retaliationAction.StartsWith("business-closure:", StringComparison.Ordinal) || retaliationAction.IndexOf("business-closure:", StringComparison.Ordinal) >= 0)
+		{
+			LogGrapevine($"ROBBERY: {robberName} tried to rob one of your crews, but they slipped away. {robberName} shifted pressure to one of your important shops.");
+		}
+		else if (retaliationQueued)
+		{
+			LogGrapevine($"ROBBERY: {robberName} tried to rob one of your crews, but they slipped away. {robberName} may hit back next turn.");
+		}
+		else
+		{
+			LogGrapevine($"ROBBERY: {robberName} tried to rob one of your crews, but they slipped away under your standing order.");
+		}
+		RecordAiHumanRobberyDiagnosticCooldown(candidate, now);
+		RecordAiHumanRobberyPairCooldown(candidate, humanPlayer, now, retaliationResult);
+		int cashBefore = preview.CanDebitVehicle ? preview.VehicleCash : Math.Max(preview.PeepCash, Math.Max(preview.SafehouseCash, preview.TotalCash));
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"resolved phase=response-popup source={source} mode={mode}-evade robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID}{created} chance={chance:0.00} cash=0 cashBefore={cashBefore} retaliationQueued={retaliationQueued} retaliationAction={retaliationAction} evasionEscalated={retaliationQueued} escalationChance={escalationChance:0.00} escalationRoll={escalationRoll:0.00} attackCrews={attackCrewCount} heat={(retaliationQueued ? AI_ROBBERY_CONTACT_EVADE_HEAT_GAIN : 0f):0.0} cooldownDays={GetAiHumanRobberyCooldownSummary()} result={retaliationResult}");
+	}
+
+	private static void ResolveAiHumanRobberyRefusal(AiRobberyCandidate candidate, PlayerInfo humanPlayer, AiRobberyResolutionPreview preview, SimTime now, string source, string mode, int createdDay)
+	{
+		if (TryBlockDuplicateAiHumanRobberyResponse(candidate, humanPlayer, now, source, mode + "-refuse", "refuse"))
+		{
+			return;
+		}
+		bool heldFirm = SharedRng.NextDouble() < CalculateAiHumanRobberyRefusalHoldChance(candidate);
+		bool cashDebited = false;
+		int cashBefore = preview.CanDebitVehicle ? preview.VehicleCash : preview.SafehouseCash;
+		int cashAfter = cashBefore;
+		string cashSource = preview.CanDebitVehicle ? "vehicle" : "safehouse";
+
+		GangOpsChannel channel = ResolveGangOpsChannelForGang(candidate.Robber.PID.id);
+		ActivateWarBetweenPlayers(candidate.Robber, humanPlayer);
+		AddWarHeat(channel, candidate.Robber.PID.id, humanPlayer.PID.id, AI_ROBBERY_CONTACT_REFUSE_HEAT_GAIN, "ai-human-robbery-refused");
+		int desiredCrewCount = Mathf.Clamp((candidate.Robber?.crew?.LivingCrewCount ?? 1) >= 3 || candidate.DirectAggro ? 3 : 2, 1, 3);
+		bool retaliationQueued = false;
+		bool retaliationInitializedSameTurn = false;
+		int attackCrewCount = 0;
+		string attackAction = "refusal-unresolved";
+		int escalationDueDay = now.days + 1;
+		float escalationChance = 1f;
+		double escalationRoll = 0d;
+		string escalationReason = "resolved-three-way";
+		string result = "refused";
+		if (!heldFirm)
+		{
+			cashDebited = TryDebitAiHumanRobberyCash(humanPlayer, candidate.TargetCrew, preview.Amount, out cashBefore, out cashAfter, out cashSource);
+			if (cashDebited)
+			{
+				bool robberCredited = TryCreditGangSafehouseCash(candidate.Robber, preview.Amount);
+				AddWarHeat(channel, humanPlayer.PID.id, candidate.Robber.PID.id, AI_ROBBERY_CONTACT_VEHICLE_HEAT_GAIN, "ai-human-robbery-refusal-failed");
+				attackAction = "refusal-failed-paid";
+				result = "refusal-failed-paid";
+				VerificationLog("AIPlayerRobbery", $"refusal-payment phase=response-popup robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} targetCrew={candidate.TargetCrew.peepId.id} cash={preview.Amount} cashSource={cashSource} cashBefore={cashBefore} cashAfter={cashAfter} robberCredited={robberCredited} source={source} mode={mode}");
+			}
+			else
+			{
+				heldFirm = true;
+				attackAction = "refusal-payment-failed";
+				escalationReason = "payment-debit-failed";
+			}
+		}
+		if (heldFirm)
+		{
+			string successOutcome = ChooseAiHumanRobberyRefusalSuccessOutcome(candidate, humanPlayer, out escalationChance, out escalationRoll, out escalationReason);
+			if (string.Equals(successOutcome, "attack", StringComparison.Ordinal))
+			{
+				retaliationQueued = TryInitializeAiHumanRobberyRefusalAttack(channel, candidate, humanPlayer, desiredCrewCount, escalationDueDay, "ai-human-robbery-refused-attack-same-turn-init", out attackCrewCount, out attackAction);
+				retaliationInitializedSameTurn = retaliationQueued;
+				result = retaliationQueued ? "refused-attack-initialized" : "refused-attack-init-failed";
+				if (!retaliationQueued && TryForceCloseRobberyRetaliationImportantBusiness(channel, candidate.Robber, humanPlayer, "ai-human-robbery-refused-attack-unavailable-business", out string fallbackBusinessAction))
+				{
+					retaliationQueued = true;
+					attackAction = "attack-unavailable-business-closure:" + fallbackBusinessAction;
+					result = "refused-attack-unavailable-business-closure";
+				}
+			}
+			else if (TryForceCloseRobberyRetaliationImportantBusiness(channel, candidate.Robber, humanPlayer, "ai-human-robbery-refused-business", out string businessAction))
+			{
+				retaliationQueued = true;
+				attackAction = "business-closure:" + businessAction;
+				result = "refused-business-closure";
+			}
+			else
+			{
+				retaliationQueued = TryInitializeAiHumanRobberyRefusalAttack(channel, candidate, humanPlayer, desiredCrewCount, escalationDueDay, "ai-human-robbery-refused-business-unavailable-attack-same-turn-init", out attackCrewCount, out string fallbackAttackAction);
+				retaliationInitializedSameTurn = retaliationQueued;
+				attackAction = retaliationQueued ? "business-unavailable-" + fallbackAttackAction : "business-unavailable-attack-init-failed";
+				result = retaliationQueued ? "refused-business-unavailable-attack-initialized" : "refused-business-unavailable-attack-init-failed";
+			}
+		}
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"refusal-escalation phase=response-popup robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} targetCrew={candidate.TargetCrew.peepId.id} chance={escalationChance:0.00} roll={escalationRoll:0.00} eligibleReason={escalationReason} escalated={retaliationQueued} queued={retaliationQueued} initializedSameTurn={retaliationInitializedSameTurn} dueDay={(retaliationQueued && attackAction.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0 ? (retaliationInitializedSameTurn ? now.days : escalationDueDay) : -1)} desiredCrew={desiredCrewCount} action={attackAction} source={source} mode={mode}");
+		string robberName = GetGangDisplayName(candidate.Robber.PID.id);
+		string created = createdDay >= 0 ? $" createdDay={createdDay}" : string.Empty;
+		if (heldFirm)
+		{
+			GrantStreetCredit(humanPlayer, 1);
+			CrewRelationshipHandlerPatch.TryAwardCrewStreetCreditProgress(humanPlayer, candidate.TargetCrew.peepId, 0.03f, 0.05f, "ai-robbery-refused");
+			LogGrapevine(attackAction.StartsWith("business-closure:", StringComparison.Ordinal)
+				? $"ROBBERY: {robberName} tried to rob one of your crews, but they stood firm. {robberName} shifted pressure to one of your important shops."
+				: $"ROBBERY: {robberName} tried to rob one of your crews, but they stood firm and kept the cash. {robberName} may hit back next turn.");
+		}
+		else
+		{
+			LogGrapevine($"ROBBERY: One of your crews refused to pay {robberName}, but the refusal failed and they took ${preview.Amount}.");
+		}
+		RecordAiHumanRobberyDiagnosticCooldown(candidate, now);
+		RecordAiHumanRobberyPairCooldown(candidate, humanPlayer, now, result);
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"resolved phase=response-popup source={source} mode={mode}-refuse robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID}{created} heldFirm={heldFirm} cash={(cashDebited ? preview.Amount : 0)} cashDebited={cashDebited} cashSource={cashSource} cashBefore={cashBefore} cashAfter={cashAfter} retaliationQueued={retaliationQueued} retaliationAction={attackAction} refusalEscalated={retaliationQueued} escalationChance={escalationChance:0.00} escalationRoll={escalationRoll:0.00} attackCrews={attackCrewCount} heat={AI_ROBBERY_CONTACT_REFUSE_HEAT_GAIN:0.0} cooldownDays={GetAiHumanRobberyCooldownSummary()} result={result}");
+	}
+
+	private static string ChooseAiHumanRobberyRefusalSuccessOutcome(AiRobberyCandidate candidate, PlayerInfo humanPlayer, out float attackChance, out double roll, out string reason)
+	{
+		attackChance = 0.12f;
+		if (IsAiPersonalityAggressive(candidate?.Robber))
+		{
+			attackChance = 0.28f;
+		}
+		else if (IsAiPersonalityExpansionist(candidate?.Robber))
+		{
+			attackChance = 0.1f;
+		}
+		if (candidate?.DirectAggro == true)
+		{
+			attackChance += 0.04f;
+		}
+		if (candidate != null && candidate.RobberLocalPower > candidate.HumanLocalPower + 20)
+		{
+			attackChance += 0.04f;
+		}
+		if (candidate != null && candidate.RobberPower < candidate.HumanPower - 35)
+		{
+			attackChance -= 0.04f;
+		}
+		attackChance = Mathf.Clamp(attackChance, 0.05f, 0.32f);
+		roll = SharedRng.NextDouble();
+		reason = $"personality aggressive={IsAiPersonalityAggressive(candidate?.Robber)} expansionist={IsAiPersonalityExpansionist(candidate?.Robber)} directAggro={candidate?.DirectAggro == true} local={candidate?.RobberLocalPower ?? 0}/{candidate?.HumanLocalPower ?? 0}";
+		return roll < attackChance ? "attack" : "business";
+	}
+
+	private static float CalculateAiHumanRobberyEvasionRetaliationChance(AiRobberyCandidate candidate)
+	{
+		if (candidate == null)
+		{
+			return 0.25f;
+		}
+		float chance = candidate.StrictTrespassNode || candidate.EnemyTerritory
+			? 0.56f
+			: (candidate.TerritoryPressure ? 0.5f : 0.3f);
+		if (candidate.HumanTerritory && !candidate.StrictTrespassNode)
+		{
+			chance -= 0.06f;
+		}
+		if (IsAiPersonalityAggressive(candidate.Robber))
+		{
+			chance += 0.12f;
+		}
+		else if (IsAiPersonalityExpansionist(candidate.Robber))
+		{
+			chance += 0.08f;
+		}
+		if (candidate.DirectAggro)
+		{
+			chance += 0.08f;
+		}
+		chance += Mathf.Clamp((candidate.RobberLocalPower - candidate.HumanLocalPower) / 150f, -0.08f, 0.12f);
+		chance += Mathf.Clamp((candidate.RobberPower - candidate.HumanPower) / 600f, -0.08f, 0.08f);
+		return Mathf.Clamp(chance, 0.18f, 0.72f);
+	}
+
+	private static string ChooseAiHumanRobberyEvasionRetaliationOutcome(AiRobberyCandidate candidate, PlayerInfo humanPlayer, out float attackChance, out double roll, out string reason)
+	{
+		attackChance = 0.08f;
+		if (IsAiPersonalityAggressive(candidate?.Robber))
+		{
+			attackChance = 0.18f;
+		}
+		else if (IsAiPersonalityExpansionist(candidate?.Robber))
+		{
+			attackChance = 0.07f;
+		}
+		if (candidate?.DirectAggro == true || candidate?.StrictTrespassNode == true)
+		{
+			attackChance += 0.04f;
+		}
+		if (candidate != null && candidate.RobberLocalPower > candidate.HumanLocalPower + 25)
+		{
+			attackChance += 0.03f;
+		}
+		if (candidate != null && candidate.RobberPower < candidate.HumanPower - 50)
+		{
+			attackChance -= 0.03f;
+		}
+		attackChance = Mathf.Clamp(attackChance, 0.04f, 0.24f);
+		roll = SharedRng.NextDouble();
+		reason = $"personality aggressive={IsAiPersonalityAggressive(candidate?.Robber)} expansionist={IsAiPersonalityExpansionist(candidate?.Robber)} directAggro={candidate?.DirectAggro == true} strictTrespass={candidate?.StrictTrespassNode == true} local={candidate?.RobberLocalPower ?? 0}/{candidate?.HumanLocalPower ?? 0}";
+		return roll < attackChance ? "attack" : "business";
+	}
+
+	private static string FormatAiHumanRobberyEvasionRetaliationReason(AiRobberyCandidate candidate)
+	{
+		if (candidate == null)
+		{
+			return "missing-candidate";
+		}
+		return $"territory enemy={candidate.EnemyTerritory} human={candidate.HumanTerritory} strictTrespass={candidate.StrictTrespassNode} territoryPressure={candidate.TerritoryPressure} directAggro={candidate.DirectAggro} personality aggressive={IsAiPersonalityAggressive(candidate.Robber)} expansionist={IsAiPersonalityExpansionist(candidate.Robber)} power={candidate.RobberPower}/{candidate.HumanPower} local={candidate.RobberLocalPower}/{candidate.HumanLocalPower}";
+	}
+
+	private static bool TryInitializeAiHumanRobberyRefusalAttack(GangOpsChannel channel, AiRobberyCandidate candidate, PlayerInfo humanPlayer, int desiredCrewCount, int indicatorDueDay, string sourceTag, out int initializedCrewCount, out string actionSummary)
+	{
+		initializedCrewCount = 0;
+		actionSummary = "attack-init-failed";
+		if (candidate?.Robber == null || humanPlayer == null)
+		{
+			return false;
+		}
+		EntityID preferredTargetPeepId = candidate.TargetCrew.peepId.IsValid ? candidate.TargetCrew.peepId : GetCrewPeepForPlayer(humanPlayer);
+		bool dispatched = TryDispatchRuntimeGangAttack(candidate.Robber, humanPlayer, desiredCrewCount, sourceTag, preferredTargetPeepId, out int dispatchedCount, out int approachCount);
+		if (!dispatched && approachCount <= 0)
+		{
+			VerificationLog("AIPlayerRobbery", $"refusal-attack-initialized phase=response-popup source={sourceTag} robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} targetCrew={preferredTargetPeepId.id} desiredCrew={desiredCrewCount} dispatched=0 approach=0 result=unavailable");
+			return false;
+		}
+		initializedCrewCount = Mathf.Max(1, dispatchedCount + approachCount);
+		bool followThroughQueued = false;
+		if (dispatchedCount <= 0 && approachCount > 0)
+		{
+			followThroughQueued = QueueImmediateRevengeIfEligible(
+				channel,
+				candidate.Robber.PID.id,
+				humanPlayer.PID.id,
+				preferredTargetPeepId.IsValid ? (long)preferredTargetPeepId.id : 0L,
+				indicatorDueDay,
+				sourceTag + "-attack-next-turn-follow-through");
+		}
+		actionSummary = dispatchedCount > 0
+			? $"attack-initialized:{dispatchedCount}{(approachCount > 0 ? "+approach:" + approachCount.ToString(CultureInfo.InvariantCulture) : string.Empty)}"
+			: $"attack-approach-initialized:{approachCount}{(followThroughQueued ? "+follow-through" : "+follow-through-failed")}";
+		TryShowAiHumanRobberyQuickAttackTicker(candidate, humanPlayer, indicatorDueDay, sourceTag);
+		VerificationLog("AIPlayerRobbery", $"refusal-attack-initialized phase=response-popup source={sourceTag} robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} targetCrew={preferredTargetPeepId.id} desiredCrew={desiredCrewCount} dispatched={dispatchedCount} approach={approachCount} followThroughQueued={followThroughQueued} followThroughDueDay={(followThroughQueued ? indicatorDueDay : -1)} action={actionSummary} result=initialized");
+		return true;
+	}
+
+	private static bool QueueAiHumanRobberyRefusalAttack(GangOpsChannel channel, AiRobberyCandidate candidate, PlayerInfo humanPlayer, int dueDay, string sourceTag)
+	{
+		if (candidate?.Robber == null || humanPlayer == null)
+		{
+			return false;
+		}
+		bool queued = QueueImmediateRevengeIfEligible(channel, candidate.Robber.PID.id, humanPlayer.PID.id, candidate.TargetCrew.peepId.IsValid ? (long)candidate.TargetCrew.peepId.id : 0L, dueDay, sourceTag);
+		if (queued)
+		{
+			TryShowAiHumanRobberyQuickAttackTicker(candidate, humanPlayer, dueDay, sourceTag);
+		}
+		return queued;
+	}
+
+	private static void TryShowAiHumanRobberyQuickAttackTicker(AiRobberyCandidate candidate, PlayerInfo humanPlayer, int dueDay, string sourceTag)
+	{
+		if (candidate?.Robber == null || humanPlayer?.PID.IsHumanPlayer != true)
+		{
+			return;
+		}
+		try
+		{
+			string robberName = GetGangDisplayName(candidate.Robber.PID.id);
+			string message = CrewRelationshipHandlerPatch.SanitizeUiGlyphText("COORDINATED ATTACK: " + robberName + " is gathering hitters after the robbery refusal. Expect an attack next turn.", aggressive: true).Trim();
+			NodeID targetNodeId = candidate.TargetCrew.IsValid ? (candidate.TargetCrew.GetPeep()?.data?.agent?.nid ?? NodeID.INVALID) : NodeID.INVALID;
+			if (targetNodeId.IsNotValid && candidate.ContactNode?.id.IsValid == true)
+			{
+				targetNodeId = candidate.ContactNode.id;
+			}
+			TickerTarget target = targetNodeId.IsValid ? (TickerTarget)targetNodeId : default(TickerTarget);
+			global::Game.Game.ctx?.hud?.tickers?.AddTextTicker(TickerIcon.GANG_ATTACK, TickerTitle.GANG_ATTACK, message, target, TickerPersistType.Persist);
+			VerificationLog("AIPlayerRobbery", $"indicator phase=quick-attack source={sourceTag} robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} targetCrew={candidate.TargetCrew.peepId.id} node={targetNodeId} dueDay={dueDay} result=shown");
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] TryShowAiHumanRobberyQuickAttackTicker failed: " + ex.Message);
+		}
+	}
+
+	private static bool ShouldEscalateAiHumanRobberyRefusal(AiRobberyCandidate candidate, PlayerInfo humanPlayer, out float chance, out double roll, out string reason)
+	{
+		chance = 0f;
+		roll = 1d;
+		reason = "ineligible";
+		if (candidate?.Robber == null || humanPlayer == null)
+		{
+			reason = "missing-context";
+			return false;
+		}
+		int robberPower = candidate.RobberPower > 0 ? candidate.RobberPower : CalculateGangPower(candidate.Robber);
+		int humanPower = candidate.HumanPower > 0 ? candidate.HumanPower : CalculateGangPower(humanPlayer);
+		int robberLocalPower = candidate.RobberLocalPower;
+		int humanLocalPower = candidate.HumanLocalPower;
+		bool strongEnough = robberPower + 10 >= humanPower || robberLocalPower + 5 >= humanLocalPower || candidate.DirectAggro || candidate.EnemyTerritory || candidate.StrictTrespassNode;
+		if (!strongEnough)
+		{
+			reason = $"too-weak robberPower={robberPower} humanPower={humanPower} robberLocal={robberLocalPower} humanLocal={humanLocalPower}";
+			return false;
+		}
+		chance = AI_ROBBERY_REFUSAL_ESCALATION_CHANCE;
+		roll = SharedRng.NextDouble();
+		reason = $"eligible robberPower={robberPower} humanPower={humanPower} robberLocal={robberLocalPower} humanLocal={humanLocalPower}";
+		return roll < (double)chance;
+	}
+
+	private static float CalculateAiHumanRobberyRefusalHoldChance(AiRobberyCandidate candidate)
+	{
+		if (candidate == null)
+		{
+			return 0.35f;
+		}
+		float chance = 0.38f;
+		chance += Mathf.Clamp((candidate.HumanLocalPower - candidate.RobberLocalPower) / 120f, -0.18f, 0.18f);
+		chance += Mathf.Clamp((candidate.HumanPower - candidate.RobberPower) / 350f, -0.12f, 0.12f);
+		if (candidate.HumanTerritory)
+		{
+			chance += 0.08f;
+		}
+		if (candidate.EnemyTerritory)
+		{
+			chance -= 0.08f;
+		}
+		return Mathf.Clamp(chance, 0.18f, 0.72f);
+	}
+
+	private static float CalculateAiHumanRobberyEvasionChance(AiRobberyCandidate candidate)
+	{
+		if (candidate == null)
+		{
+			return 0.4f;
+		}
+		float chance = 0.42f;
+		chance += Mathf.Clamp((candidate.HumanLocalPower - candidate.RobberLocalPower) / 140f, -0.2f, 0.2f);
+		chance += Mathf.Clamp((candidate.HumanPower - candidate.RobberPower) / 500f, -0.12f, 0.12f);
+		if (candidate.HumanTerritory)
+		{
+			chance += 0.08f;
+		}
+		if (candidate.EnemyTerritory || candidate.StrictTrespassNode)
+		{
+			chance -= 0.06f;
+		}
+		if (candidate.SameNode)
+		{
+			chance -= 0.05f;
+		}
+		if (candidate.TerritoryPressure && !candidate.StrictTrespassNode)
+		{
+			chance += 0.04f;
+		}
+		return Mathf.Clamp(chance, 0.2f, 0.78f);
+	}
+
+	private static bool TryApplyAiHumanRobberyRefusalInjury(CrewAssignment crew, out int damageApplied, out int healthAfter)
+	{
+		damageApplied = 0;
+		healthAfter = 0;
+		try
+		{
+			Entity peep = crew.GetPeep();
+			if (peep?.components?.agent == null || !peep.components.agent.HasHealthPointsLeft)
+			{
+				return false;
+			}
+			int currentHealth = Math.Max(0, ReadFixnum(peep.components.agent.CurrentHealth));
+			int maxDamage = Math.Max(0, currentHealth - AI_ROBBERY_REFUSE_MIN_HEALTH_LEFT);
+			if (maxDamage <= 0)
+			{
+				healthAfter = currentHealth;
+				return false;
+			}
+			int requestedDamage = SharedRng.Next(AI_ROBBERY_REFUSE_MIN_DAMAGE, AI_ROBBERY_REFUSE_MAX_DAMAGE + 1);
+			damageApplied = Math.Min(maxDamage, requestedDamage);
+			if (damageApplied <= 0)
+			{
+				healthAfter = currentHealth;
+				return false;
+			}
+			Fixnum damage = damageApplied;
+			peep.components.agent.IncrementHealth(-damage);
+			peep.components.agent.RememberInjuryAtThisTime();
+			healthAfter = Math.Max(0, ReadFixnum(peep.components.agent.CurrentHealth));
+			return true;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] TryApplyAiHumanRobberyRefusalInjury failed: " + ex.Message);
+			return false;
+		}
+	}
+
+	private static bool TryResolveAiHumanVehicleRobberyContact(AiRobberyCandidate candidate, PlayerInfo humanPlayer, AiRobberyResolutionPreview preview, SimTime now, string source, string mode, int createdDay)
+	{
+		if (candidate == null || candidate.Robber == null || humanPlayer == null || preview == null || preview.Amount <= 0 || (!preview.CanDebitVehicle && !preview.CanDebitPeep && !preview.CanDebitSafehouse && !preview.CanDebitCleanCash))
+		{
+			return false;
+		}
+		if (TryBlockDuplicateAiHumanRobberyResponse(candidate, humanPlayer, now, source, mode, "pay"))
+		{
+			return true;
+		}
+		if (!TryDebitAiHumanRobberyCash(humanPlayer, candidate.TargetCrew, preview.Amount, out int cashBefore, out int cashAfter, out string cashSource))
+		{
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"blocked phase=vehicle-debit source={source} mode={mode} reason=cash-debit-failed robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} cashPreview={preview.Amount} availableCash={preview.AvailableCash} safehouseCash={preview.SafehouseCash} vehicleCash={preview.VehicleCash} peepCash={preview.PeepCash} totalCash={preview.TotalCash} canDebitSafehouse={preview.CanDebitSafehouse} canDebitCleanCash={preview.CanDebitCleanCash} canDebitVehicle={preview.CanDebitVehicle} canDebitPeep={preview.CanDebitPeep} result=no-debit");
+			return false;
+		}
+
+		bool robberCredited = TryCreditGangSafehouseCash(candidate.Robber, preview.Amount);
+		GangOpsChannel channel = ResolveGangOpsChannelForGang(candidate.Robber.PID.id);
+		AddWarHeat(channel, humanPlayer.PID.id, candidate.Robber.PID.id, AI_ROBBERY_CONTACT_VEHICLE_HEAT_GAIN, "ai-vehicle-robbery-success");
+		RecordAiHumanRobberyDiagnosticCooldown(candidate, now);
+		RecordAiHumanRobberyPairCooldown(candidate, humanPlayer, now, "success");
+		string created = createdDay >= 0 ? $" createdDay={createdDay}" : string.Empty;
+		string robberName = GetGangDisplayName(candidate.Robber.PID.id);
+		string sourceText = cashSource == "vehicle" ? "from their vehicle" : (cashSource == "peep" ? "from their carried cash" : (cashSource == "safehouse" ? "from your safehouse cash" : "from your cash reserves"));
+		LogGrapevine($"ROBBERY: {robberName} stopped one of your crews and took ${preview.Amount} {sourceText}. No shots were fired.");
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"resolved phase=vehicle-debit source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID}{created} cash={preview.Amount} cashSource={cashSource} cashBefore={cashBefore} cashAfter={cashAfter} availableCash={preview.AvailableCash} safehouseCash={preview.SafehouseCash} vehicleCash={preview.VehicleCash} peepCash={preview.PeepCash} totalCash={preview.TotalCash} heat={AI_ROBBERY_CONTACT_VEHICLE_HEAT_GAIN:0.0} robberCredited={robberCredited} cooldownDays={GetAiHumanRobberyCooldownSummary()} result=success");
+		return true;
+	}
+
+	private static bool TryBlockDuplicateAiHumanRobberyResponse(AiRobberyCandidate candidate, PlayerInfo humanPlayer, SimTime now, string source, string mode, string result)
+	{
+		if (candidate?.Robber == null || humanPlayer == null)
+		{
+			return false;
+		}
+		if (!TryGetAiHumanRobberyPairCooldown(candidate.Robber, humanPlayer, now, out int untilDay))
+		{
+			return false;
+		}
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"blocked phase=response-popup source={source} mode={mode} reason=pair-cooldown-resolved robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} untilDay={untilDay} cooldownDays={GetAiHumanRobberyCooldownSummary()} result=duplicate-{result}-ignored");
+		return true;
+	}
+
+	private static void LogAiHumanRobberySameNodeMissPreview(AiRobberyCandidate candidate, PlayerInfo humanPlayer, SimTime now, string source)
+	{
+		if (candidate == null || candidate.Robber == null || humanPlayer == null || !candidate.TargetCrew.IsValid)
+		{
+			return;
+		}
+		AiRobberyResolutionPreview preview = BuildAiHumanRobberyResolutionPreview(humanPlayer, candidate);
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"preview phase=rarity-miss source={source} mode=same-node robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} rarity={candidate.RarityRoll:0.00}/{candidate.RarityChance:0.00} cashPreview={preview.Amount} availableCash={preview.AvailableCash} safehouseCash={preview.SafehouseCash} vehicleCash={preview.VehicleCash} totalCash={preview.TotalCash} canDebitSafehouse={preview.CanDebitSafehouse} canDebitCleanCash={preview.CanDebitCleanCash} canDebitVehicle={preview.CanDebitVehicle} cashReason={preview.Reason} mutationEnabled={AI_ROBBERY_HUMAN_CASH_MUTATION_ENABLED} result=no-attempt");
+	}
+
+	private static void LogAiHumanRobberyLowCashContactPreview(AiRobberyCandidate candidate, PlayerInfo humanPlayer, SimTime now, string source, string mode)
+	{
+		if (candidate == null || candidate.Robber == null || humanPlayer == null || !candidate.TargetCrew.IsValid)
+		{
+			return;
+		}
+		AiRobberyResolutionPreview preview = BuildAiHumanRobberyResolutionPreview(humanPlayer, candidate);
+		int minCash = GetAiHumanRobberyMinimumCash(candidate);
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"blocked phase=contact-preview source={source} mode={mode} reason=low-robbable-cash robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} rarity={candidate.RarityRoll:0.00}/{candidate.RarityChance:0.00} cashPreview={preview.Amount} availableCash={preview.AvailableCash} safehouseCash={preview.SafehouseCash} vehicleCash={preview.VehicleCash} totalCash={preview.TotalCash} min={minCash} canDebitSafehouse={preview.CanDebitSafehouse} canDebitCleanCash={preview.CanDebitCleanCash} canDebitVehicle={preview.CanDebitVehicle} cashReason={preview.Reason} mutationEnabled={AI_ROBBERY_HUMAN_CASH_MUTATION_ENABLED} result=no-attempt");
+	}
+
+	private static AiRobberyResolutionPreview BuildAiHumanRobberyResolutionPreview(PlayerInfo humanPlayer, AiRobberyCandidate candidate)
+	{
+		int totalCash = GetGangCleanCash(humanPlayer);
+		int safehouseCash = GetGangSafehouseCleanCash(humanPlayer);
+		CrewAssignment targetCrew = candidate?.TargetCrew ?? CrewAssignment.EMPTY;
+		int vehicleCash = GetCrewVehicleCleanCash(humanPlayer, targetCrew);
+		int peepCash = GetCrewPeepCleanCash(humanPlayer, targetCrew);
+		int carriedCash = Math.Max(0, vehicleCash) + Math.Max(0, peepCash);
+		int robbableCash = carriedCash > 0 ? carriedCash : (safehouseCash > 0 ? safehouseCash : totalCash);
+		int available = carriedCash > 0
+			? carriedCash
+			: Math.Min(Math.Max(0, totalCash), Math.Max(0, robbableCash));
+		AiRobberyResolutionPreview preview = new AiRobberyResolutionPreview
+		{
+			SafehouseCash = safehouseCash,
+			VehicleCash = vehicleCash,
+			PeepCash = peepCash,
+			TotalCash = totalCash,
+			AvailableCash = available,
+			Amount = 0,
+			CanDebitSafehouse = false,
+			CanDebitCleanCash = false,
+			CanDebitVehicle = false,
+			CanDebitPeep = false,
+			Reason = "no-available-robbable-cash"
+		};
+		if (available <= 0)
+		{
+			return preview;
+		}
+
+		int baseAmount = RoundToNearest50(Mathf.Clamp(Mathf.RoundToInt(available * 0.03f), 100, 1000));
+		int bonus = 0;
+		if (candidate?.DirectAggro == true)
+		{
+			bonus += 100;
+		}
+		if (candidate?.EnemyTerritory == true)
+		{
+			bonus += 100;
+		}
+		int amount = Math.Min(available, Mathf.Clamp(baseAmount + bonus, 100, 1000));
+		preview.Amount = Math.Max(0, amount);
+		preview.CanDebitVehicle = preview.Amount > 0 && CanDebitCrewVehicleCash(humanPlayer, targetCrew, preview.Amount);
+		preview.CanDebitPeep = !preview.CanDebitVehicle && preview.Amount > 0 && CanDebitCrewPeepCash(humanPlayer, targetCrew, preview.Amount);
+		preview.CanDebitSafehouse = !preview.CanDebitVehicle && !preview.CanDebitPeep && preview.Amount > 0 && CanDebitGangSafehouseCash(humanPlayer, preview.Amount);
+		preview.CanDebitCleanCash = !preview.CanDebitVehicle && !preview.CanDebitPeep && !preview.CanDebitSafehouse && preview.Amount > 0 && CanDebitGangCleanCash(humanPlayer, preview.Amount);
+		if (preview.CanDebitVehicle)
+		{
+			preview.Reason = "target-vehicle-capped-preview";
+		}
+		else if (preview.CanDebitSafehouse)
+		{
+			preview.Reason = "safehouse-capped-preview";
+		}
+		else if (preview.CanDebitPeep)
+		{
+			preview.Reason = "target-peep-capped-preview";
+		}
+		else if (preview.CanDebitCleanCash)
+		{
+			preview.Reason = "clean-cash-capped-preview";
+		}
+		else
+		{
+			preview.Reason = "robbable-debit-blocked";
+		}
+		return preview;
+	}
+
+	private static int GetGangSafehouseCleanCash(PlayerInfo gang)
+	{
+		try
+		{
+			Entity safehouse = GetGangSafehouseEntity(gang);
+			return safehouse == null || gang?.finances == null ? 0 : Math.Max(0, ReadFixnum(gang.finances.GetMoney(safehouse).cash));
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] GetGangSafehouseCleanCash failed: " + ex.Message);
+			return 0;
+		}
+	}
+
+	private static int GetCrewVehicleCleanCash(PlayerInfo player, CrewAssignment crew)
+	{
+		try
+		{
+			if (player?.finances == null || !crew.IsValid || !crew.VehicleID.IsValid)
+			{
+				return 0;
+			}
+			Entity vehicle = crew.VehicleID.FindEntity();
+			return vehicle == null ? 0 : Math.Max(0, ReadFixnum(player.finances.GetMoney(vehicle).cash));
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] GetCrewVehicleCleanCash failed: " + ex.Message);
+			return 0;
+		}
+	}
+
+	private static int GetCrewPeepCleanCash(PlayerInfo player, CrewAssignment crew)
+	{
+		try
+		{
+			if (player?.finances == null || !crew.IsValid || !crew.peepId.IsValid)
+			{
+				return 0;
+			}
+			Entity peep = crew.GetPeep();
+			if (peep == null)
+			{
+				return 0;
+			}
+			int financeCash = Math.Max(0, ReadFixnum(player.finances.GetMoney(peep).cash));
+			if (financeCash > 0)
+			{
+				return financeCash;
+			}
+			return Math.Max(0, ReadInventoryAmount(peep, "cash"));
+		}
+		catch
+		{
+			return 0;
+		}
+	}
+
+	private static bool CanDebitCrewVehicleCash(PlayerInfo player, CrewAssignment crew, int amount)
+	{
+		try
+		{
+			if (player?.finances == null || amount <= 0 || !crew.IsValid || !crew.VehicleID.IsValid)
+			{
+				return false;
+			}
+			Entity vehicle = crew.VehicleID.FindEntity();
+			return vehicle != null && player.finances.CanChangeMoney(vehicle, new Price((Fixnum)(-amount)));
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static bool CanDebitCrewPeepCash(PlayerInfo player, CrewAssignment crew, int amount)
+	{
+		try
+		{
+			if (player?.finances == null || amount <= 0 || !crew.IsValid || !crew.peepId.IsValid)
+			{
+				return false;
+			}
+			Entity peep = crew.GetPeep();
+			return peep != null && player.finances.CanChangeMoney(peep, new Price((Fixnum)(-amount)));
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static bool TryDebitCrewVehicleCash(PlayerInfo player, CrewAssignment crew, int amount, out int before, out int after)
+	{
+		before = 0;
+		after = 0;
+		try
+		{
+			if (player?.finances == null || amount <= 0 || !crew.IsValid || !crew.VehicleID.IsValid)
+			{
+				return false;
+			}
+			Entity vehicle = crew.VehicleID.FindEntity();
+			if (vehicle == null)
+			{
+				return false;
+			}
+			before = Math.Max(0, ReadFixnum(player.finances.GetMoney(vehicle).cash));
+			Price delta = new Price((Fixnum)(-amount));
+			if (!player.finances.CanChangeMoney(vehicle, delta))
+			{
+				after = before;
+				return false;
+			}
+			player.finances.DoChangeMoney(vehicle, delta, MoneyReason.Other);
+			after = Math.Max(0, ReadFixnum(player.finances.GetMoney(vehicle).cash));
+			return before - after >= amount;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] TryDebitCrewVehicleCash failed: " + ex.Message);
+			after = before;
+			return false;
+		}
+	}
+
+	private static bool TryDebitCrewPeepCash(PlayerInfo player, CrewAssignment crew, int amount, out int before, out int after)
+	{
+		before = 0;
+		after = 0;
+		try
+		{
+			if (player?.finances == null || amount <= 0 || !crew.IsValid || !crew.peepId.IsValid)
+			{
+				return false;
+			}
+			Entity peep = crew.GetPeep();
+			if (peep == null)
+			{
+				return false;
+			}
+			before = Math.Max(0, ReadFixnum(player.finances.GetMoney(peep).cash));
+			Price delta = new Price((Fixnum)(-amount));
+			if (!player.finances.CanChangeMoney(peep, delta))
+			{
+				after = before;
+				return false;
+			}
+			player.finances.DoChangeMoney(peep, delta, MoneyReason.Other);
+			after = Math.Max(0, ReadFixnum(player.finances.GetMoney(peep).cash));
+			return before - after >= amount;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] TryDebitCrewPeepCash failed: " + ex.Message);
+			after = before;
+			return false;
+		}
+	}
+
+	private static bool CanDebitGangSafehouseCash(PlayerInfo player, int amount)
+	{
+		try
+		{
+			if (player?.finances == null || amount <= 0)
+			{
+				return false;
+			}
+			Entity safehouse = GetGangSafehouseEntity(player);
+			return safehouse != null && player.finances.CanChangeMoney(safehouse, new Price((Fixnum)(-amount)));
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static bool TryDebitGangSafehouseCash(PlayerInfo player, int amount, out int before, out int after)
+	{
+		before = 0;
+		after = 0;
+		try
+		{
+			if (player?.finances == null || amount <= 0)
+			{
+				return false;
+			}
+			Entity safehouse = GetGangSafehouseEntity(player);
+			if (safehouse == null)
+			{
+				return false;
+			}
+			before = Math.Max(0, ReadFixnum(player.finances.GetMoney(safehouse).cash));
+			Price delta = new Price((Fixnum)(-amount));
+			if (!player.finances.CanChangeMoney(safehouse, delta))
+			{
+				after = before;
+				return false;
+			}
+			player.finances.DoChangeMoney(safehouse, delta, MoneyReason.Other);
+			after = Math.Max(0, ReadFixnum(player.finances.GetMoney(safehouse).cash));
+			return before - after >= amount;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] TryDebitGangSafehouseCash failed: " + ex.Message);
+			after = before;
+			return false;
+		}
+	}
+
+	private static bool CanDebitGangCleanCash(PlayerInfo player, int amount)
+	{
+		try
+		{
+			return player?.finances != null && amount > 0 && GetGangCleanCash(player) >= amount;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static bool TryDebitGangCleanCash(PlayerInfo player, int amount, out int before, out int after)
+	{
+		before = 0;
+		after = 0;
+		try
+		{
+			if (player?.finances == null || amount <= 0)
+			{
+				return false;
+			}
+			before = Math.Max(0, GetGangCleanCash(player));
+			if (before < amount)
+			{
+				after = before;
+				return false;
+			}
+			player.finances.DoChangeMoneyOnSafehouse(new Price((Fixnum)(-amount)), MoneyReason.Other);
+			after = Math.Max(0, GetGangCleanCash(player));
+			return before - after >= amount;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] TryDebitGangCleanCash failed: " + ex.Message);
+			after = before;
+			return false;
+		}
+	}
+
+	private static bool TryDebitAiHumanRobberyCash(PlayerInfo player, CrewAssignment crew, int amount, out int before, out int after, out string cashSource)
+	{
+		cashSource = "none";
+		if (CanDebitCrewVehicleCash(player, crew, amount)
+			&& TryDebitCrewVehicleCash(player, crew, amount, out before, out after))
+		{
+			cashSource = "vehicle";
+			return true;
+		}
+		if (CanDebitCrewPeepCash(player, crew, amount)
+			&& TryDebitCrewPeepCash(player, crew, amount, out before, out after))
+		{
+			cashSource = "peep";
+			return true;
+		}
+		if (TryDebitGangSafehouseCash(player, amount, out before, out after))
+		{
+			cashSource = "safehouse";
+			return true;
+		}
+		if (TryDebitGangCleanCash(player, amount, out before, out after))
+		{
+			cashSource = "clean";
+			return true;
+		}
+		before = 0;
+		after = 0;
+		return false;
+	}
+
+	private static bool TryCreditGangSafehouseCash(PlayerInfo gang, int amount)
+	{
+		try
+		{
+			if (gang?.finances == null || amount <= 0)
+			{
+				return false;
+			}
+			Entity safehouse = GetGangSafehouseEntity(gang);
+			if (safehouse == null)
+			{
+				return false;
+			}
+			gang.finances.DoChangeMoney(safehouse, new Price((Fixnum)amount), MoneyReason.Other);
+			return true;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] TryCreditGangSafehouseCash failed: " + ex.Message);
+			return false;
+		}
+	}
+
+	private static int RoundToNearest50(int amount)
+	{
+		return Mathf.Max(0, Mathf.RoundToInt(amount / 50f) * 50);
+	}
+
+	private static bool TryGetAiHumanRobberyDiagnosticCooldown(AiRobberyCandidate candidate, SimTime now, out string cooldownKey, out int untilDay)
+	{
+		cooldownKey = string.Empty;
+		untilDay = int.MinValue;
+		foreach (string key in GetAiHumanRobberyDiagnosticCooldownKeys(candidate))
+		{
+			if (!_aiHumanRobberyDiagnosticCooldownUntilDay.TryGetValue(key, out int candidateUntilDay))
+			{
+				continue;
+			}
+			if (candidateUntilDay >= now.days)
+			{
+				cooldownKey = key;
+				untilDay = candidateUntilDay;
+				return true;
+			}
+			_aiHumanRobberyDiagnosticCooldownUntilDay.Remove(key);
+		}
+		return false;
+	}
+
+	private static void RecordAiHumanRobberyDiagnosticCooldown(AiRobberyCandidate candidate, SimTime now)
+	{
+		if (candidate == null || candidate.Robber == null || !candidate.TargetCrew.IsValid)
+		{
+			return;
+		}
+		_aiHumanRobberyDiagnosticCooldownUntilDay[GetAiHumanRobberyCrewCooldownKey(candidate)] = now.days + AI_ROBBERY_HUMAN_DIAGNOSTIC_COOLDOWN_DAYS;
+		_aiHumanRobberyDiagnosticCooldownUntilDay[GetAiHumanRobberyNodeCooldownKey(candidate)] = now.days + AI_ROBBERY_HUMAN_NODE_DIAGNOSTIC_COOLDOWN_DAYS;
+		_aiHumanRobberyDiagnosticCooldownUntilDay[GetAiHumanRobberyTargetCooldownKey(candidate)] = now.days + AI_ROBBERY_HUMAN_TARGET_DIAGNOSTIC_COOLDOWN_DAYS;
+		if (candidate.TargetCrew.VehicleID.IsValid)
+		{
+			_aiHumanRobberyDiagnosticCooldownUntilDay[GetAiHumanRobberyVehicleCooldownKey(candidate)] = now.days + AI_ROBBERY_HUMAN_VEHICLE_DIAGNOSTIC_COOLDOWN_DAYS;
+		}
+	}
+
+	private static bool TryGetAiHumanRobberyPairCooldown(PlayerInfo robber, PlayerInfo humanPlayer, SimTime now, out int untilDay)
+	{
+		untilDay = int.MinValue;
+		string key = GetAiHumanRobberyPairCooldownKey(robber, humanPlayer);
+		if (string.IsNullOrEmpty(key))
+		{
+			return false;
+		}
+		if (!_aiHumanRobberyPairCooldownUntilDay.TryGetValue(key, out int candidateUntilDay))
+		{
+			return false;
+		}
+		if (candidateUntilDay >= now.days)
+		{
+			untilDay = candidateUntilDay;
+			return true;
+		}
+		_aiHumanRobberyPairCooldownUntilDay.Remove(key);
+		return false;
+	}
+
+	private static void RecordAiHumanRobberyPairCooldown(AiRobberyCandidate candidate, PlayerInfo humanPlayer, SimTime now, string reason)
+	{
+		if (candidate?.Robber == null || humanPlayer == null)
+		{
+			return;
+		}
+		string key = GetAiHumanRobberyPairCooldownKey(candidate.Robber, humanPlayer);
+		if (string.IsNullOrEmpty(key))
+		{
+			return;
+		}
+		int untilDay = now.days + AI_ROBBERY_HUMAN_DIAGNOSTIC_COOLDOWN_DAYS;
+		_aiHumanRobberyPairCooldownUntilDay[key] = untilDay;
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"cooldown phase=pair robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} untilDay={untilDay} cooldownDays={AI_ROBBERY_HUMAN_DIAGNOSTIC_COOLDOWN_DAYS} reason={reason}");
+	}
+
+	private static string GetAiHumanRobberyPairCooldownKey(PlayerInfo robber, PlayerInfo humanPlayer)
+	{
+		if (robber == null || humanPlayer == null)
+		{
+			return string.Empty;
+		}
+		return "humanpair:" + robber.PID.id.ToString(CultureInfo.InvariantCulture) + ":" + humanPlayer.PID.id.ToString(CultureInfo.InvariantCulture);
+	}
+
+	private static string GetAiHumanRobberyDeferredResponseKey(PlayerInfo robber, PlayerInfo humanPlayer)
+	{
+		string pairKey = GetAiHumanRobberyPairCooldownKey(robber, humanPlayer);
+		return string.IsNullOrEmpty(pairKey) ? string.Empty : pairKey + ":deferred-response";
+	}
+
+	private static IEnumerable<string> GetAiHumanRobberyDiagnosticCooldownKeys(AiRobberyCandidate candidate)
+	{
+		if (candidate == null || candidate.Robber == null || !candidate.TargetCrew.IsValid)
+		{
+			yield break;
+		}
+		yield return GetAiHumanRobberyCrewCooldownKey(candidate);
+		yield return GetAiHumanRobberyNodeCooldownKey(candidate);
+		yield return GetAiHumanRobberyTargetCooldownKey(candidate);
+		if (candidate.TargetCrew.VehicleID.IsValid)
+		{
+			yield return GetAiHumanRobberyVehicleCooldownKey(candidate);
+		}
+	}
+
+	private static string GetAiHumanRobberyContactKey(int robberPid, ulong targetCrewPeepId)
+	{
+		return robberPid.ToString(CultureInfo.InvariantCulture) + ":" + targetCrewPeepId.ToString(CultureInfo.InvariantCulture);
+	}
+
+	private static bool ShouldLogAiHumanRobberySameNodeMiss(AiRobberyCandidate candidate, SimTime now, bool record)
+	{
+		if (candidate == null || candidate.Robber == null || !candidate.TargetCrew.IsValid || !candidate.SameNode || candidate.WouldAttempt)
+		{
+			return false;
+		}
+		if (TryGetAiHumanRobberyDiagnosticCooldown(candidate, now, out _, out _))
+		{
+			return false;
+		}
+		string key = GetAiHumanRobberyContactKey(candidate.Robber.PID.id, candidate.TargetCrew.peepId.id) + ":miss";
+		if (_aiHumanRobberySameNodeMissLogDayByKey.TryGetValue(key, out int lastDay)
+			&& now.days - lastDay < AI_ROBBERY_SAME_NODE_MISS_LOG_COOLDOWN_DAYS)
+		{
+			return false;
+		}
+		if (record)
+		{
+			_aiHumanRobberySameNodeMissLogDayByKey[key] = now.days;
+		}
+		return true;
+	}
+
+	private static string GetAiHumanRobberyCrewCooldownKey(AiRobberyCandidate candidate)
+	{
+		return "crew:" + candidate.Robber.PID.id.ToString(CultureInfo.InvariantCulture) + ":" + candidate.TargetCrew.peepId.id.ToString(CultureInfo.InvariantCulture);
+	}
+
+	private static string GetAiHumanRobberyNodeCooldownKey(AiRobberyCandidate candidate)
+	{
+		int nodeIndex = candidate.ContactNode?.id.index ?? -1;
+		return "node:" + candidate.Robber.PID.id.ToString(CultureInfo.InvariantCulture) + ":" + nodeIndex.ToString(CultureInfo.InvariantCulture);
+	}
+
+	private static string GetAiHumanRobberyTargetCooldownKey(AiRobberyCandidate candidate)
+	{
+		return "target:" + candidate.Robber.PID.id.ToString(CultureInfo.InvariantCulture) + ":" + candidate.TargetCrew.peepId.id.ToString(CultureInfo.InvariantCulture);
+	}
+
+	private static string GetAiHumanRobberyVehicleCooldownKey(AiRobberyCandidate candidate)
+	{
+		return "vehicle:" + candidate.Robber.PID.id.ToString(CultureInfo.InvariantCulture) + ":" + candidate.TargetCrew.VehicleID.id.ToString(CultureInfo.InvariantCulture);
+	}
+
+	private static string GetAiHumanRobberyCooldownSummary()
+	{
+		return "crew:" + AI_ROBBERY_HUMAN_DIAGNOSTIC_COOLDOWN_DAYS.ToString(CultureInfo.InvariantCulture)
+			+ ",node:" + AI_ROBBERY_HUMAN_NODE_DIAGNOSTIC_COOLDOWN_DAYS.ToString(CultureInfo.InvariantCulture)
+			+ ",target:" + AI_ROBBERY_HUMAN_TARGET_DIAGNOSTIC_COOLDOWN_DAYS.ToString(CultureInfo.InvariantCulture)
+			+ ",vehicle:" + AI_ROBBERY_HUMAN_VEHICLE_DIAGNOSTIC_COOLDOWN_DAYS.ToString(CultureInfo.InvariantCulture);
+	}
+
+	private static bool TryBuildAiRobberyCandidateAgainstHuman(PlayerInfo robber, PlayerInfo humanPlayer, SimTime now, out AiRobberyCandidate candidate, out string blockReason, out bool hostile, out bool nearby)
+	{
+		candidate = null;
+		blockReason = string.Empty;
+		hostile = false;
+		nearby = false;
+		if (!IsEligibleAiTradeGang(robber) || humanPlayer == null || humanPlayer.crew == null)
+		{
+			blockReason = "invalid";
+			return false;
+		}
+		if (ArePlayersProtectedByPactAlliance(robber, humanPlayer))
+		{
+			blockReason = "pact-protected";
+			return false;
+		}
+		if (HasMutualTruce(robber, humanPlayer))
+		{
+			blockReason = "truce";
+			return false;
+		}
+		if (TryGetAiHumanRobberyPairCooldown(robber, humanPlayer, now, out int pairCooldownUntilDay))
+		{
+			blockReason = "human-robbery-pair-cooldown";
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"blocked phase=candidate source=pair-cooldown robber={robber.PID.id} human={humanPlayer.PID.id} untilDay={pairCooldownUntilDay} cooldownDays={AI_ROBBERY_HUMAN_DIAGNOSTIC_COOLDOWN_DAYS}");
+			return false;
+		}
+		if (IsAiPersonalityPeaceful(robber))
+		{
+			blockReason = "peaceful-personality";
+			VerificationLog("AIPlayerRobbery", $"blocked phase=candidate source=personality robber={robber.PID.id} human={humanPlayer.PID.id} reason=peaceful-personality day={now.days}");
+			return false;
+		}
+
+		bool directAggro = IsAggroWithoutTruceEitherWay(robber, humanPlayer);
+		bool broadlyHostile = IsBroadlyHostileAiRobber(robber, humanPlayer, out int broadHostileCount);
+		hostile = directAggro || broadlyHostile;
+		if (IsAiHumanRobberyBlockedByGoodRelations(robber, humanPlayer, out float relationBias))
+		{
+			blockReason = "friendly-relations";
+			return false;
+		}
+		bool humanTerritoryContact = false;
+		if (!TryFindAiRobberyTrespassContact(robber, humanPlayer, out CrewAssignment targetCrew, out Node contactNode, out float distance, out bool sameNode, out int robberLocalPower, out int humanLocalPower, out string robberNodeSource, out string targetNodeSource, out bool strictTrespassNode, out bool territoryPressure, out bool recentTrespassMemory, out string contactReason))
+		{
+			bool territoryPresenceContact = false;
+			if (!TryFindTerritoryPresenceRobberyContact(robber, humanPlayer, out targetCrew, out contactNode, out distance, out sameNode, out robberLocalPower, out humanLocalPower, out robberNodeSource, out targetNodeSource, out strictTrespassNode, out territoryPressure, out contactReason)
+					&& !TryFindHumanTerritoryRobberyContact(robber, humanPlayer, out targetCrew, out contactNode, out distance, out sameNode, out robberLocalPower, out humanLocalPower, out robberNodeSource, out targetNodeSource, out contactReason)
+					&& !TryFindHostileCashPressureRobberyContact(robber, humanPlayer, out targetCrew, out contactNode, out distance, out sameNode, out robberLocalPower, out humanLocalPower, out robberNodeSource, out targetNodeSource, out strictTrespassNode, out territoryPressure, out contactReason)
+					&& !TryFindNearestAiRobberyContact(robber, humanPlayer, out targetCrew, out contactNode, out distance, out sameNode, out robberLocalPower, out humanLocalPower, out robberNodeSource, out targetNodeSource, out contactReason))
+			{
+				blockReason = contactReason;
+				return false;
+			}
+			territoryPresenceContact = strictTrespassNode || territoryPressure;
+			humanTerritoryContact = contactNode != null && PlayerTerritory.GetNodeOwner(contactNode) == humanPlayer.PID;
+			if (!humanTerritoryContact && !territoryPresenceContact)
+			{
+				blockReason = "not-trespassing";
+				return false;
+			}
+			if (!territoryPresenceContact)
+			{
+				strictTrespassNode = false;
+				territoryPressure = false;
+			}
+			recentTrespassMemory = false;
+		}
+		nearby = true;
+
+		int robberPower = CalculateGangPower(robber);
+		int humanPower = CalculateGangPower(humanPlayer);
+		PlayerID owner = PlayerTerritory.GetNodeOwner(contactNode);
+		bool humanTerritory = owner == humanPlayer.PID;
+		humanTerritoryContact = humanTerritoryContact || (humanTerritory && hostile);
+		bool pressureTrespass = territoryPressure && !humanTerritory;
+		if (!strictTrespassNode && !pressureTrespass && !humanTerritoryContact)
+		{
+			blockReason = territoryPressure
+				? "territory-pressure-not-trespass"
+				: (recentTrespassMemory ? "recent-trespass-not-current" : "not-trespassing");
+			return false;
+		}
+		if (!IsAiHumanRobberyPhysicalTargetValid(humanPlayer, targetCrew, contactNode, out string physicalReason))
+		{
+			blockReason = physicalReason;
+			return false;
+		}
+		bool enemyTerritory = owner == robber.PID || pressureTrespass;
+		if (!enemyTerritory && !humanTerritoryContact)
+		{
+			blockReason = "not-trespassing";
+			return false;
+		}
+		if (humanTerritoryContact && !enemyTerritory && !sameNode && distance > AI_ROBBERY_HUMAN_TERRITORY_MAX_CONTACT_DISTANCE)
+		{
+			blockReason = "human-territory-contact-too-far";
+			return false;
+		}
+		if (pressureTrespass && !strictTrespassNode && !humanTerritoryContact)
+		{
+			if (distance > AI_ROBBERY_TERRITORY_PRESSURE_MAX_CONTACT_DISTANCE)
+			{
+				blockReason = "territory-pressure-too-far";
+				return false;
+			}
+			if (robberPower + AI_ROBBERY_TERRITORY_PRESSURE_POWER_MARGIN < humanPower
+				&& robberLocalPower < humanLocalPower)
+			{
+				blockReason = "weak-territory-pressure";
+				return false;
+			}
+		}
+		if (!PassesAiRobberyStrengthGate(enemyTerritory || humanTerritoryContact, robberPower, humanPower, robberLocalPower, humanLocalPower, out string strengthReason))
+		{
+			blockReason = strengthReason;
+			return false;
+		}
+
+		int graceDays = CalculateAiRobberyTrespassGraceDays(directAggro, relationBias, robberPower - humanPower, robberLocalPower - humanLocalPower);
+		candidate = new AiRobberyCandidate
+		{
+			Robber = robber,
+			TargetCrew = targetCrew,
+			ContactNode = contactNode,
+			Distance = distance,
+			SameNode = sameNode,
+			RobberNodeSource = robberNodeSource,
+			TargetNodeSource = targetNodeSource,
+			DirectAggro = directAggro,
+			BroadlyHostile = broadlyHostile,
+			EnemyTerritory = enemyTerritory,
+			HumanTerritory = humanTerritory,
+			StrictTrespassNode = strictTrespassNode,
+			TerritoryPressure = territoryPressure,
+			RecentTrespassMemory = recentTrespassMemory,
+			RobberPower = robberPower,
+			HumanPower = humanPower,
+			RobberLocalPower = robberLocalPower,
+			HumanLocalPower = humanLocalPower,
+			RarityChance = 1f,
+			RarityRoll = 0f,
+			WouldAttempt = true,
+			TrespassGraceDays = graceDays,
+			Reason = strictTrespassNode
+				? (directAggro ? "trespass-direct-aggro" : "trespass")
+				: (humanTerritoryContact ? "human-territory-contact" : (recentTrespassMemory ? "recent-trespass-shadow" : "territory-pressure"))
+		};
+		return true;
+	}
+
+	private static bool IsAiHumanRobberyBlockedByGoodRelations(PlayerInfo robber, PlayerInfo humanPlayer, out float relationBias)
+	{
+		relationBias = GetSignedGangRelationshipBias(robber, humanPlayer);
+		return relationBias >= 0.2f;
+	}
+
+	private static bool IsGangTrespassingOnGangTerritory(PlayerInfo visitor, PlayerInfo owner, out int crewCount, out int nodeCount)
+	{
+		return IsGangTrespassingOrPressuringGangTerritory(visitor, owner, allowAdjacentPressure: false, out crewCount, out nodeCount, out _, out _);
+	}
+
+	private static bool HasRecentGangTrespassMemory(PlayerInfo visitor, PlayerInfo owner)
+	{
+		if (visitor == null || owner == null || visitor.PID.id == owner.PID.id || visitor.social == null || owner.social == null)
+		{
+			return false;
+		}
+
+		try
+		{
+			Relationship relationship = visitor.social.GetRelationshipFromPlayerTo(owner.PID);
+			if (FindRelationshipBuffState(relationship, AI_ROBBERY_TRESPASS_RELBUFF_ID) != null)
+			{
+				return true;
+			}
+			return relationship?.GetHistoryOrNull()?.ContainsAction(SocialConstants.GANG_TRESPASS) == true;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static bool IsGangTrespassingOrPressuringGangTerritory(PlayerInfo visitor, PlayerInfo owner, bool allowAdjacentPressure, out int trespassCrewCount, out int trespassNodeCount, out int adjacentCrewCount, out int adjacentNodeCount)
+	{
+		trespassCrewCount = 0;
+		trespassNodeCount = 0;
+		adjacentCrewCount = 0;
+		adjacentNodeCount = 0;
+		if (visitor == null || owner == null || visitor.PID.id == owner.PID.id || visitor.crew == null)
+		{
+			return false;
+		}
+
+		HashSet<int> trespassNodes = new HashSet<int>();
+		HashSet<int> adjacentNodes = new HashSet<int>();
+		foreach ((CrewAssignment crew, Node node, string source) entry in GetAiRobberyCrewNodes(visitor))
+		{
+			if (entry.node == null)
+			{
+				continue;
+			}
+
+			if (PlayerTerritory.GetNodeOwner(entry.node) == owner.PID)
+			{
+				trespassCrewCount++;
+				trespassNodes.Add(entry.node.id.index);
+				continue;
+			}
+
+			if (allowAdjacentPressure && IsNodeAdjacentToGangTerritory(entry.node, owner))
+			{
+				adjacentCrewCount++;
+				adjacentNodes.Add(entry.node.id.index);
+			}
+		}
+
+		trespassNodeCount = trespassNodes.Count;
+		adjacentNodeCount = adjacentNodes.Count;
+		return trespassCrewCount > 0 || adjacentCrewCount > 0;
+	}
+
+	private static bool IsNodeAdjacentToGangTerritory(Node node, PlayerInfo owner)
+	{
+		return TryFindGangTerritoryEdgeNode(node, owner, AI_ROBBERY_TERRITORY_EDGE_WORLD_DISTANCE, out _, out _, out _);
+	}
+
+	private static bool TryFindGangTerritoryEdgeNode(Node node, PlayerInfo owner, float maxDistance, out Node territoryNode, out float distance, out string source)
+	{
+		territoryNode = null;
+		distance = float.MaxValue;
+		source = "none";
+		if (node == null || owner?.territory == null)
+		{
+			return false;
+		}
+
+		if (PlayerTerritory.GetNodeOwner(node) == owner.PID)
+		{
+			territoryNode = node;
+			distance = 0f;
+			source = "same-node";
+			return true;
+		}
+
+		List<Node> neighbors = new List<Node>(16);
+		AddAiRobberyTerritoryProbeNeighbors(node, neighbors, roadOnly: true);
+		AddAiRobberyTerritoryProbeNeighbors(node, neighbors, roadOnly: false);
+		for (int i = 0; i < neighbors.Count; i++)
+		{
+			Node neighbor = neighbors[i];
+			if (neighbor != null && PlayerTerritory.GetNodeOwner(neighbor) == owner.PID)
+			{
+				territoryNode = neighbor;
+				distance = (neighbor.pos - node.pos).Magnitude;
+				source = "neighbor";
+				return true;
+			}
+		}
+
+		List<Node> secondHop = new List<Node>(32);
+		for (int i = 0; i < neighbors.Count; i++)
+		{
+			AddAiRobberyTerritoryProbeNeighbors(neighbors[i], secondHop, roadOnly: false);
+		}
+		for (int i = 0; i < secondHop.Count; i++)
+		{
+			Node neighbor = secondHop[i];
+			if (neighbor != null && PlayerTerritory.GetNodeOwner(neighbor) == owner.PID)
+			{
+				float currentDistance = (neighbor.pos - node.pos).Magnitude;
+				if (currentDistance <= maxDistance)
+				{
+					territoryNode = neighbor;
+					distance = currentDistance;
+					source = "second-hop";
+					return true;
+				}
+			}
+		}
+
+		try
+		{
+			foreach (NodeID ownedNodeId in owner.territory.OwnedNodeIds)
+			{
+				Node ownedNode = ownedNodeId.IsValid ? ownedNodeId.FindNode() : null;
+				if (ownedNode == null)
+				{
+					continue;
+				}
+				float currentDistance = (ownedNode.pos - node.pos).Magnitude;
+				if (currentDistance <= maxDistance && currentDistance < distance)
+				{
+					territoryNode = ownedNode;
+					distance = currentDistance;
+					source = "near-owned-node";
+				}
+			}
+		}
+		catch
+		{
+		}
+		return territoryNode != null;
+	}
+
+	private static void AddAiRobberyTerritoryProbeNeighbors(Node node, List<Node> neighbors, bool roadOnly)
+	{
+		if (node == null || neighbors == null)
+		{
+			return;
+		}
+		try
+		{
+			if (roadOnly)
+			{
+				node.FindRoadNeighbors(neighbors);
+			}
+			else
+			{
+				node.FindAllNeighbors(neighbors);
+			}
+		}
+		catch
+		{
+		}
+	}
+
+	private static void LogAiHumanRobberyNoTrespassProbe(PlayerInfo humanPlayer, List<PlayerInfo> gangs, SimTime now, string source)
+	{
+		try
+		{
+			List<(CrewAssignment crew, Node node, string source)> humanCrew = GetAiRobberyCrewNodes(humanPlayer)
+				.Where(entry => entry.node != null)
+				.Take(3)
+				.ToList();
+			if (humanCrew.Count == 0)
+			{
+				VerificationLog("AIPlayerRobbery", $"probe phase=trespass-scan source={source} day={now.days} reason=no-human-crew-node");
+				return;
+			}
+
+			List<string> parts = new List<string>();
+			foreach ((CrewAssignment crew, Node node, string nodeSource) entry in humanCrew)
+			{
+				PlayerID owner = PlayerTerritory.GetNodeOwner(entry.node);
+				string nearest = FindNearestAiHumanRobberyTerritoryProbe(entry.node, gangs, humanPlayer);
+				parts.Add($"crew={entry.crew.peepId.id} vehicle={entry.crew.VehicleID.id} node={entry.node.id} nodeSource={entry.nodeSource ?? "none"} owner={owner.id} nearest={nearest}");
+			}
+			VerificationLog("AIPlayerRobbery", $"probe phase=trespass-scan source={source} day={now.days} {string.Join(" | ", parts)}");
+		}
+		catch (Exception ex)
+		{
+			VerificationLog("AIPlayerRobbery", $"probe phase=trespass-scan source={source} day={now.days} reason=probe-failed-{ex.GetType().Name}");
+		}
+	}
+
+	private static string FindNearestAiHumanRobberyTerritoryProbe(Node node, List<PlayerInfo> gangs, PlayerInfo humanPlayer)
+	{
+		if (node == null || gangs == null)
+		{
+			return "none";
+		}
+		PlayerInfo bestGang = null;
+		Node bestNode = null;
+		float bestDistance = float.MaxValue;
+		string bestSource = "none";
+		foreach (PlayerInfo gang in gangs)
+		{
+			if (gang == null || gang.PID.id == humanPlayer?.PID.id || IsAiHumanRobberyBlockedByGoodRelations(gang, humanPlayer, out _))
+			{
+				continue;
+			}
+			if (!TryFindGangTerritoryEdgeNode(node, gang, AI_ROBBERY_TERRITORY_EDGE_WORLD_DISTANCE * 2f, out Node territoryNode, out float distanceToTerritory, out string edgeSource))
+			{
+				continue;
+			}
+			if (distanceToTerritory < bestDistance)
+			{
+				bestGang = gang;
+				bestNode = territoryNode;
+				bestDistance = distanceToTerritory;
+				bestSource = edgeSource;
+			}
+		}
+		if (bestGang == null || bestNode == null)
+		{
+			return "none";
+		}
+		return $"{bestGang.PID.id}@{bestNode.id}/{bestDistance:0.0}/{bestSource}";
+	}
+
+	private static int CalculateAiRobberyTrespassGraceDays(bool directAggro, float relationBias, int powerEdge, int localPowerEdge)
+	{
+		if (directAggro || localPowerEdge >= 20 || powerEdge >= 80 || relationBias <= -0.35f)
+		{
+			return AI_ROBBERY_TRESPASS_GRACE_FAST_DAYS;
+		}
+		if (relationBias > 0.05f || (powerEdge < 0 && localPowerEdge < 10))
+		{
+			return AI_ROBBERY_TRESPASS_GRACE_SLOW_DAYS;
+		}
+		return AI_ROBBERY_TRESPASS_GRACE_DEFAULT_DAYS;
+	}
+
+	private static bool TryFindHumanTerritoryRobberyContact(PlayerInfo robber, PlayerInfo humanPlayer, out CrewAssignment targetCrew, out Node contactNode, out float distance, out bool sameNode, out int robberLocalPower, out int humanLocalPower, out string robberNodeSource, out string targetNodeSource, out string reason)
+	{
+		targetCrew = CrewAssignment.EMPTY;
+		contactNode = null;
+		distance = float.MaxValue;
+		sameNode = false;
+		robberLocalPower = 0;
+		humanLocalPower = 0;
+		robberNodeSource = "none";
+		targetNodeSource = "none";
+		reason = "no-human-territory-contact";
+		List<(CrewAssignment crew, Node node, string source)> robberCrew = GetAiRobberyCrewNodes(robber, allowSafehouseFallback: true);
+		List<(CrewAssignment crew, Node node, string source)> humanCrew = GetAiRobberyCrewNodes(humanPlayer);
+		if (robberCrew.Count == 0)
+		{
+			reason = "no-robber-crew-node";
+			return false;
+		}
+		if (humanCrew.Count == 0)
+		{
+			reason = "no-human-crew-node";
+			return false;
+		}
+
+		Node robberContactNode = null;
+		string bestRobberNodeSource = "none";
+		string bestTargetNodeSource = "none";
+		bool sawHumanTerritoryTarget = false;
+		bool sawRobberInHumanTerritory = false;
+		bool sawPhysicalTargetBlocked = false;
+		string physicalTargetBlockReason = "no-vehicle-target";
+		foreach ((CrewAssignment crew, Node node, string source) humanEntry in humanCrew)
+		{
+			if (humanEntry.node == null || PlayerTerritory.GetNodeOwner(humanEntry.node) != humanPlayer.PID)
+			{
+				continue;
+			}
+			sawHumanTerritoryTarget = true;
+			if (!IsAiHumanRobberyPhysicalTargetValid(humanPlayer, humanEntry.crew, humanEntry.node, out string physicalReason))
+			{
+				sawPhysicalTargetBlocked = true;
+				physicalTargetBlockReason = physicalReason;
+				continue;
+			}
+			foreach ((CrewAssignment crew, Node node, string source) robberEntry in robberCrew)
+			{
+				if (robberEntry.node == null || PlayerTerritory.GetNodeOwner(robberEntry.node) != humanPlayer.PID)
+				{
+					continue;
+				}
+				sawRobberInHumanTerritory = true;
+				float currentDistance = (robberEntry.node.pos - humanEntry.node.pos).Magnitude;
+				if (currentDistance < distance)
+				{
+					distance = currentDistance;
+					targetCrew = humanEntry.crew;
+					contactNode = humanEntry.node;
+					robberContactNode = robberEntry.node;
+					bestRobberNodeSource = robberEntry.source ?? "none";
+					bestTargetNodeSource = humanEntry.source ?? "none";
+				}
+			}
+		}
+
+		if (contactNode == null || robberContactNode == null)
+		{
+			reason = sawPhysicalTargetBlocked
+				? physicalTargetBlockReason
+				: (!sawHumanTerritoryTarget ? "no-human-territory-target" : (!sawRobberInHumanTerritory ? "no-robber-in-human-territory" : "no-human-territory-contact"));
+			return false;
+		}
+
+		robberNodeSource = bestRobberNodeSource;
+		targetNodeSource = bestTargetNodeSource;
+		sameNode = robberContactNode.id == contactNode.id;
+		if (!sameNode && distance > AI_ROBBERY_HUMAN_TERRITORY_MAX_CONTACT_DISTANCE)
+		{
+			reason = "human-territory-contact-too-far";
+			return false;
+		}
+		robberLocalPower = Math.Max(10, CalculateAiRobberyLocalCrewPower(robberCrew, contactNode));
+		humanLocalPower = Math.Max(10, CalculateAiRobberyLocalCrewPower(humanCrew, contactNode));
+		reason = sameNode ? "human-territory-same-node-contact" : "human-territory-contact";
+		return true;
+	}
+
+	private static bool TryFindTerritoryPresenceRobberyContact(PlayerInfo robber, PlayerInfo humanPlayer, out CrewAssignment targetCrew, out Node contactNode, out float distance, out bool sameNode, out int robberLocalPower, out int humanLocalPower, out string robberNodeSource, out string targetNodeSource, out bool strictTrespassNode, out bool territoryPressure, out string reason)
+	{
+		targetCrew = CrewAssignment.EMPTY;
+		contactNode = null;
+		distance = float.MaxValue;
+		sameNode = false;
+		robberLocalPower = 0;
+		humanLocalPower = 0;
+		robberNodeSource = "none";
+		targetNodeSource = "none";
+		strictTrespassNode = false;
+		territoryPressure = false;
+		reason = "no-territory-presence-contact";
+		List<(CrewAssignment crew, Node node, string source)> robberCrew = GetAiRobberyCrewNodes(robber, allowSafehouseFallback: true);
+		List<(CrewAssignment crew, Node node, string source)> humanCrew = GetAiRobberyCrewNodes(humanPlayer);
+		if (robberCrew.Count == 0)
+		{
+			reason = "no-robber-crew-node";
+			return false;
+		}
+		if (humanCrew.Count == 0)
+		{
+			reason = "no-human-crew-node";
+			return false;
+		}
+
+		List<(CrewAssignment crew, Node node, string source)> robberTerritoryCrew = robberCrew
+			.Where(entry => entry.node != null && PlayerTerritory.GetNodeOwner(entry.node) == robber.PID)
+			.ToList();
+		if (robberTerritoryCrew.Count == 0)
+		{
+			reason = "no-robber-territory-crew";
+			return false;
+		}
+
+		bool sawPhysicalTargetBlocked = false;
+		string physicalTargetBlockReason = "no-vehicle-target";
+		foreach ((CrewAssignment crew, Node node, string source) humanEntry in humanCrew)
+		{
+			if (humanEntry.node == null)
+			{
+				continue;
+			}
+			PlayerID humanNodeOwner = PlayerTerritory.GetNodeOwner(humanEntry.node);
+			bool strict = humanNodeOwner == robber.PID;
+			bool pressure = !strict
+				&& humanNodeOwner != humanPlayer.PID
+				&& TryFindGangTerritoryEdgeNode(humanEntry.node, robber, AI_ROBBERY_TERRITORY_EDGE_WORLD_DISTANCE * 3f, out _, out _, out _);
+			if (!strict && !pressure)
+			{
+				continue;
+			}
+			if (!IsAiHumanRobberyPhysicalTargetValid(humanPlayer, humanEntry.crew, humanEntry.node, out string physicalReason))
+			{
+				sawPhysicalTargetBlocked = true;
+				physicalTargetBlockReason = physicalReason;
+				continue;
+			}
+
+			foreach ((CrewAssignment crew, Node node, string source) robberEntry in robberTerritoryCrew)
+			{
+				float currentDistance = (robberEntry.node.pos - humanEntry.node.pos).Magnitude;
+				if (currentDistance < distance)
+				{
+					distance = currentDistance;
+					targetCrew = humanEntry.crew;
+					contactNode = humanEntry.node;
+					sameNode = robberEntry.node.id == humanEntry.node.id;
+					robberNodeSource = robberEntry.source ?? "none";
+					targetNodeSource = humanEntry.source ?? "none";
+					strictTrespassNode = strict;
+					territoryPressure = pressure;
+				}
+			}
+		}
+
+		if (contactNode == null)
+		{
+			reason = sawPhysicalTargetBlocked ? physicalTargetBlockReason : "no-human-target-in-robber-territory";
+			return false;
+		}
+
+		robberLocalPower = Math.Max(10, CalculateAiRobberyLocalCrewPower(robberCrew, contactNode));
+		humanLocalPower = Math.Max(10, CalculateAiRobberyLocalCrewPower(humanCrew, contactNode));
+		reason = strictTrespassNode
+			? (sameNode ? "territory-presence-trespass-same-node" : "territory-presence-trespass")
+			: "territory-presence-pressure";
+		return true;
+	}
+
+	private static bool TryFindHostileCashPressureRobberyContact(PlayerInfo robber, PlayerInfo humanPlayer, out CrewAssignment targetCrew, out Node contactNode, out float distance, out bool sameNode, out int robberLocalPower, out int humanLocalPower, out string robberNodeSource, out string targetNodeSource, out bool strictTrespassNode, out bool territoryPressure, out string reason)
+	{
+		targetCrew = CrewAssignment.EMPTY;
+		contactNode = null;
+		distance = float.MaxValue;
+		sameNode = false;
+		robberLocalPower = 0;
+		humanLocalPower = 0;
+		robberNodeSource = "none";
+		targetNodeSource = "none";
+		strictTrespassNode = false;
+		territoryPressure = false;
+		reason = "no-hostile-cash-pressure";
+		List<(CrewAssignment crew, Node node, string source)> robberCrew = GetAiRobberyCrewNodes(robber, allowSafehouseFallback: true);
+		List<(CrewAssignment crew, Node node, string source)> humanCrew = GetAiRobberyCrewNodes(humanPlayer);
+		if (robberCrew.Count == 0)
+		{
+			reason = "no-robber-crew-node";
+			return false;
+		}
+		if (humanCrew.Count == 0)
+		{
+			reason = "no-human-crew-node";
+			return false;
+		}
+
+		int fallbackCash = Math.Max(GetGangSafehouseCleanCash(humanPlayer), GetGangCleanCash(humanPlayer));
+		int bestCash = 0;
+		Node robberContactNode = null;
+		bool sawPhysicalTargetBlocked = false;
+		bool sawCashTarget = false;
+		bool sawTurfTarget = false;
+		string physicalTargetBlockReason = "no-vehicle-target";
+		foreach ((CrewAssignment crew, Node node, string source) humanEntry in humanCrew)
+		{
+			if (humanEntry.node == null)
+			{
+				continue;
+			}
+			if (!IsAiHumanRobberyPhysicalTargetValid(humanPlayer, humanEntry.crew, humanEntry.node, out string physicalReason))
+			{
+				sawPhysicalTargetBlocked = true;
+				physicalTargetBlockReason = physicalReason;
+				continue;
+			}
+
+			PlayerID owner = PlayerTerritory.GetNodeOwner(humanEntry.node);
+			bool strict = owner == robber.PID;
+			bool pressure = !strict
+				&& owner != humanPlayer.PID
+				&& TryFindGangTerritoryEdgeNode(humanEntry.node, robber, AI_ROBBERY_TERRITORY_EDGE_WORLD_DISTANCE * 3f, out _, out _, out _);
+			if (!strict && !pressure)
+			{
+				continue;
+			}
+			sawTurfTarget = true;
+
+			int carriedCash = Math.Max(0, GetCrewVehicleCleanCash(humanPlayer, humanEntry.crew))
+				+ Math.Max(0, GetCrewPeepCleanCash(humanPlayer, humanEntry.crew));
+			int availableCash = carriedCash > 0 ? carriedCash : fallbackCash;
+			if (availableCash < AI_ROBBERY_CONTACT_LOW_CASH_MIN)
+			{
+				continue;
+			}
+			sawCashTarget = true;
+
+			foreach ((CrewAssignment crew, Node node, string source) robberEntry in robberCrew)
+			{
+				if (robberEntry.node == null)
+				{
+					continue;
+				}
+				float currentDistance = (robberEntry.node.pos - humanEntry.node.pos).Magnitude;
+				bool better = strictTrespassNode != strict
+					? strict
+					: (availableCash > bestCash || (availableCash == bestCash && currentDistance < distance));
+				if (!better)
+				{
+					continue;
+				}
+
+				bestCash = availableCash;
+				distance = currentDistance;
+				targetCrew = humanEntry.crew;
+				contactNode = humanEntry.node;
+				robberContactNode = robberEntry.node;
+				robberNodeSource = robberEntry.source ?? "none";
+				targetNodeSource = humanEntry.source ?? "none";
+				strictTrespassNode = strict;
+				territoryPressure = pressure || strict;
+			}
+		}
+
+		if (contactNode == null || robberContactNode == null)
+		{
+			reason = sawPhysicalTargetBlocked
+				? physicalTargetBlockReason
+				: (sawTurfTarget
+					? (sawCashTarget ? "no-hostile-cash-robber-node" : "low-robbable-cash")
+					: "no-hostile-turf-target");
+			return false;
+		}
+
+		sameNode = robberContactNode.id == contactNode.id;
+		robberLocalPower = Math.Max(10, CalculateAiRobberyLocalCrewPower(robberCrew, contactNode));
+		humanLocalPower = Math.Max(10, CalculateAiRobberyLocalCrewPower(humanCrew, contactNode));
+		reason = strictTrespassNode
+			? (sameNode ? "hostile-cash-trespass-same-node" : "hostile-cash-trespass-pressure")
+			: "hostile-cash-pressure";
+		VerificationLog("AIPlayerRobbery", $"cash-pressure-contact robber={robber.PID.id} targetCrew={targetCrew.peepId.id} vehicle={targetCrew.VehicleID.id} node={contactNode.id} dist={distance:0.0} sameNode={sameNode} availableCash={bestCash} fallbackCash={fallbackCash} strictTrespass={strictTrespassNode} territoryPressure={territoryPressure} source={reason}");
+		return true;
+	}
+
+	private static bool TryFindNearestAiRobberyContact(PlayerInfo robber, PlayerInfo humanPlayer, out CrewAssignment targetCrew, out Node contactNode, out float distance, out bool sameNode, out int robberLocalPower, out int humanLocalPower, out string robberNodeSource, out string targetNodeSource, out string reason)
+	{
+		targetCrew = CrewAssignment.EMPTY;
+		contactNode = null;
+		distance = float.MaxValue;
+		sameNode = false;
+		robberLocalPower = 0;
+		humanLocalPower = 0;
+		robberNodeSource = "none";
+		targetNodeSource = "none";
+		reason = "no-nearby-contact";
+		List<(CrewAssignment crew, Node node, string source)> robberCrew = GetAiRobberyCrewNodes(robber, allowSafehouseFallback: true);
+		List<(CrewAssignment crew, Node node, string source)> humanCrew = GetAiRobberyCrewNodes(humanPlayer);
+		if (robberCrew.Count == 0)
+		{
+			reason = "no-robber-crew-node";
+			return false;
+		}
+		if (humanCrew.Count == 0)
+		{
+			reason = "no-human-crew-node";
+			return false;
+		}
+
+		Node robberContactNode = null;
+		string bestRobberNodeSource = "none";
+		string bestTargetNodeSource = "none";
+		foreach ((CrewAssignment crew, Node node, string source) robberEntry in robberCrew)
+		{
+			foreach ((CrewAssignment crew, Node node, string source) humanEntry in humanCrew)
+			{
+				if (robberEntry.node == null || humanEntry.node == null)
+				{
+					continue;
+				}
+				float currentDistance = (robberEntry.node.pos - humanEntry.node.pos).Magnitude;
+				if (currentDistance < distance)
+				{
+					distance = currentDistance;
+					targetCrew = humanEntry.crew;
+					contactNode = humanEntry.node;
+					robberContactNode = robberEntry.node;
+					bestRobberNodeSource = robberEntry.source ?? "none";
+					bestTargetNodeSource = humanEntry.source ?? "none";
+				}
+			}
+		}
+		if (contactNode == null || robberContactNode == null)
+		{
+			return false;
+		}
+		robberNodeSource = bestRobberNodeSource;
+		targetNodeSource = bestTargetNodeSource;
+
+		sameNode = robberContactNode.id == contactNode.id;
+		if (!sameNode && distance > AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE)
+		{
+			reason = "nearby-contact-too-far";
+			return false;
+		}
+
+		robberLocalPower = CalculateAiRobberyLocalCrewPower(robberCrew, contactNode);
+		humanLocalPower = CalculateAiRobberyLocalCrewPower(humanCrew, contactNode);
+		if (robberLocalPower <= 0 || humanLocalPower <= 0)
+		{
+			reason = "missing-local-power";
+			return false;
+		}
+		reason = sameNode ? "same-node-contact" : "nearby-contact";
+		return true;
+	}
+
+	private static bool TryFindAiRobberyTrespassContact(PlayerInfo robber, PlayerInfo humanPlayer, out CrewAssignment targetCrew, out Node contactNode, out float distance, out bool sameNode, out int robberLocalPower, out int humanLocalPower, out string robberNodeSource, out string targetNodeSource, out bool strictTrespassNode, out bool territoryPressure, out bool recentTrespassMemory, out string reason)
+	{
+		targetCrew = CrewAssignment.EMPTY;
+		contactNode = null;
+		distance = float.MaxValue;
+		sameNode = false;
+		robberLocalPower = 0;
+		humanLocalPower = 0;
+		robberNodeSource = "none";
+		targetNodeSource = "none";
+		strictTrespassNode = false;
+		territoryPressure = false;
+		recentTrespassMemory = false;
+		reason = "no-human-trespass";
+		List<(CrewAssignment crew, Node node, string source)> robberCrew = GetAiRobberyCrewNodes(robber, allowSafehouseFallback: true);
+		List<(CrewAssignment crew, Node node, string source)> humanCrew = GetAiRobberyCrewNodes(humanPlayer);
+		if (humanCrew.Count == 0)
+		{
+			reason = "no-human-crew-node";
+			return false;
+		}
+		if (robberCrew.Count == 0)
+		{
+			reason = "no-robber-crew-node";
+			return false;
+		}
+
+		Node robberContactNode = null;
+		string bestRobberNodeSource = "none";
+		string bestTargetNodeSource = "none";
+		bool sawPhysicalTargetBlocked = false;
+		string physicalTargetBlockReason = "no-vehicle-target";
+		bool sawNonStrictTrespass = false;
+		bool bestStrictTrespass = false;
+		bool bestTerritoryPressure = false;
+		bool bestRecentTrespassMemory = false;
+		foreach ((CrewAssignment crew, Node node, string source) humanEntry in humanCrew)
+		{
+			if (humanEntry.node == null)
+			{
+				continue;
+			}
+			if (!IsAiHumanRobberyPhysicalTargetValid(humanPlayer, humanEntry.crew, humanEntry.node, out string physicalReason))
+			{
+				sawPhysicalTargetBlocked = true;
+				physicalTargetBlockReason = physicalReason;
+				continue;
+			}
+			PlayerID humanNodeOwner = PlayerTerritory.GetNodeOwner(humanEntry.node);
+			bool strictTrespass = humanNodeOwner == robber.PID;
+			bool adjacentPressure = !strictTrespass
+				&& humanNodeOwner != humanPlayer.PID
+				&& TryFindGangTerritoryEdgeNode(humanEntry.node, robber, AI_ROBBERY_TERRITORY_EDGE_WORLD_DISTANCE * 3f, out _, out _, out _);
+			if (!strictTrespass && !adjacentPressure)
+			{
+				sawNonStrictTrespass = true;
+				continue;
+			}
+
+			foreach ((CrewAssignment crew, Node node, string source) robberEntry in robberCrew)
+			{
+				if (robberEntry.node == null)
+				{
+					continue;
+				}
+
+				float currentDistance = (robberEntry.node.pos - humanEntry.node.pos).Magnitude;
+				if (currentDistance < distance)
+				{
+					distance = currentDistance;
+					targetCrew = humanEntry.crew;
+					contactNode = humanEntry.node;
+					robberContactNode = robberEntry.node;
+					bestRobberNodeSource = robberEntry.source ?? "none";
+					bestTargetNodeSource = humanEntry.source ?? "none";
+					bestStrictTrespass = strictTrespass;
+					bestTerritoryPressure = adjacentPressure;
+					bestRecentTrespassMemory = false;
+				}
+			}
+		}
+
+		if (contactNode == null || robberContactNode == null)
+		{
+			reason = sawPhysicalTargetBlocked
+				? physicalTargetBlockReason
+				: (sawNonStrictTrespass ? "territory-pressure-not-trespass" : "no-human-trespass");
+			return false;
+		}
+
+		robberNodeSource = bestRobberNodeSource;
+		targetNodeSource = bestTargetNodeSource;
+		strictTrespassNode = bestStrictTrespass;
+		territoryPressure = bestTerritoryPressure;
+		recentTrespassMemory = bestRecentTrespassMemory;
+		sameNode = robberContactNode.id == contactNode.id;
+		robberLocalPower = Math.Max(10, CalculateAiRobberyLocalCrewPower(robberCrew, contactNode));
+		humanLocalPower = CalculateAiRobberyLocalCrewPower(humanCrew, contactNode);
+		if (humanLocalPower <= 0)
+		{
+			reason = "missing-human-local-power";
+			return false;
+		}
+
+		reason = bestStrictTrespass
+			? (sameNode ? "trespass-same-node-contact" : "trespass-shadow-contact")
+			: "territory-pressure-contact";
+		return true;
+	}
+
+	private static bool IsAiHumanRobberyPhysicalTargetValid(PlayerInfo humanPlayer, CrewAssignment targetCrew, Node contactNode, out string reason)
+	{
+		reason = "ok";
+		try
+		{
+			if (humanPlayer?.crew == null || !targetCrew.IsValid || targetCrew.IsDead)
+			{
+				reason = "invalid-target-crew";
+				return false;
+			}
+			if (!targetCrew.IsInVehicle || !targetCrew.VehicleID.IsValid)
+			{
+				Entity peep = targetCrew.GetPeep();
+				Node peepNode = peep?.components?.agent?.GetNode();
+				if (peepNode == null || contactNode == null || !contactNode.id.IsValid || peepNode.id != contactNode.id)
+				{
+					reason = "target-on-foot-not-at-node";
+					return false;
+				}
+				return true;
+			}
+			if (!humanPlayer.crew.IsOnBoard(targetCrew.peepId))
+			{
+				reason = "target-not-onboard";
+				return false;
+			}
+			if (MultiCrewVehicleHelper.GetLiveVehicleCrewCount(humanPlayer.crew, targetCrew.VehicleID) <= 0)
+			{
+				reason = "target-vehicle-empty";
+				return false;
+			}
+			if (contactNode == null || !contactNode.id.IsValid)
+			{
+				reason = "missing-contact-node";
+				return false;
+			}
+			if (!MultiCrewVehicleHelper.IsHumanVehiclePhysicallyAtNode(targetCrew.VehicleID, contactNode.id))
+			{
+				if (MultiCrewVehicleHelper.TryGetHumanVehicleCombatTargetNodeId(targetCrew.VehicleID, out NodeID combatNodeId, out string combatSource)
+					&& combatNodeId == contactNode.id)
+				{
+					reason = "ok-" + (string.IsNullOrWhiteSpace(combatSource) ? "combat-authority" : combatSource);
+					return true;
+				}
+				reason = "target-vehicle-not-physical";
+				return false;
+			}
+			return true;
+		}
+		catch (Exception ex)
+		{
+			reason = "target-physical-check-failed-" + ex.GetType().Name;
+			return false;
+		}
+	}
+
+	private static List<(CrewAssignment crew, Node node, string source)> GetAiRobberyCrewNodes(PlayerInfo player, bool allowSafehouseFallback = false)
+	{
+		List<(CrewAssignment crew, Node node, string source)> result = new List<(CrewAssignment crew, Node node, string source)>();
+		if (player?.crew == null)
+		{
+			return result;
+		}
+		Node fallbackNode = null;
+		string fallbackSource = "none";
+		if (allowSafehouseFallback)
+		{
+			TryResolveAiRobberySafehouseFallbackNode(player, out fallbackNode, out fallbackSource);
+		}
+		foreach (CrewAssignment crew in player.crew.GetLiving())
+		{
+			if (!TryGetAiRobberyCrewNode(crew, out Node node, out string source) || node == null)
+			{
+				if (fallbackNode == null)
+				{
+					continue;
+				}
+				node = fallbackNode;
+				source = fallbackSource;
+			}
+			result.Add((crew, node, source));
+		}
+		return result;
+	}
+
+	private static bool TryResolveAiRobberySafehouseFallbackNode(PlayerInfo player, out Node node, out string source)
+	{
+		node = null;
+		source = "none";
+		try
+		{
+			EntityID safehouseId = player?.territory?.Safehouse ?? EntityID.INVALID;
+			if (!safehouseId.IsValid)
+			{
+				source = "safehouse-missing";
+				return false;
+			}
+			Entity safehouse = safehouseId.FindEntity();
+			NodeID nodeId = safehouse?.data?.board?.bead.nodeId ?? NodeID.INVALID;
+			if (!nodeId.IsValid && safehouse != null)
+			{
+				object board = safehouse.components?.board;
+				nodeId = (NodeID)(board?.GetType().GetField("nodeId", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(board) ?? NodeID.INVALID);
+			}
+			node = nodeId.IsValid ? nodeId.FindNode() : null;
+			source = node != null ? "safehouse-fallback" : "safehouse-node-missing";
+			return node != null;
+		}
+		catch (Exception ex)
+		{
+			source = "safehouse-fallback-failed-" + ex.GetType().Name;
+			return false;
+		}
+	}
+
+	private static bool TryGetAiRobberyCrewNode(CrewAssignment crew, out Node node, out string source)
+	{
+		node = null;
+		source = "none";
+		if (!crew.IsValid || crew.IsDead)
+		{
+			return false;
+		}
+		if (crew.IsInVehicle && crew.VehicleID.IsValid)
+		{
+			if (MultiCrewVehicleHelper.TryGetStrictPhysicalVehicleNode(crew.VehicleID, out node, out source))
+			{
+				return node != null;
+			}
+			if (MultiCrewVehicleHelper.TryGetHumanVehicleCombatTargetNodeId(crew.VehicleID, out NodeID combatNodeId, out string combatSource)
+				&& combatNodeId.IsValid)
+			{
+				node = combatNodeId.FindNode();
+				source = string.IsNullOrWhiteSpace(combatSource) ? "combat-authority" : combatSource;
+				return node != null;
+			}
+			if (MultiCrewVehicleHelper.TryGetAuthoritativeVehicleNodeId(crew.VehicleID, out NodeID authoritativeNodeId, out string authoritativeSource)
+				&& authoritativeNodeId.IsValid)
+			{
+				node = authoritativeNodeId.FindNode();
+				source = string.IsNullOrWhiteSpace(authoritativeSource) ? "authoritative" : authoritativeSource;
+				return node != null;
+			}
+			source = "vehicle-not-physical";
+			return false;
+		}
+		Entity peep = crew.GetPeep();
+		node = peep?.components?.agent?.GetNode();
+		source = node != null ? "agent" : "none";
+		return node != null;
+	}
+
+	private static int CalculateAiRobberyLocalCrewPower(List<(CrewAssignment crew, Node node, string source)> crewNodes, Node contactNode)
+	{
+		if (crewNodes == null || contactNode == null)
+		{
+			return 0;
+		}
+		int total = 0;
+		foreach ((CrewAssignment crew, Node node, string source) entry in crewNodes)
+		{
+			if (entry.node == null)
+			{
+				continue;
+			}
+			float distance = (entry.node.pos - contactNode.pos).Magnitude;
+			if (entry.node.id == contactNode.id || distance <= AI_ROBBERY_NEARBY_WORLD_DISTANCE)
+			{
+				total += 10;
+			}
+		}
+		return total;
+	}
+
+	private static bool PassesAiRobberyStrengthGate(bool enemyTerritory, int robberPower, int humanPower, int robberLocalPower, int humanLocalPower, out string reason)
+	{
+		if (enemyTerritory)
+		{
+			if (robberLocalPower >= Math.Max(10, humanLocalPower - 5))
+			{
+				reason = "enemy-territory-local-ok";
+				return true;
+			}
+			if (robberLocalPower >= 10)
+			{
+				reason = "enemy-territory-shadow-ok";
+				return true;
+			}
+			if (robberLocalPower >= 10 && robberPower + 20 >= humanPower)
+			{
+				reason = "enemy-territory-reinforcement-ok";
+				return true;
+			}
+			if (robberPower >= humanPower + 30)
+			{
+				reason = "enemy-territory-gang-power-ok";
+				return true;
+			}
+			reason = "weak-local-enemy-territory";
+			return false;
+		}
+		if (robberPower >= humanPower || robberLocalPower >= humanLocalPower + 10)
+		{
+			reason = "neutral-or-human-territory-power-ok";
+			return true;
+		}
+		reason = "weak-outside-territory";
+		return false;
+	}
+
+	private static bool IsBroadlyHostileAiRobber(PlayerInfo robber, PlayerInfo humanPlayer, out int hostileCount)
+	{
+		hostileCount = 0;
+		if (robber == null)
+		{
+			return false;
+		}
+		int activeTargets = 0;
+		foreach (PlayerInfo other in G.GetAllPlayers())
+		{
+			if (other == null || other.PID.id == robber.PID.id || other.crew == null || other.crew.IsCrewDefeated)
+			{
+				continue;
+			}
+			if (!other.PID.IsHumanPlayer && !other.IsJustGang)
+			{
+				continue;
+			}
+			activeTargets++;
+			if (IsAggroWithoutTruceEitherWay(robber, other))
+			{
+				hostileCount++;
+			}
+		}
+		if (hostileCount >= 3)
+		{
+			return true;
+		}
+		if (activeTargets >= 4 && hostileCount * 2 >= activeTargets)
+		{
+			return true;
+		}
+		float humanHeat = humanPlayer == null ? 0f : GetHighestWarHeatForPair(robber.PID.id, humanPlayer.PID.id);
+		return humanHeat >= 15f;
+	}
+
+	private static float CalculateAiRobberyHumanRarityChance(bool directAggro, bool broadlyHostile, bool enemyTerritory, bool sameNode, int powerEdge, int broadHostileCount)
+	{
+		float chance = 0.03f;
+		if (directAggro)
+		{
+			chance += 0.04f;
+		}
+		if (broadlyHostile)
+		{
+			chance += Mathf.Min(0.04f, broadHostileCount * 0.01f);
+		}
+		if (enemyTerritory)
+		{
+			chance += 0.03f;
+		}
+		if (sameNode)
+		{
+			chance += 0.04f;
+		}
+		chance += Mathf.Clamp(powerEdge / 500f, -0.02f, 0.04f);
+		return Mathf.Clamp(chance, 0.02f, 0.18f);
+	}
+
+	private static void ApplyPactTradeRelationshipBuff(PlayerInfo seller, PlayerInfo buyer, bool logSuccess = true)
 	{
 		if (seller == null || buyer == null)
 		{
 			return;
 		}
 
-		EnsureCustomRelationshipBuffDefinitions();
-		AddMutualRelationshipBuff(seller, buyer, "relbuff-pact-trade", GetCrewPeepForPlayer(seller), GetCrewPeepForPlayer(buyer));
+		if (!EnsureCustomRelationshipBuffDefinitions())
+		{
+			return;
+		}
+
+		AddMutualRelationshipBuff(seller, buyer, "relbuff-pact-trade", GetCrewPeepForPlayer(seller), GetCrewPeepForPlayer(buyer), logSuccess);
+	}
+
+	private static bool ShouldLogAiTradeRelationshipBuffs(PlayerInfo seller, PlayerInfo buyer)
+	{
+		return seller?.PID.IsHumanPlayer == true || buyer?.PID.IsHumanPlayer == true;
 	}
 
 	private static void AwardHumanPactTradeStreetCredit(PlayerInfo seller, PlayerInfo buyer, string source, float minGain, float maxGain)
@@ -2801,7 +7817,7 @@ public partial class GameplayTweaksPlugin
 				return false;
 			}
 			int before = ReadInventoryAmount(gangSafehouseEntity, ModConstants.DIRTY_CASH_LABEL);
-			AddDirtyCash(gangSafehouseEntity, amount);
+			AddDirtyCash(gangSafehouseEntity, amount, "ai-pact-trade");
 			return ReadInventoryAmount(gangSafehouseEntity, ModConstants.DIRTY_CASH_LABEL) >= before + amount;
 		}
 
@@ -3346,7 +8362,7 @@ public partial class GameplayTweaksPlugin
 				foreach (Entity storageEntity in GetHumanStorageEntities(humanPlayer))
 				{
 					int before = ReadInventoryAmount(storageEntity, ModConstants.DIRTY_CASH_LABEL);
-					AddDirtyCash(storageEntity, amount);
+					AddDirtyCash(storageEntity, amount, "human-pact-trade");
 					int after = ReadInventoryAmount(storageEntity, ModConstants.DIRTY_CASH_LABEL);
 					if (after >= before + amount)
 					{
@@ -3479,8 +8495,19 @@ public partial class GameplayTweaksPlugin
 			}
 			catch (Exception arg)
 			{
-				Debug.LogError($"[GameplayTweaks] ProcessPactEarnings: {arg}");
+			Debug.LogError($"[GameplayTweaks] ProcessPactEarnings: {arg}");
 			}
+		}
+	}
+
+	internal static void CancelDeferredAlliancePactGangOpsForNextTurnInput(string source)
+	{
+		try
+		{
+			TurnUpdatePatch.CancelDeferredAlliancePactGangOpsForNextTurn(source ?? "next-turn-input");
+		}
+		catch
+		{
 		}
 	}
 

@@ -91,6 +91,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="GameplayTweaksPlugin.cs" />
+    <Compile Include="GameplayTweaksPlugin.AfterProhibitionFamilyBridge.cs" />
     <Compile Include="GameplayTweaksPlugin.Core.cs" />
     <Compile Include="GameplayTweaksPlugin.FeatureRegistrars.cs" />
     <Compile Include="Features\Relationships\GameplayTweaksPlugin.DeadRelationshipCleanupPatch.cs" />
@@ -99,9 +100,14 @@
     <Compile Include="Features\Compatibility\GameplayTweaksPlugin.AfterProhibitionAssemblyPort.cs" />
     <Compile Include="Features\Compatibility\GameplayTweaksPlugin.CivicNonpurchaseFallback.cs" />
     <Compile Include="Features\Compatibility\GameplayTweaksPlugin.DirtyCashEconomyCompatibility.cs" />
+    <Compile Include="Features\Compatibility\GameplayTweaksPlugin.GoonAdvisorPerformance.cs" />
     <Compile Include="Features\Compatibility\GameplayTweaksPlugin.TerritoryAndGangWarsCompatibility.cs" />
+    <Compile Include="Features\Compatibility\GameplayTweaksPlugin.TurnPerformanceDiagnostics.cs" />
     <Compile Include="Features\Stability\GameplayTweaksPlugin.UiStabilityPatches.cs" />
+    <Compile Include="Features\Stability\GameplayTweaksPlugin.CameraMapBoundsPatch.cs" />
     <Compile Include="Features\Stability\GameplayTweaksPlugin.UiDebugPatches.cs" />
+    <Compile Include="Features\Stability\GameplayTweaksPlugin.ResidentialEventPatches.cs" />
+    <Compile Include="Features\Stability\GameplayTweaksPlugin.SchemeDiagnosticsPatches.cs" />
     <Compile Include="Features\Law\GameplayTweaksPlugin.JailAndHeatPatches.cs" />
     <Compile Include="GameplayTweaksPlugin.UI.cs" />
     <Compile Include="GameplayTweaksPlugin.Combat.cs" />
@@ -115,6 +121,7 @@
     <Compile Include="GameplayTweaksPlugin.MultiCrewVehicle.TravelAndAssignment.cs" />
     <Compile Include="GameplayTweaksPlugin.MultiCrewVehicle.CrewUi.cs" />
     <Compile Include="GameplayTweaksPlugin.DeliveryStreetCreditPatch.cs" />
+    <Compile Include="GameplayTweaksPlugin.DeliveryFrontExpansionPatch.cs" />
     <Compile Include="PoliticsManagerPatches.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

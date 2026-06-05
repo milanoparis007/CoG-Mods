@@ -28,6 +28,119 @@ using UnityEngine.UI;
 
 namespace GameplayTweaks
 {
+	internal static class CrewInfoGenCrewNameStabilityPatch
+	{
+		private static int _lastLoggedFrame = -9999;
+
+		internal static Exception Finalizer(CrewInfoGen __instance, ref string __result, Exception __exception)
+		{
+			if (__exception == null)
+			{
+				return null;
+			}
+
+			if (!(__exception is NullReferenceException))
+			{
+				return __exception;
+			}
+
+			__result = ResolveFallbackCrewName(__instance);
+			int frame = Time.frameCount;
+			if (frame - _lastLoggedFrame >= 300)
+			{
+				_lastLoggedFrame = frame;
+				ulong peepId = 0UL;
+				try
+				{
+					peepId = __instance?.data?.crew.peepId.id ?? 0UL;
+				}
+				catch
+				{
+				}
+				GameplayTweaksPlugin.VerificationLog("CrewDialog", $"crew-name-refresh-null-suppressed peep={peepId} fallback=\"{__result}\"");
+			}
+			return null;
+		}
+
+		private static string ResolveFallbackCrewName(CrewInfoGen gen)
+		{
+			try
+			{
+				Entity peep = gen?.data?.crew.GetPeep();
+				string fullName = peep?.data?.person?.FullName;
+				if (!string.IsNullOrWhiteSpace(fullName))
+				{
+					return fullName;
+				}
+			}
+			catch
+			{
+			}
+
+			try
+			{
+				return Loc.Get("ui.crewinfo.delivery-noassign");
+			}
+			catch
+			{
+				return "No assigned crew";
+			}
+		}
+	}
+
+	internal static class CrewInfoGenEmptyVehicleNameStabilityPatch
+	{
+		private static int _lastLoggedFrame = -9999;
+
+		internal static Exception Finalizer(CrewInfoGen __instance, ref string __result, Exception __exception)
+		{
+			if (__exception == null)
+			{
+				return null;
+			}
+
+			if (!(__exception is NullReferenceException))
+			{
+				return __exception;
+			}
+
+			__result = ResolveFallbackVehicleName(__instance);
+			int frame = Time.frameCount;
+			if (frame - _lastLoggedFrame >= 300)
+			{
+				_lastLoggedFrame = frame;
+				ulong vehicleId = 0UL;
+				try
+				{
+					vehicleId = __instance?.data?.emptyVehicle.id ?? 0UL;
+				}
+				catch
+				{
+				}
+				GameplayTweaksPlugin.VerificationLog("CrewDialog", $"empty-vehicle-name-null-suppressed vehicle={vehicleId} fallback=\"{__result}\"");
+			}
+			return null;
+		}
+
+		private static string ResolveFallbackVehicleName(CrewInfoGen gen)
+		{
+			try
+			{
+				Entity vehicle = gen?.data?.emptyVehicle.FindEntity();
+				string name = vehicle?.config?.mobile?.GetName();
+				if (!string.IsNullOrWhiteSpace(name))
+				{
+					return name;
+				}
+			}
+			catch
+			{
+			}
+
+			return "Vehicle";
+		}
+	}
+
 	internal static class CrewCardExtraCrewPatch
 	{
 		private const string PassengerParentPath = "Extras";
@@ -38,6 +151,7 @@ namespace GameplayTweaks
 		private const string TopButtonsPath = "Info/Panel/Rows/Top/Buttons";
 		private const string ScoutRowName = "Scout";
 		private const string DriveRowName = "Drive";
+		private const string CrewRelationsRowName = "CrewRelations";
 		private const string SetAsDriverRowName = "SetAsDriver";
 		private const string PickUpTopRowName = "PickUpVehicle";
 		private const string ScoutButtonName = "ScoutButton";
@@ -50,6 +164,8 @@ namespace GameplayTweaks
 		private const int SmallFontSize = 10;
 		private const int LabelFontSize = 11;
 		private const int InitialsFontSize = 9;
+		private static long _lastCrewRelationsButtonBossId = -1L;
+		private static int _lastCrewRelationsButtonQuestCount = -1;
 
 		[HarmonyPostfix]
 		internal static void Postfix(CrewCardContext __instance)
@@ -64,6 +180,7 @@ namespace GameplayTweaks
 					SetPassengerRowActive(__instance, active: false);
 					SetScoutRowActive(__instance, active: false);
 					SetDriveRowActive(__instance, active: false);
+					SetCrewRelationsTopRowActive(__instance, active: false, questAvailable: false);
 					SetSetAsDriverRowActive(__instance, active: false);
 					bool showPickUpForUnassigned = humanCrew != null
 						&& __instance.data.crew.peepId.IsValid
@@ -78,29 +195,31 @@ namespace GameplayTweaks
 					SetPassengerRowActive(__instance, active: false);
 					SetScoutRowActive(__instance, active: false);
 					SetDriveRowActive(__instance, active: false);
+					SetCrewRelationsTopRowActive(__instance, active: false, questAvailable: false);
 					SetSetAsDriverRowActive(__instance, active: false);
 					SetPickUpTopRowActive(__instance, false);
 					return;
 				}
+				PlayerInfo humanPlayer = G.GetHumanPlayer();
+				bool isBossCard = IsBossCrewCard(__instance, humanPlayer);
+				int crewQuestCount = isBossCard ? GetPendingCrewRelationsQuestCountNoSeed() : 0;
 				if (!__instance.data.crew.IsInVehicle)
 				{
 					SetPassengerRowActive(__instance, active: false);
 					SetScoutRowActive(__instance, active: false);
 					SetDriveRowActive(__instance, active: false);
+					SetCrewRelationsTopRowActive(__instance, active: false, questAvailable: false);
 					SetSetAsDriverRowActive(__instance, active: false);
 					SetPickUpTopRowActive(__instance, false);
 					return;
 				}
 				SetPickUpTopRowActive(__instance, false);
 				if (humanCrew == null)
+				{
+					SetCrewRelationsTopRowActive(__instance, active: false, questAvailable: false);
 					return;
-				bool isPassenger = !MultiCrewVehicleHelper.IsDriver(humanCrew, __instance.data.crew);
-				bool isDriver = !isPassenger;
-				SetScoutRowActive(__instance, active: isPassenger);
-				SetDriveRowActive(__instance, active: isDriver);
+				}
 				EntityID vehicleId = __instance.data.crew.VehicleID;
-				int inVehicleCount = MultiCrewVehicleHelper.GetAllCrewInVehicle(humanCrew, vehicleId).Count;
-				SetSetAsDriverRowActive(__instance, active: isPassenger && inVehicleCount > 1);
 				int vehicleSlots = MultiCrewVehicleHelper.GetVehicleCrewSlots(vehicleId);
 				int maxPassengers = Math.Min(Math.Max(vehicleSlots - 1, 0), MaxPassengerSlots);
 				List<CrewAssignment> allInVehicle = MultiCrewVehicleHelper.GetAllCrewInVehicle(humanCrew, vehicleId);
@@ -108,6 +227,13 @@ namespace GameplayTweaks
 					.Where(c => c.peepId != __instance.data.crew.peepId && c.IsNotDead)
 					.Take(maxPassengers)
 					.ToList();
+				int inVehicleCount = allInVehicle.Count;
+				bool isPassenger = !MultiCrewVehicleHelper.IsDriver(humanCrew, __instance.data.crew);
+				bool isDriver = !isPassenger;
+				SetDriveRowActive(__instance, active: isDriver, passengerCount: others.Count);
+				SetCrewRelationsTopRowActive(__instance, active: isDriver && isBossCard, questAvailable: crewQuestCount > 0);
+				SetScoutRowActive(__instance, active: isDriver && others.Count > 0, passengerCount: others.Count);
+				SetSetAsDriverRowActive(__instance, active: isPassenger && inVehicleCount > 1);
 				if (others.Count == 0)
 				{
 					SetPassengerRowActive(__instance, active: false);
@@ -215,13 +341,13 @@ namespace GameplayTweaks
 				legacy.gameObject.SetActive(false);
 		}
 
-		private static void SetScoutRowActive(CrewCardContext ctx, bool active)
+		private static void SetScoutRowActive(CrewCardContext ctx, bool active, int passengerCount = 0)
 		{
 			if (ctx?.card == null)
 				return;
 			try
 			{
-				GameObject scoutBtn = GetOrCreateScoutRow(ctx);
+				GameObject scoutBtn = GetOrCreateScoutRow(ctx, passengerCount);
 				if (scoutBtn != null)
 					scoutBtn.SetActive(active);
 			}
@@ -239,13 +365,13 @@ namespace GameplayTweaks
 			}
 		}
 
-		private static void SetDriveRowActive(CrewCardContext ctx, bool active)
+		private static void SetDriveRowActive(CrewCardContext ctx, bool active, int passengerCount = 0)
 		{
 			if (ctx?.card == null)
 				return;
 			try
 			{
-				GameObject driveBtn = GetOrCreateDriveRow(ctx);
+				GameObject driveBtn = GetOrCreateDriveRow(ctx, passengerCount);
 				if (driveBtn != null)
 					driveBtn.SetActive(active);
 			}
@@ -260,6 +386,41 @@ namespace GameplayTweaks
 			catch (Exception ex)
 			{
 				Debug.LogWarning("[GameplayTweaks] SetDriveRowActive: " + ex.Message);
+			}
+		}
+
+		private static void SetCrewRelationsTopRowActive(CrewCardContext ctx, bool active, bool questAvailable)
+		{
+			if (ctx?.card == null)
+				return;
+			try
+			{
+				if (!active)
+				{
+					Transform buttonsParent = ctx.card.transform.Find(TopButtonsPath);
+					Transform existing = buttonsParent?.Find(CrewRelationsRowName);
+					if (existing != null)
+					{
+						existing.gameObject.SetActive(false);
+					}
+					return;
+				}
+
+				GameObject btn = GetOrCreateCrewRelationsTopRowButton(ctx, questAvailable);
+				if (btn != null)
+					btn.SetActive(active);
+			}
+			catch (TypeLoadException ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] SetCrewRelationsTopRowActive (type load): " + ex.Message);
+			}
+			catch (ReflectionTypeLoadException ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] SetCrewRelationsTopRowActive (reflection type load): " + ex.Message);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] SetCrewRelationsTopRowActive: " + ex.Message);
 			}
 		}
 
@@ -313,22 +474,29 @@ namespace GameplayTweaks
 				if (buttonsParent == null)
 					return null;
 				Transform existing = buttonsParent.Find(PickUpTopRowName);
-				if (existing != null)
-					return existing.gameObject;
-				GameObject btnGo = CreateTopRowButton(buttonsParent, PickUpTopRowName, "Pick up", new Color(0.35f, 0.4f, 0.3f));
-				btnGo.transform.SetSiblingIndex(GetTopRowInsertIndex(buttonsParent) + 3);
+				GameObject btnGo = existing != null
+					? existing.gameObject
+					: CreateTopRowButton(buttonsParent, PickUpTopRowName, "Pick", new Color(0.35f, 0.4f, 0.3f));
+				ConfigureTopRowTextButton(btnGo, "Pick", new Color(0.35f, 0.4f, 0.3f));
+				if (existing == null)
+					btnGo.transform.SetSiblingIndex(GetTopRowInsertIndex(buttonsParent) + 3);
 				CrewCardContext cardCtx = ctx;
-				btnGo.GetComponent<Button>().onClick.AddListener(() =>
+				Button button = btnGo.GetComponent<Button>();
+				if (button != null)
 				{
-					try
+					button.onClick.RemoveAllListeners();
+					button.onClick.AddListener(() =>
 					{
-						HandlePickUpTopRowClick(cardCtx);
-					}
-					catch (Exception ex)
-					{
-						Debug.LogWarning("[GameplayTweaks] Pick up Top row click: " + ex.Message);
-					}
-				});
+						try
+						{
+							HandlePickUpTopRowClick(cardCtx);
+						}
+						catch (Exception ex)
+						{
+							Debug.LogWarning("[GameplayTweaks] Pick up Top row click: " + ex.Message);
+						}
+					});
+				}
 				return btnGo;
 			}
 			catch (Exception ex)
@@ -338,45 +506,364 @@ namespace GameplayTweaks
 			}
 		}
 
-		private static GameObject CreateTopRowButton(Transform buttonsParent, string name, string label, Color bgColor)
+		private static GameObject GetOrCreateCrewRelationsTopRowButton(CrewCardContext ctx, bool questAvailable)
+		{
+			if (ctx?.card == null)
+				return null;
+			try
+			{
+				Transform buttonsParent = ctx.card.transform.Find(TopButtonsPath);
+				if (buttonsParent == null)
+					return null;
+				Transform existing = buttonsParent.Find(CrewRelationsRowName);
+				GameObject btnGo = existing != null
+					? existing.gameObject
+					: CreateTopRowButton(buttonsParent, CrewRelationsRowName, "Crew", new Color(0.18f, 0.2f, 0.2f));
+				if (existing == null)
+				{
+					btnGo.transform.SetSiblingIndex(GetTopRowInsertIndex(buttonsParent) + 2);
+				}
+
+				Color textColor = questAvailable ? new Color(1f, 0.22f, 0.18f) : new Color(0.45f, 0.95f, 0.52f);
+				ConfigureTopRowTextButton(btnGo, "Crew", questAvailable ? new Color(0.34f, 0.12f, 0.1f) : new Color(0.12f, 0.26f, 0.16f));
+				UpdateTopRowButtonText(btnGo, "Crew", textColor);
+				long bossId = (long)(ctx.data.crew.peepId.IsValid ? ctx.data.crew.peepId.id : 0UL);
+				int questCount = GetPendingCrewRelationsQuestCountNoSeed();
+				if (bossId != _lastCrewRelationsButtonBossId || questCount != _lastCrewRelationsButtonQuestCount)
+				{
+					_lastCrewRelationsButtonBossId = bossId;
+					_lastCrewRelationsButtonQuestCount = questCount;
+					GameplayTweaksPlugin.VerificationLog("CrewRelations", $"crew-button-added boss={bossId} availableQuests={questCount}");
+				}
+
+				Button button = btnGo.GetComponent<Button>();
+				if (button != null)
+				{
+					button.onClick.RemoveAllListeners();
+					button.onClick.AddListener(() =>
+					{
+						try
+						{
+							Entity latestPeep = ctx?.data?.crew.peepId.FindEntity();
+							PlayerInfo humanPlayer = G.GetHumanPlayer();
+							if (!IsBossCrewCard(ctx, humanPlayer) || latestPeep == null)
+							{
+								MultiCrewVehicleHelper.ShowHudMessage("Crew relations are only available for the boss.");
+								return;
+							}
+
+							int currentQuestCount = GetPendingCrewRelationsQuestCountNoSeed();
+							GameplayTweaksPlugin.VerificationLog("CrewRelations", $"crew-button-clicked boss={latestPeep.Id.id} availableQuests={currentQuestCount}");
+							GameplayTweaksPlugin.OpenCrewRelationsFromExternalUi(latestPeep);
+						}
+						catch (TypeLoadException ex)
+						{
+							Debug.LogWarning("[GameplayTweaks] Crew relations button TypeLoadException: " + ex.Message);
+						}
+						catch (ReflectionTypeLoadException ex)
+						{
+							Debug.LogWarning("[GameplayTweaks] Crew relations button ReflectionTypeLoadException: " + ex.Message);
+						}
+						catch (Exception ex)
+						{
+							Debug.LogWarning("[GameplayTweaks] Crew relations button: " + ex.Message);
+						}
+					});
+				}
+
+				return btnGo;
+			}
+			catch (TypeLoadException ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] GetOrCreateCrewRelationsTopRowButton (type load): " + ex.Message);
+				return null;
+			}
+			catch (ReflectionTypeLoadException ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] GetOrCreateCrewRelationsTopRowButton (reflection type load): " + ex.Message);
+				return null;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] GetOrCreateCrewRelationsTopRowButton: " + ex.Message);
+				return null;
+			}
+		}
+
+		private static GameObject CreateTopRowButton(Transform buttonsParent, string name, string label, Color bgColor, string templateName = null)
 		{
 			GameObject btnGo = new GameObject(name, typeof(RectTransform), typeof(Button), typeof(Image), typeof(LayoutElement));
 			btnGo.transform.SetParent(buttonsParent, false);
-			var le = btnGo.GetComponent<LayoutElement>();
+			ConfigureTopRowTextButton(btnGo, label, bgColor);
+			return btnGo;
+		}
+
+		private static bool HasTopRowVisual(GameObject btnGo)
+		{
+			return HasTopRowIconVisual(btnGo) || HasTopRowTextVisual(btnGo);
+		}
+
+		private static bool HasTopRowIconVisual(GameObject btnGo)
+		{
+			if (btnGo == null)
+			{
+				return false;
+			}
+
+			Image[] images = btnGo.GetComponentsInChildren<Image>(true);
+			for (int i = 0; i < images.Length; i++)
+			{
+				Image childImage = images[i];
+				if (childImage == null || childImage.gameObject == btnGo)
+				{
+					continue;
+				}
+				if (childImage.sprite != null || childImage.overrideSprite != null)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		private static bool HasTopRowTextVisual(GameObject btnGo)
+		{
+			if (btnGo == null)
+			{
+				return false;
+			}
+
+			TextMeshProUGUI[] tmps = btnGo.GetComponentsInChildren<TextMeshProUGUI>(true);
+			for (int i = 0; i < tmps.Length; i++)
+			{
+				TextMeshProUGUI tmp = tmps[i];
+				if (tmp != null && !string.IsNullOrWhiteSpace(tmp.text))
+				{
+					return true;
+				}
+			}
+
+			Text[] texts = btnGo.GetComponentsInChildren<Text>(true);
+			for (int i = 0; i < texts.Length; i++)
+			{
+				Text text = texts[i];
+				if (text != null && !string.IsNullOrWhiteSpace(text.text))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		private static void EnsureTopRowFallbackText(GameObject btnGo, string label)
+		{
+			if (btnGo == null)
+			{
+				return;
+			}
+
+			Transform textTransform = btnGo.transform.Find("Text");
+			GameObject textGo = textTransform != null
+				? textTransform.gameObject
+				: new GameObject("Text", typeof(RectTransform), typeof(Text));
+			if (textTransform == null)
+			{
+				textGo.transform.SetParent(btnGo.transform, false);
+			}
+
+			var textRect = textGo.GetComponent<RectTransform>() ?? textGo.AddComponent<RectTransform>();
+			textRect.anchorMin = Vector2.zero;
+			textRect.anchorMax = Vector2.one;
+			textRect.offsetMin = Vector2.zero;
+			textRect.offsetMax = Vector2.zero;
+			Text text = textGo.GetComponent<Text>() ?? textGo.AddComponent<Text>();
+			text.text = label;
+			text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+			text.fontSize = GetTopRowTextSize(label);
+			text.fontStyle = FontStyle.Bold;
+			text.alignment = TextAnchor.MiddleCenter;
+			text.color = Color.white;
+			text.horizontalOverflow = HorizontalWrapMode.Overflow;
+			text.verticalOverflow = VerticalWrapMode.Overflow;
+			text.raycastTarget = false;
+			Outline outline = textGo.GetComponent<Outline>() ?? textGo.AddComponent<Outline>();
+			outline.effectColor = new Color(0f, 0f, 0f, 0.85f);
+			outline.effectDistance = new Vector2(1f, -1f);
+			outline.useGraphicAlpha = true;
+			textGo.SetActive(true);
+		}
+
+		private static void UpdateTopRowButtonText(GameObject btnGo, string label, Color textColor)
+		{
+			if (btnGo == null)
+				return;
+			EnsureTopRowFallbackText(btnGo, label);
+			Text text = btnGo.transform.Find("Text")?.GetComponent<Text>();
+			if (text == null)
+				return;
+			text.text = label;
+			text.color = textColor;
+			text.fontSize = GetTopRowTextSize(label);
+			text.fontStyle = FontStyle.Bold;
+			text.alignment = TextAnchor.MiddleCenter;
+		}
+
+		private static int GetTopRowTextSize(string label)
+		{
+			int length = string.IsNullOrEmpty(label) ? 0 : label.Length;
+			if (string.Equals(label, "Crew", StringComparison.Ordinal)
+				|| (!string.IsNullOrEmpty(label) && label.StartsWith("Drive", StringComparison.Ordinal))
+				|| (!string.IsNullOrEmpty(label) && label.StartsWith("Scout", StringComparison.Ordinal)))
+			{
+				return 8;
+			}
+			if (length >= 6)
+			{
+				return 7;
+			}
+			if (length >= 5)
+			{
+				return 8;
+			}
+			return 9;
+		}
+
+		private static void ClearTopRowInheritedVisuals(GameObject btnGo)
+		{
+			if (btnGo == null)
+			{
+				return;
+			}
+
+			Image[] images = btnGo.GetComponentsInChildren<Image>(true);
+			for (int i = 0; i < images.Length; i++)
+			{
+				Image image = images[i];
+				if (image == null || image.gameObject == btnGo)
+				{
+					continue;
+				}
+				image.enabled = false;
+				image.gameObject.SetActive(false);
+			}
+
+			TextMeshProUGUI[] tmps = btnGo.GetComponentsInChildren<TextMeshProUGUI>(true);
+			for (int i = 0; i < tmps.Length; i++)
+			{
+				TextMeshProUGUI tmp = tmps[i];
+				if (tmp == null)
+				{
+					continue;
+				}
+				tmp.text = string.Empty;
+				tmp.enabled = false;
+				tmp.gameObject.SetActive(false);
+			}
+
+			Text[] texts = btnGo.GetComponentsInChildren<Text>(true);
+			for (int i = 0; i < texts.Length; i++)
+			{
+				Text text = texts[i];
+				if (text == null || string.Equals(text.gameObject.name, "Text", StringComparison.Ordinal))
+				{
+					continue;
+				}
+				text.text = string.Empty;
+				text.enabled = false;
+				text.gameObject.SetActive(false);
+			}
+		}
+
+		private static void UpdateTopRowButtonBackground(GameObject btnGo, Color bgColor)
+		{
+			if (btnGo == null)
+				return;
+			Image img = btnGo.GetComponent<Image>();
+			if (img != null)
+			{
+				img.color = bgColor;
+			}
+			Button btn = btnGo.GetComponent<Button>();
+			if (btn != null)
+			{
+				ColorBlock colors = btn.colors;
+				colors.normalColor = bgColor;
+				colors.highlightedColor = Color.Lerp(bgColor, Color.white, 0.12f);
+				colors.pressedColor = Color.Lerp(bgColor, Color.black, 0.15f);
+				btn.colors = colors;
+			}
+		}
+
+		private static void ConfigureTopRowTextButton(GameObject btnGo, string label, Color bgColor)
+		{
+			if (btnGo == null)
+			{
+				return;
+			}
+
+			EnsureTopRowCoreComponents(btnGo, bgColor);
+			ClearTopRowInheritedVisuals(btnGo);
+			EnsureTopRowFallbackText(btnGo, label);
+			UpdateTopRowButtonBackground(btnGo, bgColor);
+		}
+
+		private static void EnsureTopRowCoreComponents(GameObject btnGo, Color bgColor)
+		{
+			if (btnGo == null)
+			{
+				return;
+			}
+
+			RectTransform rect = btnGo.GetComponent<RectTransform>();
+			if (rect != null)
+			{
+				rect.localScale = Vector3.one;
+				rect.sizeDelta = new Vector2(TopRowButtonWidth, TopRowButtonHeight);
+			}
+
+			LayoutElement le = btnGo.GetComponent<LayoutElement>() ?? btnGo.AddComponent<LayoutElement>();
 			le.minWidth = TopRowButtonWidth;
 			le.preferredWidth = TopRowButtonWidth;
 			le.flexibleWidth = 0f;
 			le.minHeight = TopRowButtonHeight;
 			le.preferredHeight = TopRowButtonHeight;
-			var btnRect = btnGo.GetComponent<RectTransform>();
-			btnRect.sizeDelta = new Vector2(TopRowButtonWidth, TopRowButtonHeight);
-			Image img = btnGo.GetComponent<Image>();
-			if (img != null)
-				img.color = bgColor;
-			Button btn = btnGo.GetComponent<Button>();
-			var colors = btn.colors;
-			colors.normalColor = bgColor;
-			btn.colors = colors;
-			GameObject textGo = new GameObject("Text", typeof(RectTransform), typeof(Text));
-			textGo.transform.SetParent(btnGo.transform, false);
-			var textRect = textGo.GetComponent<RectTransform>();
-			textRect.anchorMin = Vector2.zero;
-			textRect.anchorMax = Vector2.one;
-			textRect.offsetMin = Vector2.zero;
-			textRect.offsetMax = Vector2.zero;
-			Text text = textGo.GetComponent<Text>();
-			text.text = label;
-			text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-			text.fontSize = SmallFontSize;
-			text.alignment = TextAnchor.MiddleCenter;
-			text.color = new Color(0.94f, 0.94f, 0.92f);
-			return btnGo;
+
+			Image img = btnGo.GetComponent<Image>() ?? btnGo.AddComponent<Image>();
+			img.enabled = true;
+			img.raycastTarget = true;
+			img.color = bgColor;
+			Button btn = btnGo.GetComponent<Button>() ?? btnGo.AddComponent<Button>();
+			btn.targetGraphic = img;
 		}
 
 		private static int GetTopRowInsertIndex(Transform buttonsParent)
 		{
 			Transform inspect = buttonsParent.Find("Inspect");
 			return inspect != null ? inspect.GetSiblingIndex() + 1 : buttonsParent.childCount;
+		}
+
+		private static bool IsBossCrewCard(CrewCardContext ctx, PlayerInfo humanPlayer)
+		{
+			if (ctx?.data == null || !ctx.data.crew.peepId.IsValid || humanPlayer == null)
+			{
+				return false;
+			}
+
+			return GameplayTweaksPlugin.IsHumanBoss(ctx.data.crew.peepId.FindEntity(), humanPlayer);
+		}
+
+		private static int GetPendingCrewRelationsQuestCountNoSeed()
+		{
+			try
+			{
+				return GameplayTweaksPlugin.SaveData?.PendingCrewSideQuests?.Count(item => item != null) ?? 0;
+			}
+			catch
+			{
+				return 0;
+			}
 		}
 
 		private static bool IsCrewUnassignedCard(CrewCardContext ctx)
@@ -494,9 +981,14 @@ namespace GameplayTweaks
 			try
 			{
 				EntityID currentPeepId = cardCtx?.data?.crew.peepId.IsValid == true ? cardCtx.data.crew.peepId : peepId;
-				if (!TryGetCurrentVehicleRole(currentPeepId, out _, out _, out bool isDriver) || isDriver)
+				if (!TryGetCurrentVehicleRole(currentPeepId, out _, out CrewAssignment currentAssignment, out bool isDriver))
 				{
-					MultiCrewVehicleHelper.ShowHudMessage("Only passengers can scout.");
+					MultiCrewVehicleHelper.ShowHudMessage("Crew must be in a vehicle to scout.");
+					return;
+				}
+				if (isDriver)
+				{
+					RunDriverCardScoutAction(currentAssignment, cardCtx);
 					return;
 				}
 				if (!MultiCrewVehicleHelper.TryGetScoutableUnknownNodes(currentPeepId, out List<Node> unknown, out string failureReason))
@@ -532,7 +1024,59 @@ namespace GameplayTweaks
 			}
 		}
 
-		private static GameObject GetOrCreateScoutRow(CrewCardContext ctx)
+		private static void RunDriverCardScoutAction(CrewAssignment driverAssignment, CrewCardContext cardCtx)
+		{
+			PlayerCrew humanCrew = G.GetHumanCrew();
+			if (humanCrew == null || !driverAssignment.IsValid || !driverAssignment.IsInVehicle || !driverAssignment.VehicleID.IsValid)
+			{
+				MultiCrewVehicleHelper.ShowHudMessage("Crew must be in a vehicle to scout.");
+				return;
+			}
+			if (!MultiCrewVehicleHelper.IsDriver(humanCrew, driverAssignment))
+			{
+				MultiCrewVehicleHelper.ShowHudMessage("Only the driver can order vehicle scouting.");
+				return;
+			}
+
+			List<CrewAssignment> passengers = MultiCrewVehicleHelper.GetPassengers(humanCrew, driverAssignment.VehicleID)
+				.Where(item => item.IsValid && item.peepId.IsValid && item.IsNotDead)
+				.OrderBy(item => item.peepId.id)
+				.ToList();
+			if (passengers.Count <= 0)
+			{
+				MultiCrewVehicleHelper.ShowHudMessage("No passengers available to scout.");
+				return;
+			}
+
+			string lastFailure = "Scout failed.";
+			foreach (CrewAssignment passenger in passengers)
+			{
+				if (!MultiCrewVehicleHelper.TryGetScoutableUnknownNodes(passenger.peepId, out List<Node> unknown, out string scoutableFailure))
+				{
+					lastFailure = scoutableFailure;
+					continue;
+				}
+				if (unknown.Count <= 0)
+				{
+					lastFailure = "No unknown corners nearby.";
+					continue;
+				}
+				if (MultiCrewVehicleHelper.TryScoutOneNode(passenger.peepId, unknown[0], out string scoutFailureReason))
+				{
+					cardCtx?.RefreshCard();
+					MultiCrewVehicleHelper.TryRefreshCrewHudCardsForVehicle(driverAssignment.VehicleID);
+					return;
+				}
+				if (!string.IsNullOrWhiteSpace(scoutFailureReason))
+				{
+					lastFailure = scoutFailureReason;
+				}
+			}
+
+			MultiCrewVehicleHelper.ShowHudMessage(lastFailure);
+		}
+
+		private static GameObject GetOrCreateScoutRow(CrewCardContext ctx, int passengerCount = 0)
 		{
 			if (ctx?.card == null)
 				return null;
@@ -541,13 +1085,18 @@ namespace GameplayTweaks
 				Transform buttonsParent = ctx.card.transform.Find(TopButtonsPath);
 				if (buttonsParent == null)
 					return null;
+				string label = "Scout";
 				Transform existing = buttonsParent.Find(ScoutRowName);
 				GameObject btnGo = existing != null
 					? existing.gameObject
-					: CreateTopRowButton(buttonsParent, ScoutRowName, "Scout (7 MP)", new Color(0.3f, 0.5f, 0.3f));
+					: CreateTopRowButton(buttonsParent, ScoutRowName, label, new Color(0.3f, 0.5f, 0.3f), "Inspect");
 				if (existing == null)
 				{
 					btnGo.transform.SetSiblingIndex(GetTopRowInsertIndex(buttonsParent) + 1);
+				}
+				else
+				{
+					ConfigureTopRowTextButton(btnGo, label, new Color(0.3f, 0.5f, 0.3f));
 				}
 				EntityID peepId = ctx.data.crew.peepId;
 				CrewCardContext cardCtx = ctx;
@@ -594,7 +1143,7 @@ namespace GameplayTweaks
 			}
 		}
 
-		private static GameObject GetOrCreateDriveRow(CrewCardContext ctx)
+		private static GameObject GetOrCreateDriveRow(CrewCardContext ctx, int passengerCount = 0)
 		{
 			if (ctx?.card == null)
 				return null;
@@ -603,12 +1152,15 @@ namespace GameplayTweaks
 				Transform buttonsParent = ctx.card.transform.Find(TopButtonsPath);
 				if (buttonsParent == null)
 					return null;
+				string label = "Drive";
 				Transform existing = buttonsParent.Find(DriveRowName);
 				GameObject btnGo = existing != null
 					? existing.gameObject
-					: CreateTopRowButton(buttonsParent, DriveRowName, "Drive", new Color(0.35f, 0.45f, 0.55f));
+					: CreateTopRowButton(buttonsParent, DriveRowName, label, new Color(0.35f, 0.45f, 0.55f), "Goto");
 				if (existing == null)
 					btnGo.transform.SetSiblingIndex(GetTopRowInsertIndex(buttonsParent));
+				else
+					ConfigureTopRowTextButton(btnGo, label, new Color(0.35f, 0.45f, 0.55f));
 				CrewCardContext cardCtx = ctx;
 				Button driveButton = btnGo.GetComponent<Button>();
 				driveButton?.onClick.RemoveAllListeners();
@@ -621,9 +1173,7 @@ namespace GameplayTweaks
 							MultiCrewVehicleHelper.ShowHudMessage("Only the driver can control the vehicle.");
 							return;
 						}
-						Entity vehicle = latestAssignment.VehicleID.FindEntity();
-						if (vehicle != null)
-							MultiCrewVehicleHelper.TweenCameraToEntitySafe(vehicle);
+						HandleDriverCardDriveClick(latestAssignment, cardCtx);
 					}
 					catch (Exception ex)
 					{
@@ -649,6 +1199,119 @@ namespace GameplayTweaks
 			}
 		}
 
+		private static void HandleDriverCardDriveClick(CrewAssignment driverAssignment, CrewCardContext cardCtx)
+		{
+			PlayerCrew humanCrew = G.GetHumanCrew();
+			if (humanCrew == null || !driverAssignment.IsValid || !driverAssignment.IsInVehicle || !driverAssignment.VehicleID.IsValid)
+			{
+				MultiCrewVehicleHelper.ShowHudMessage("Crew must be in a vehicle.");
+				return;
+			}
+			if (!MultiCrewVehicleHelper.IsDriver(humanCrew, driverAssignment))
+			{
+				MultiCrewVehicleHelper.ShowHudMessage("Only the driver can control the vehicle.");
+				return;
+			}
+
+			List<EntityID> passengerIds = MultiCrewVehicleHelper.GetPassengers(humanCrew, driverAssignment.VehicleID)
+				.Where(item => item.IsValid && item.peepId.IsValid && item.IsNotDead)
+				.OrderBy(item => item.peepId.id)
+				.Select(item => item.peepId)
+				.ToList();
+			if (passengerIds.Count <= 0)
+			{
+				Entity vehicle = driverAssignment.VehicleID.FindEntity();
+				if (vehicle != null)
+				{
+					MultiCrewVehicleHelper.TweenCameraToEntitySafe(vehicle);
+				}
+				return;
+			}
+
+			EntityID vehicleId = driverAssignment.VehicleID;
+			EntityID currentDriverPeepId = driverAssignment.peepId;
+			global::Game.Game.serv.ui.AddPopup(new EntitySelectionPopup(
+				passengerIds,
+				peep => DescribePassengerDriverCandidate(peep, vehicleId),
+				"Select new driver",
+				selectedPeepId => HandleDriverCardDriverSelected(vehicleId, currentDriverPeepId, selectedPeepId, cardCtx),
+				null));
+		}
+
+		private static EntitySelectionPopup.EntityDescription DescribePassengerDriverCandidate(Entity peep, EntityID vehicleId)
+		{
+			string name = peep?.data?.person?.FullName ?? "Crew";
+			Sprite sprite = null;
+			try
+			{
+				if (peep != null)
+				{
+					sprite = HUDUtil.GetCrewSprite(peep);
+				}
+			}
+			catch
+			{
+			}
+
+			return new EntitySelectionPopup.EntityDescription
+			{
+				message = name,
+				description = $"Passenger in vehicle {vehicleId.id}",
+				sprite = sprite,
+				buttonTextOverride = "Set driver"
+			};
+		}
+
+		private static void HandleDriverCardDriverSelected(EntityID vehicleId, EntityID previousDriverPeepId, EntityID selectedPeepId, CrewCardContext cardCtx)
+		{
+			if (!selectedPeepId.IsValid)
+			{
+				return;
+			}
+			if (!MultiCrewVehicleHelper.TryBeginSetDriverUi())
+			{
+				return;
+			}
+			try
+			{
+				PlayerCrew humanCrew = G.GetHumanCrew();
+				CrewAssignment selectedAssignment = humanCrew?.GetCrewForPeep(selectedPeepId) ?? CrewAssignment.EMPTY;
+				if (!selectedAssignment.IsValid || !selectedAssignment.IsInVehicle || selectedAssignment.VehicleID != vehicleId)
+				{
+					MultiCrewVehicleHelper.ShowHudMessage("Selected crew is no longer in this vehicle.");
+					return;
+				}
+
+				if (MultiCrewVehicleHelper.TryBecomeDriver(selectedAssignment, "driver-card-menu"))
+				{
+					MultiCrewVehicleHelper.ShowHudMessage("Driver set.");
+					MultiCrewVehicleHelper.LogVehicleAuthority(
+						"driver-card-driver-switch",
+						$"{vehicleId.id}:{previousDriverPeepId.id}:{selectedPeepId.id}",
+						$"driver-card-driver-switch vehicle={vehicleId.id} previousDriver={previousDriverPeepId.id} newDriver={selectedPeepId.id}",
+						dedupe: false);
+					cardCtx?.RefreshCard();
+					MultiCrewVehicleHelper.TryRefreshCrewHudCardsForVehicle(vehicleId);
+				}
+			}
+			catch (TypeLoadException ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Driver card set driver TypeLoadException: " + ex.Message);
+			}
+			catch (ReflectionTypeLoadException ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Driver card set driver ReflectionTypeLoadException: " + ex.Message);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Driver card set driver: " + ex.Message);
+			}
+			finally
+			{
+				MultiCrewVehicleHelper.EndSetDriverUi();
+			}
+		}
+
 		private static GameObject GetOrCreateSetAsDriverRow(CrewCardContext ctx)
 		{
 			if (ctx?.card == null)
@@ -663,11 +1326,12 @@ namespace GameplayTweaks
 				if (existing != null)
 				{
 					btnGo = existing.gameObject;
+					ConfigureTopRowTextButton(btnGo, "Driver", new Color(0.4f, 0.35f, 0.25f));
 				}
 				else
 				{
-					btnGo = CreateTopRowButton(buttonsParent, SetAsDriverRowName, "Set driver", new Color(0.4f, 0.35f, 0.25f));
-					btnGo.transform.SetSiblingIndex(GetTopRowInsertIndex(buttonsParent) + 2);
+					btnGo = CreateTopRowButton(buttonsParent, SetAsDriverRowName, "Driver", new Color(0.4f, 0.35f, 0.25f), "Peep");
+					btnGo.transform.SetSiblingIndex(GetTopRowInsertIndex(buttonsParent) + 3);
 				}
 				EntityID vehicleId = ctx.data.crew.VehicleID;
 				CrewCardContext cardCtx = ctx;
@@ -1265,12 +1929,176 @@ namespace GameplayTweaks
 		}
 	}
 
+	internal static class CrewCardRouteModeLabelPatch
+	{
+		[HarmonyPostfix]
+		internal static void MuscleTextLineBottomPostfix(CrewInfoGenMuscle __instance, ref string __result)
+		{
+			AppendRouteMode(__instance, ref __result);
+		}
+
+		[HarmonyPostfix]
+		internal static void JobTextLineBottomPostfix(CrewInfoGenJob __instance, ref string __result)
+		{
+			AppendRouteMode(__instance, ref __result);
+		}
+
+		[HarmonyPostfix]
+		internal static void EmptyVehicleTextLineBottomPostfix(CrewInfoGenJustVehicle __instance, ref string __result)
+		{
+			AppendRouteMode(__instance, ref __result);
+		}
+
+		private static void AppendRouteMode(CrewInfoGen gen, ref string text)
+		{
+			try
+			{
+				if (!TryGetVehicleId(gen, out EntityID vehicleId))
+				{
+					return;
+				}
+
+				text = MultiCrewVehicleHelper.AppendHumanVehicleRouteModeLabel(text, vehicleId);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] CrewCardRouteModeLabelPatch: " + ex.Message);
+			}
+		}
+
+		private static bool TryGetVehicleId(CrewInfoGen gen, out EntityID vehicleId)
+		{
+			vehicleId = EntityID.INVALID;
+			if (gen?.data == null)
+			{
+				return false;
+			}
+
+			if (gen.data.crew.IsInVehicle && gen.data.crew.VehicleID.IsValid)
+			{
+				vehicleId = gen.data.crew.VehicleID;
+				return true;
+			}
+
+			if (gen.data.emptyVehicle.IsValid)
+			{
+				vehicleId = gen.data.emptyVehicle;
+				return true;
+			}
+
+			return false;
+		}
+	}
+
 	internal static class CrewDialogCardToggleLayoutPatch
 	{
+		[HarmonyPrefix]
+		internal static bool Prefix(CrewCardContext ctx, bool isOn)
+		{
+			if (!TurnPerformanceDiagnosticsPatch.IsFlushingDeferredCrewDialogSelectionChange
+				|| ctx?.toggle == null
+				|| ctx.toggle.isOn != isOn)
+			{
+				return true;
+			}
+
+			GameplayTweaksPlugin.VerificationLog(
+				"VehicleNodeAuthority",
+				$"crew-dialog-selection-card-state-skipped peep={ctx.data?.crew.peepId.id ?? 0UL} type={ctx.data?.type.ToString() ?? "unknown"} isOn={isOn}");
+			return false;
+		}
+
 		[HarmonyPostfix]
 		internal static void Postfix(CrewDialog __instance, CrewCardContext ctx, bool isOn)
 		{
+			if (TurnPerformanceDiagnosticsPatch.IsFlushingDeferredCrewDialogSelectionChange)
+			{
+				return;
+			}
+
 			CrewDialogLayoutRefreshHelper.RefreshNowAndNextFrame(__instance, ctx, "SetCardState");
+		}
+	}
+
+	internal static class DriverOnlyVehicleMuscleCardPatch
+	{
+		private static bool _loggedPassengerCardHiddenThisSession;
+
+		[HarmonyPostfix]
+		internal static void Postfix(CrewCardType type, ref IEnumerable<CrewCardInfoInitData> __result)
+		{
+			if (type != CrewCardType.CrewMuscle || __result == null)
+			{
+				return;
+			}
+
+			__result = FilterPassengerCards(__result);
+		}
+
+		private static IEnumerable<CrewCardInfoInitData> FilterPassengerCards(IEnumerable<CrewCardInfoInitData> source)
+		{
+			foreach (CrewCardInfoInitData data in source)
+			{
+				if (!TryShouldHidePassengerCard(data, out EntityID vehicleId, out EntityID driverPeepId))
+				{
+					yield return data;
+					continue;
+				}
+
+				if (!_loggedPassengerCardHiddenThisSession)
+				{
+					_loggedPassengerCardHiddenThisSession = true;
+					MultiCrewVehicleHelper.LogVehicleAuthority(
+						"passenger-muscle-card-hidden",
+						$"{vehicleId.id}:{data.crew.peepId.id}:{driverPeepId.id}:session",
+						$"passenger-muscle-card-hidden vehicle={vehicleId.id} crew={data.crew.peepId.id} driver={driverPeepId.id} source=session-proof",
+						dedupe: true);
+				}
+			}
+		}
+
+		private static bool TryShouldHidePassengerCard(CrewCardInfoInitData data, out EntityID vehicleId, out EntityID driverPeepId)
+		{
+			vehicleId = EntityID.INVALID;
+			driverPeepId = EntityID.INVALID;
+			if (data.type != CrewCardType.CrewMuscle || !data.crew.IsValid || !data.crew.IsInVehicle || !data.crew.VehicleID.IsValid)
+			{
+				return false;
+			}
+
+			PlayerCrew humanCrew = G.GetHumanCrew();
+			if (humanCrew == null)
+			{
+				return false;
+			}
+
+			CrewAssignment latestCrew = humanCrew.GetCrewForPeep(data.crew.peepId);
+			if (latestCrew.IsValid)
+			{
+				if (!latestCrew.IsInVehicle || !latestCrew.VehicleID.IsValid)
+				{
+					return false;
+				}
+			}
+			else
+			{
+				latestCrew = data.crew;
+			}
+
+			vehicleId = latestCrew.VehicleID;
+			driverPeepId = MultiCrewVehicleHelper.GetDriverPeepId(humanCrew, vehicleId);
+			if (!driverPeepId.IsValid)
+			{
+				return false;
+			}
+
+			CrewAssignment driverCrew = humanCrew.GetCrewForPeep(driverPeepId);
+			if (!driverCrew.IsValid || !driverCrew.IsInVehicle || driverCrew.VehicleID != vehicleId)
+			{
+				return false;
+			}
+
+			return latestCrew.peepId != driverPeepId;
 		}
 	}
 

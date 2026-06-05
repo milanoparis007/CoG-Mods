@@ -2459,7 +2459,8 @@ internal static class AssignCrewToBuildingPatch
 			}
 
 			long elapsedMs = GetElapsedMs(__state);
-			if (elapsedMs < DetailThresholdMs)
+			long thresholdMs = (GameplayTweaksPlugin.EnablePerformanceDiagnostics?.Value ?? false) ? DetailThresholdMs : 80L;
+			if (elapsedMs < thresholdMs)
 			{
 				return;
 			}
@@ -2836,7 +2837,15 @@ internal static class AssignCrewToBuildingPatch
 				vehicle.components.mobile.UpdateHealthFrom(assignment, VehicleHealthSource.FromDriving);
 				xpHealthMs = GetElapsedMs(segmentTicks);
 				long totalMs = GetElapsedMs(totalTicks);
-				if (totalMs >= 8L || driveMs >= 6L || markKnownMs >= 6L || displayHudMs >= 6L || resolveStartMs >= 6L || reachedNodeMs >= 6L || xpHealthMs >= 6L)
+				bool detailedPerformance = GameplayTweaksPlugin.EnablePerformanceDiagnostics?.Value ?? false;
+				if ((detailedPerformance && (totalMs >= 8L || driveMs >= 6L || markKnownMs >= 6L || displayHudMs >= 6L || resolveStartMs >= 6L || reachedNodeMs >= 6L || xpHealthMs >= 6L))
+					|| totalMs >= 80L
+					|| driveMs >= 80L
+					|| markKnownMs >= 80L
+					|| displayHudMs >= 80L
+					|| resolveStartMs >= 80L
+					|| reachedNodeMs >= 80L
+					|| xpHealthMs >= 80L)
 				{
 					Debug.Log($"[PERF][HumanVehicleStartDriving] ms={totalMs} pathReadMs={pathReadMs} resolveStartMs={resolveStartMs} reachedNodeMs={reachedNodeMs} guardMs={guardMs} markKnownMs={markKnownMs} stateMs={stateMs} displayHudMs={displayHudMs} hideMs={hideMs} driveMs={driveMs} xpHealthMs={xpHealthMs} vehicle={assignment.VehicleID.id} peep={assignment.peepId.id} startNode={startNodeId} reachedNode={reachedNode.id} goalNode={__instance.goalID} pathNodes={path.nodes?.Count ?? 0} pathWorld={path.world?.Count ?? 0} frame={Time.frameCount}");
 				}

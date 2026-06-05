@@ -74,6 +74,10 @@ namespace AfterProhibitionEconomy
 
 		internal static ConfigEntry<bool> EnablePostBusinessUpdateDiagnostics { get; private set; }
 
+		internal static ConfigEntry<bool> EnableRuntimeEconomyProgressLog { get; private set; }
+
+		internal static ConfigEntry<bool> EnableRuntimeEconomyRoutineLog { get; private set; }
+
 		private Harmony _harmony;
 		private bool _loggedEconomyBaseline;
 
@@ -285,6 +289,18 @@ namespace AfterProhibitionEconomy
 				"EnablePostBusinessUpdateDiagnostics",
 				false,
 				"Runs Dirty Cash and front-resource diagnostics after BusinessUpdate.UpdateBusinessModules. Disabled by default because full-map scans can block new-game map startup.");
+
+			EnableRuntimeEconomyProgressLog = Config.Bind(
+				"Diagnostics",
+				"EnableRuntimeEconomyProgressLog",
+				false,
+				"Logs routine chunk-by-chunk economy batch progress. Failure and completion summaries still log without this enabled.");
+
+			EnableRuntimeEconomyRoutineLog = Config.Bind(
+				"Diagnostics",
+				"EnableRuntimeEconomyRoutineLog",
+				false,
+				"Logs routine runtime economy observation summaries, including Dirty Cash safety sweeps and legal-business consumer bridge observations. Mutations, warnings, and one-time ownership markers still log without this enabled.");
 		}
 
 		private void LogEconomyBaseline(string source)
@@ -537,6 +553,16 @@ namespace AfterProhibitionEconomy
 			return Instance != null && (EnableRouteShopOrderBridge?.Value ?? false);
 		}
 
+		public static bool ShouldLogRuntimeEconomyProgress()
+		{
+			return Instance != null && (EnableRuntimeEconomyProgressLog?.Value ?? false);
+		}
+
+		public static bool ShouldLogRuntimeEconomyRoutine()
+		{
+			return Instance != null && (EnableRuntimeEconomyRoutineLog?.Value ?? false);
+		}
+
 		public static string GetEconomyOwnershipSummary()
 		{
 			return "version=" + PluginVersion +
@@ -551,7 +577,9 @@ namespace AfterProhibitionEconomy
 				" playerLegalBusinessConsumerMutation=" + OwnsPlayerLegalBusinessConsumerMutation() +
 				" frontResource=" + OwnsFrontResourceClassification() +
 				" routeShopOrders=" + OwnsRouteShopOrderClassification() +
-				" postBusinessDiagnostics=" + (EnablePostBusinessUpdateDiagnostics?.Value ?? false);
+				" postBusinessDiagnostics=" + (EnablePostBusinessUpdateDiagnostics?.Value ?? false) +
+				" runtimeEconomyProgressLog=" + ShouldLogRuntimeEconomyProgress() +
+				" runtimeEconomyRoutineLog=" + ShouldLogRuntimeEconomyRoutine();
 		}
 
 		public static bool ShouldExposeShopBuyAccess(EntityID buildingId)

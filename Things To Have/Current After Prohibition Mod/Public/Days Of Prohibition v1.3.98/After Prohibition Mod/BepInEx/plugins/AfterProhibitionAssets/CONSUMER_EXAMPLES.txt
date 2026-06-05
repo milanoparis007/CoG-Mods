@@ -1,0 +1,45 @@
+AfterProhibitionAssets Consumer Examples
+
+Reflection Type
+
+AfterProhibitionAssets.AssetRegistry, AfterProhibitionAssets
+
+Public API
+
+IsReady
+Count
+ContainsKey(string key)
+GetSourcePath(string key)
+TryGetSprite(string key, out UnityEngine.Sprite sprite)
+TryGetTexture(string key, out UnityEngine.Texture2D texture)
+Reload()
+
+Example Keys
+
+main-menu.primary=images/after_prohibition_main_menu.png
+main-menu.alt1=images/after_prohibition_main_menu_alt1.png
+main-menu.alt2=images/after_prohibition_main_menu_alt2.png
+loading.primary=images/loading_screen.png
+icon.resource.cash=images/icons/cash.png
+icon.business.bank=images/icons/bank.png
+portrait.boss.steven=images/portraits/steven.png
+
+Reflection Pattern
+
+Type api = Type.GetType("AfterProhibitionAssets.AssetRegistry, AfterProhibitionAssets");
+
+Use reflection to call TryGetSprite or TryGetTexture from other plugins. Missing keys return false and should fall back to vanilla behavior.
+
+Current Active Consumer
+
+main-menu.primary, main-menu.alt1, and main-menu.alt2 are consumed by AfterProhibitionAssets itself for optional main menu background rotation.
+
+Prepared Future Consumers
+
+loading.primary can be used by a future loading-screen patch.
+icon.* keys can be used by future UI icon patches.
+portrait.* keys can be used by future portrait replacement patches.
+
+Stability Rule
+
+Consumer plugins should not assume AfterProhibitionAssets is installed. Check whether the reflection type exists before calling the API.

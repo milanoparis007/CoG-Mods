@@ -4207,6 +4207,236 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		return separatorIndex > 0 ? message.Substring(0, separatorIndex) : message;
 	}
 
+	private static bool IsConfigEnabled(ConfigEntry<bool> entry, bool fallback = false)
+	{
+		return entry?.Value ?? fallback;
+	}
+
+	private static bool ScopeEquals(string scope, string expected)
+	{
+		return string.Equals(scope ?? string.Empty, expected, StringComparison.Ordinal);
+	}
+
+	private static bool ScopeStartsWith(string scope, string prefix)
+	{
+		return !string.IsNullOrEmpty(scope) && scope.StartsWith(prefix, StringComparison.Ordinal);
+	}
+
+	private static bool TextContains(string text, string value)
+	{
+		return !string.IsNullOrEmpty(text) && text.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;
+	}
+
+	private static bool EventEquals(string eventTag, string expected)
+	{
+		return string.Equals(eventTag ?? string.Empty, expected, StringComparison.Ordinal);
+	}
+
+	private static bool EventStartsWith(string eventTag, string prefix)
+	{
+		return !string.IsNullOrEmpty(eventTag) && eventTag.StartsWith(prefix, StringComparison.Ordinal);
+	}
+
+	private static bool ShouldEmitVerificationLog(string scope, string message)
+	{
+		if (IsConfigEnabled(EnableVerboseVerificationLogs))
+		{
+			return true;
+		}
+		if (IsDetailedVerificationScopeEnabled(scope))
+		{
+			return true;
+		}
+		return IsConfigEnabled(EnableCompactBugBreadcrumbs, fallback: true) && IsCompactVerificationLog(scope, message ?? string.Empty);
+	}
+
+	private static bool IsDetailedVerificationScopeEnabled(string scope)
+	{
+		if (ScopeEquals(scope, "AIPlayerRobbery") || ScopeEquals(scope, "GangRobbery"))
+		{
+			return IsConfigEnabled(EnableRobberyDiagnostics);
+		}
+		if (ScopeStartsWith(scope, "GangOps.") || TextContains(scope, "Front") || TextContains(scope, "BusinessClosure"))
+		{
+			return IsConfigEnabled(EnableFrontPressureDiagnostics);
+		}
+		if (ScopeEquals(scope, "VehicleNodeAuthority"))
+		{
+			return IsConfigEnabled(EnableVehicleAuthorityDiagnostics) || _verboseVehicleAuthorityRuntimeVerificationLogs;
+		}
+		if (ScopeEquals(scope, "VehicleGroupCombat") || ScopeEquals(scope, "VehicleGroupCombat.AI"))
+		{
+			return IsConfigEnabled(EnableVehicleCombatDiagnostics);
+		}
+		if (ScopeEquals(scope, "Compat"))
+		{
+			return IsConfigEnabled(EnableCompatibilityDiagnostics);
+		}
+		if (ScopeEquals(scope, "FakeTraffic"))
+		{
+			return IsConfigEnabled(FakeTrafficDiagnosticsEnabled);
+		}
+		return false;
+	}
+
+	private static bool IsCompactVerificationLog(string scope, string message)
+	{
+		string eventTag = GetVerificationEventTag(message);
+		if (IsCompactAnomalyEvent(eventTag, message))
+		{
+			return true;
+		}
+		if (ScopeEquals(scope, "Compat"))
+		{
+			return EventEquals(eventTag, "loaded") || EventEquals(eventTag, "no-op");
+		}
+		if (ScopeEquals(scope, "AIPlayerRobbery") || ScopeEquals(scope, "GangRobbery"))
+		{
+			return IsCompactRobberyEvent(eventTag, message);
+		}
+		if (ScopeStartsWith(scope, "GangOps.") || TextContains(scope, "Front") || TextContains(scope, "BusinessClosure"))
+		{
+			return IsCompactFrontPressureEvent(eventTag, message);
+		}
+		if (ScopeEquals(scope, "VehicleGroupCombat") || ScopeEquals(scope, "VehicleGroupCombat.AI"))
+		{
+			return IsCompactCombatEvent(eventTag, message);
+		}
+		if (ScopeEquals(scope, "NationalHeat") || ScopeEquals(scope, "CornerHeatRaid") || ScopeEquals(scope, "Jail"))
+		{
+			return TextContains(message, "executed") || TextContains(message, "terminal-finished") || TextContains(message, "closeout");
+		}
+		return false;
+	}
+
+	private static bool IsCompactAnomalyEvent(string eventTag, string message)
+	{
+		return TextContains(message, "exception")
+			|| TextContains(message, "error")
+			|| IsCompactFailureSignal(eventTag, message)
+			|| TextContains(message, "give-up")
+			|| TextContains(message, "abandoned")
+			|| TextContains(message, "timeout")
+			|| TextContains(message, "lost-node")
+			|| EventStartsWith(eventTag, "blocked-locked");
+	}
+
+	private static bool IsCompactFailureSignal(string eventTag, string message)
+	{
+		if (EventEquals(eventTag, "failed") || TextContains(message, "result=failed"))
+		{
+			return true;
+		}
+		if (TextContains(message, "reason=prereqs-failed"))
+		{
+			return false;
+		}
+		if (TryReadCompactCounter(message, "failed", out int failedCount))
+		{
+			return failedCount > 0;
+		}
+
+		return TextContains(message, " failed")
+			|| TextContains(message, "failed-")
+			|| TextContains(message, "-failed")
+			|| TextContains(message, "failed:");
+	}
+
+	private static bool TryReadCompactCounter(string message, string name, out int value)
+	{
+		value = 0;
+		if (string.IsNullOrEmpty(message) || string.IsNullOrEmpty(name))
+		{
+			return false;
+		}
+
+		string token = name + "=";
+		int index = message.IndexOf(token, StringComparison.OrdinalIgnoreCase);
+		if (index < 0)
+		{
+			return false;
+		}
+
+		index += token.Length;
+		bool negative = index < message.Length && message[index] == '-';
+		if (negative)
+		{
+			index++;
+		}
+
+		int start = index;
+		while (index < message.Length && char.IsDigit(message[index]))
+		{
+			index++;
+		}
+
+		if (index == start)
+		{
+			return false;
+		}
+
+		if (!int.TryParse(message.Substring(start, index - start), out value))
+		{
+			value = 0;
+			return false;
+		}
+
+		if (negative)
+		{
+			value = -value;
+		}
+		return true;
+	}
+
+	private static bool IsCompactRobberyEvent(string eventTag, string message)
+	{
+		return EventEquals(eventTag, "indicator")
+			|| EventEquals(eventTag, "deferred")
+			|| EventStartsWith(eventTag, "shown")
+			|| EventEquals(eventTag, "success")
+			|| EventEquals(eventTag, "failed")
+			|| TextContains(message, "phase=robbery-intent")
+			|| TextContains(message, "pair-already-queued")
+			|| TextContains(message, "pair-queued-replaced")
+			|| TextContains(message, "refusal-")
+			|| TextContains(message, "evasion-")
+			|| TextContains(message, "quick-attack")
+			|| TextContains(message, "coordinated attack")
+			|| TextContains(message, "important business closure")
+			|| TextContains(message, "business-closure")
+			|| TextContains(message, "cashSource=");
+	}
+
+	private static bool IsCompactFrontPressureEvent(string eventTag, string message)
+	{
+		return TextContains(message, "front-crew-selected")
+			|| TextContains(message, "front-closure-queued")
+			|| TextContains(message, "front-closure-completed")
+			|| TextContains(message, "front-delayed-action-completed")
+			|| TextContains(message, "front-delayed-action-abandoned")
+			|| TextContains(message, "front-delayed-action-reassigned")
+			|| TextContains(message, "front-defended")
+			|| TextContains(message, "business-closure-queued")
+			|| TextContains(message, "business-closure-completed")
+			|| TextContains(message, "business-closure-give-up")
+			|| TextContains(message, "business-closure-route-commitment-completed")
+			|| TextContains(message, "forced-closed")
+			|| TextContains(message, "notice phase=business-closure-completed")
+			|| TextContains(message, "result=shown")
+			|| EventEquals(eventTag, "COORDINATED")
+			|| EventEquals(eventTag, "FrontTicker");
+	}
+
+	private static bool IsCompactCombatEvent(string eventTag, string message)
+	{
+		return EventEquals(eventTag, "fight-commit")
+			|| EventEquals(eventTag, "execute")
+			|| EventEquals(eventTag, "onfoot-spread")
+			|| EventEquals(eventTag, "onfoot-spread-exchange")
+			|| EventEquals(eventTag, "driveby-distribution")
+			|| EventEquals(eventTag, "death");
+	}
+
 	private static bool TryGetHotVerificationBucket(string scope, string message, out string bucket, out int minIntervalFrames, out bool dedupeExactPerDay)
 	{
 		bucket = null;
@@ -4554,6 +4784,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 	private static bool TryPrepareVerificationLog(string scope, string message, out string effectiveMessage)
 	{
 		effectiveMessage = message ?? string.Empty;
+		if (!ShouldEmitVerificationLog(scope, effectiveMessage))
+		{
+			return false;
+		}
 		if (!TryGetHotVerificationBucket(scope, effectiveMessage, out string bucket, out int minIntervalFrames, out bool dedupeExactPerDay))
 		{
 			return true;
@@ -18378,6 +18612,22 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 
 	internal static ConfigEntry<bool> EnableCompatibilityAndWorldFeatures;
 
+	internal static ConfigEntry<bool> EnableCompactBugBreadcrumbs;
+
+	internal static ConfigEntry<bool> EnableVerboseVerificationLogs;
+
+	internal static ConfigEntry<bool> EnablePerformanceDiagnostics;
+
+	internal static ConfigEntry<bool> EnableRobberyDiagnostics;
+
+	internal static ConfigEntry<bool> EnableFrontPressureDiagnostics;
+
+	internal static ConfigEntry<bool> EnableVehicleAuthorityDiagnostics;
+
+	internal static ConfigEntry<bool> EnableVehicleCombatDiagnostics;
+
+	internal static ConfigEntry<bool> EnableCompatibilityDiagnostics;
+
 	internal static ConfigEntry<bool> EnableRouteSimulatedConvenienceActions;
 
 	internal static ConfigEntry<bool> EnableCrewOddJobs;
@@ -23531,7 +23781,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		finally
 		{
 			long elapsedMs = (System.Diagnostics.Stopwatch.GetTimestamp() - refreshStartTicks) * 1000L / System.Diagnostics.Stopwatch.Frequency;
-			if (elapsedMs >= 20L)
+			long thresholdMs = (EnablePerformanceDiagnostics?.Value ?? false) ? 20L : 80L;
+			if (elapsedMs >= thresholdMs)
 			{
 				Debug.Log($"[PERF][BuildingPickRefresh] ms={elapsedMs} vehicle={vehicleId.id} startNode={startNode?.id ?? NodeID.INVALID} finalNode={finalNode?.id ?? NodeID.INVALID} source={sourceTag} frame={Time.frameCount}");
 			}
@@ -24016,7 +24267,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			}
 
 			long elapsedMs = (System.Diagnostics.Stopwatch.GetTimestamp() - startTicks) * 1000L / System.Diagnostics.Stopwatch.Frequency;
-			if (elapsedMs < thresholdMs)
+			long effectiveThresholdMs = (EnablePerformanceDiagnostics?.Value ?? false)
+				? thresholdMs
+				: Math.Max(thresholdMs, 80L);
+			if (elapsedMs < effectiveThresholdMs)
 			{
 				return;
 			}

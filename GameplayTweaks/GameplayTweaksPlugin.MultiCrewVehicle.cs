@@ -5719,7 +5719,9 @@ namespace GameplayTweaks
 			_afterProhibitionRoutesBehaviorOwnerWarmComplete = complete;
 
 			long elapsedMs = GetElapsedMilliseconds(startTicks);
-			if (elapsedMs >= 10L || _verboseAfterProhibitionRoutesDecisionBridge)
+			if (elapsedMs >= 80L
+				|| _verboseAfterProhibitionRoutesDecisionBridge
+				|| (GameplayTweaksPlugin.EnablePerformanceDiagnostics?.Value ?? false && elapsedMs >= 10L))
 			{
 				Debug.Log("[PERF][RoutesBehaviorWarm] ms=" + elapsedMs
 					+ " warmed=" + warmed

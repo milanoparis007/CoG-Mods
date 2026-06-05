@@ -14241,3 +14241,155 @@ Do not copy to the live Steam install by default unless explicitly requested.
     - important-business closure and quick-attack retaliation should continue to initialize from the resolved robbery response as before.
   - validation: `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
   - build and staged public `GameplayTweaks.dll` matched timestamp `2026-06-05 09:00:42`, size `2517504`; Steam live remains on Phase 8ES at `2026-06-04 23:43:42`, size `2515456`, so copy/restart before judging Phase 8ET.
+- Phase 8EU public-log cleanup switchboard staged on 2026-06-05:
+  - user feedback after the dev GitHub snapshot: lock in the cleanup plan so public logs are quieter, but still useful when someone sends a first bug report without toggling diagnostics on first.
+  - latest live evidence:
+    - the Steam live DLL was still Phase 8ES at cleanup start (`2026-06-04 23:43:42`, size `2515456`), while the staged Phase 8ET DLL was `2026-06-05 09:00:42`, size `2517504`;
+    - the latest live log therefore did not contain Phase 8ET `pair-already-queued` / `pair-queued-replaced` proof markers yet;
+    - the remaining log noise was concentrated in verification channels such as `VehicleNodeAuthority`, `GangOps.FrontMovement`, `Compat`, `VehicleGroupCombat`, and `AIPlayerRobbery`.
+  - implementation:
+    - added `Diagnostics.EnableCompactBugBreadcrumbs`, default `true`, so first-report logs still keep low-noise outcome and anomaly breadcrumbs;
+    - added `Diagnostics.EnableVerboseVerificationLogs`, default `false`, plus area toggles for robbery, front pressure, vehicle authority, vehicle combat, and compatibility diagnostics;
+    - central `VerificationLog` now emits full traces only when verbose or area diagnostics are enabled;
+    - with default settings, compact logs keep robbery intent/response outcomes, 8ET pair-gate markers, front/business closure outcomes, combat commits/spread outcomes, build/load banners, and anomalies such as failed, abandoned, timed-out, or lost-node actions;
+    - no gameplay behavior changed in this phase.
+  - expected next-run result:
+    - normal logs should be much smaller while still showing enough robbery/front/business/combat breadcrumbs to triage a first report;
+    - if a first report is not enough, the player can enable the relevant `Diagnostics.*` toggle and repro without changing gameplay behavior;
+    - Phase 8ET pair-gate verification is still visible through compact breadcrumbs, so one live run can validate it without re-enabling full spam.
+  - validation: `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+  - build and staged public `GameplayTweaks.dll` matched timestamp `2026-06-05 09:38:50`, size `2522624`; do not copy to live automatically.
+- Phase 8EV compact-log follow-up cleanup staged on 2026-06-05:
+  - user feedback after 8EU: check logs, finish any unfinished earlier phase if needed, and continue cleanup.
+  - latest live evidence:
+    - live, built, and staged `GameplayTweaks.dll` all matched the Phase 8EU cleanup build at log triage time;
+    - Phase 8ET pair gating validated in the live log: robber `18` queued one deferred response on day `702653`, repeated same-turn contacts logged `reason=pair-already-queued result=pending-kept`, then the response showed at turn start and resolved into `result=refused-business-closure`;
+    - robbery-sourced important-business closure followed through for the player: `business-closure-direct-completed`, `business-closure-completed`, ticker shown, then ticker removed;
+    - AI-vs-AI robbery-sourced business closure also followed through through route commitment: `business-closure-route-commitment-completed attacker=16 defender=22`;
+    - the compact log was much smaller, but remaining repetitive noise was `CopKilling` silent residual-clear no-op lines and forced-closed `CanBuySellCache blocked-locked` lines for the same shop every turn.
+  - implementation:
+    - forced-closed buy/sell lock verification now logs once per locked shop/player and then every `28` days, while cache invalidation still runs once per turn so behavior is unchanged;
+    - aggregate locked-shop samples still emit every `2048` blocked checks for broad first-report evidence;
+    - `CopKilling` now suppresses silent residual-aggro cleanup logs when no cop aggro existed and nothing was cleared; real cleanup results still log;
+    - no robbery, front, business-closure, or combat behavior changed in this phase.
+  - expected next-run result:
+    - the same forced-closed shop should not emit a `blocked-locked` line every turn;
+    - if a player reports a locked shop issue, the first lock line, business closure/ticker lines, and later sparse aggregate samples should still identify the building/player/forced-closed outfit;
+    - `CopKilling` residual no-op spam will only disappear after the rebuilt `CopKilling.dll` is copied live; the current public package folder does not include that DLL;
+    - the next live log should still keep the compact robbery/front/business closure breadcrumbs needed for first-report triage.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - `dotnet build CopKilling\CopKilling.csproj -c Release` passed with `0` warnings and `0` errors;
+    - `dotnet build ClassLibrary1.sln -c Release` passed with `0` warnings and `0` errors;
+    - build and staged public `GameplayTweaks.dll` matched timestamp `2026-06-05 10:37:56`, size `2523136`;
+    - rebuilt `CopKilling.dll` in `CopKilling\bin\Release` matched timestamp `2026-06-05 10:38:14`, size `139776`; live Steam `CopKilling.dll` remained `2026-05-01 14:31:37`, so copy it manually only if testing that plugin cleanup.
+- Phase 8EW performance-log default cleanup staged on 2026-06-05:
+  - user feedback after 8EV: check logs, start the next cleanup step, and finish or add to cleanup.
+  - latest live evidence:
+    - live, built, and staged `GameplayTweaks.dll` matched Phase 8EV (`2026-06-05 10:37:56`, size `2523136`) at log triage time, and live `CopKilling.dll` also matched the rebuilt 8EV cleanup DLL (`2026-06-05 10:38:14`, size `139776`);
+    - compact verification cleanup worked: the latest log had only compact verification buckets, led by `AiCrewLevelup=16`, `AIPlayerRobbery=6`, `Territory=5`, `AttackAdvisor=4`, `GangOps.FrontMovement=2`, `CanBuySellCache=2`, `VehicleGroupCombat=2`, `Compat=1`, and `CopKilling=1`;
+    - no C# runtime exceptions were found in the latest log; the remaining noisy source was routine `[PERF]` telemetry such as low-ms `TurnStage`/`TurnDetail`, `TerritoryModulePresence` cache hits, `CanBuySellCache` hits, and `CommandExecutorLimiter` budget deferrals;
+    - useful slow breadcrumbs still existed and should be preserved, including `CommandQueue`/`CommandQueueStep` around `95-102ms`, `BusinessUpdateModulesSlice phase=total ms=1033`, `BusinessTrackerSlice phase=total ms=1296`, and `SimulationManagerSlice phase=total ms=1437`.
+  - implementation:
+    - added `Diagnostics.EnablePerformanceDiagnostics`, default `false`, to opt into detailed `[PERF]` turn-slicing, cache-hit, and low-ms instrumentation logs;
+    - normal logs now suppress routine `CanBuySellCache` hits, `ModuleTerritoryCache` hits, `TerritoryModulePresence` hit/build samples, low-ms cache misses, low-ms `TurnStage`/`TurnDetail`, low-ms human-turn phase timings, and low-ms AI command limiter budget deferrals;
+    - compact default logs still keep high wall-clock turn/action breadcrumbs by using higher thresholds for turn frames, system/business totals, command limiter spikes, and timed-stage spikes;
+    - this phase does not change robbery, front, business-closure, combat, or turn-smoothing behavior.
+  - expected next-run result:
+    - default logs should no longer show repeated `[PERF][TerritoryModulePresence] hit`, `[PERF][CanBuySellCache] hit`, low-ms `[PERF][TurnStage]`, low-ms `[PERF][TurnDetail]`, or low-ms `[PERF][CommandExecutorLimiter]` lines;
+    - slow action and system-turn breadcrumbs at roughly `80-120ms+`, plus long totals near one second, should still show without enabling diagnostics;
+    - if a slowdown needs full trace detail, set `Diagnostics.EnablePerformanceDiagnostics=true` and repro without changing gameplay behavior.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - `dotnet build ClassLibrary1.sln -c Release` passed with `0` warnings and `0` errors;
+    - build, staged public, and Steam live `GameplayTweaks.dll` matched timestamp `2026-06-05 10:57:27`, size `2524672`, so Phase 8EW is ready for the next live log review.
+- Phase 8EX compact performance-log follow-up staged on 2026-06-05:
+  - user feedback after 8EW: check logs, start the next step, and finish or add to cleanup.
+  - latest live evidence:
+    - Phase 8EW was live in the latest log: build, staged public, and Steam live all matched `GameplayTweaks.dll` timestamp `2026-06-05 10:57:27`, size `2524672`;
+    - the 8EW cleanup worked for the original targets: no repeated `[PERF][TerritoryModulePresence] hit`, no `[PERF][CanBuySellCache] hit`, and no low-ms `[PERF][CommandExecutorLimiter]` lines appeared; the only matching low-ms check was a legitimate `TurnStage` at `99ms`;
+    - no C# runtime exceptions were found; remaining error-like lines were Unity `AsyncResourceUpload failed` and vanilla/content module-fit messages;
+    - remaining public-log noise was low-ms command/AI dispatch traces (`CommandQueue`, `CommandQueueStep`, `ScriptDispatcher`, `PlayerAIDispatch`, `PlayerAIAssignRequests`), routine `HeatmapUpdateSlice` and `ResidenceImmigration` lines, ordinary 130-500ms system-maintenance totals, and compact verification false positives from success summaries containing `failed=0`.
+  - implementation:
+    - compact mode now logs command queue, command step, AI dispatch, script dispatch, HUD/input, direct route/vehicle, and building-pick performance details only around `80ms+`, while `Diagnostics.EnablePerformanceDiagnostics=true` restores the old low-ms trace;
+    - routine system-maintenance totals (`BusinessUpdateModulesSlice`, `BusinessTrackerSlice`, `RelationshipRespectSlice`, `SimulationManagerSlice`, and `system-turn-total`) now require about `750ms+` in compact mode, preserving true stalls without logging every normal system turn;
+    - routine heatmap, residence immigration, setup-presence, social quest flush, pick-refresh limiter, and route-warm samples are suppressed unless detailed performance diagnostics are enabled or they spike;
+    - compact verification anomaly detection now treats `failed=0` as success and ignores `reason=prereqs-failed`, while still allowing nonzero failed counters, true failed results, timeouts, abandoned routes, lost-node cases, and locked-shop breadcrumbs.
+  - expected next-run result:
+    - normal logs should lose the repeated low-ms AI dispatch/command stack and the every-turn heatmap/residence/system-total sequence;
+    - `AiCrewLevelup` and `Territory` success summaries with `failed=0` should no longer appear solely because of that counter;
+    - robbery prompts, business-closure completions, locked-shop checks, nonzero failures, abandoned/time-out/lost-node events, and real slow spikes should still be visible without enabling verbose diagnostics.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - `dotnet build ClassLibrary1.sln -c Release` passed with `0` warnings and `0` errors;
+    - build and staged public `GameplayTweaks.dll` matched timestamp `2026-06-05 11:16:42`, size `2526208`; Steam live remains on Phase 8EW at `2026-06-05 10:57:27`, size `2524672`, so copy/restart before judging Phase 8EX live behavior.
+- Phase 8EX live validation and public BepInEx package refresh on 2026-06-05:
+  - latest live evidence:
+    - Phase 8EX was live in the latest log: build, staged public, and Steam live all matched `GameplayTweaks.dll` timestamp `2026-06-05 11:16:42`, size `2526208`;
+    - the low-ms command/AI dispatch spam was gone: no compact `[PERF][CommandQueue]`, `[PERF][CommandQueueStep]`, `[PERF][ScriptDispatcher]`, `[PERF][PlayerAIDispatch]`, `[PERF][PlayerAIAssignRequests]`, `[PERF][TerritoryModulePresence]`, `[PERF][CanBuySellCache] hit`, or `[PERF][CommandExecutorLimiter]` spam appeared;
+    - compact verification false positives from `failed=0` success summaries were gone; the remaining verification breadcrumbs were robbery prompt/evade outcomes, front movement reassignment, locked-shop checks, and the one startup CopKilling probe;
+    - remaining `[PERF]` lines were acceptable first-report breadcrumbs: startup/load, human-turn wall spikes, 750ms+ system-turn totals, and one true slow business module update around `810-818ms`.
+  - public package action:
+    - refreshed `Things To Have\Current After Prohibition Mod\Public\Days Of Prohibition v1.3.98\After Prohibition Mod\BepInEx` in place without deleting package-only files;
+    - updated public package plugin DLLs from current Release outputs: `AfterProhibitionCompatibility.dll`, `AfterProhibitionEconomy.dll`, `AfterProhibitionFamily.dll`, `AfterProhibitionPolitics.dll`, `AfterProhibitionRoutes.dll`, `AfterProhibitionUI.dll`, `CopKilling.dll`, `GameOptimizer.dll`, `GameplayTweaks.dll`, plus unchanged current outputs for `AfterProhibitionAssets.dll`, `AutoLevelup.dll`, `BossBuildings.dll`, `BossDeath.dll`, `EthnicityPlacementFix.dll`, `OrgChartMod.dll`, and `ProhibitionLauncher.dll`;
+    - refreshed `patchers\AfterProhibitionPreloader.dll` and preserved `patchers\AssemblyPatchManifest.json`, `plugins\AfterProhibitionAssets\CONSUMER_EXAMPLES.txt`, existing assets, and the package-level guide/changelog files for the next documentation pass.
+  - final package signal:
+    - public package `plugins\GameplayTweaks.dll` matched timestamp `2026-06-05 11:16:42`, size `2526208`;
+    - public package `plugins\CopKilling.dll` matched timestamp `2026-06-05 11:17:00`, size `139776`;
+    - next pass should revise the public changelog and guide without deleting the old stable guide source.
+- Phase 8EY economy batch-progress public-log cleanup staged on 2026-06-05:
+  - user feedback after 8EX: if cleanup is finished, add updated mod files into the final public v1.3.98 BepInEx folder and then prepare for the full changelog/guide pass.
+  - latest live evidence:
+    - Phase 8EX remained the active GameplayTweaks build in the live log and the main GameplayTweaks public-log cleanup held;
+    - the only remaining routine cleanup target found in the current log review was `AfterProhibitionEconomy` chunk progress lines such as `purchase-stock-refresh-progress ... failed=0` and `empty-business-module-repair-progress ... failed=0`;
+    - these lines were healthy batch progress rather than robbery/front-pressure failures, but they still looked like noise in a first-report public log.
+  - implementation:
+    - added `Diagnostics.EnableRuntimeEconomyProgressLog`, default `false`, to `AfterProhibitionEconomy`;
+    - added `Diagnostics.EnableRuntimeEconomyRoutineLog`, default `false`, for routine Dirty Cash safety sweep and player legal-business consumer observation summaries;
+    - healthy chunk-by-chunk `purchase-stock-refresh-progress` and `empty-business-module-repair-progress` logs are now hidden by default;
+    - progress logs still print without the toggle when the running batch has `failed > 0`, Dirty Cash sweep logs still print when a correction is actually applied, and completion/failure summaries are unchanged.
+  - public package action:
+    - rebuilt `AfterProhibitionEconomy.dll` and refreshed both `Things To Have\Current After Prohibition Mod\BepInEx\plugins\AfterProhibitionEconomy.dll` and `Things To Have\Current After Prohibition Mod\Public\Days Of Prohibition v1.3.98\After Prohibition Mod\BepInEx\plugins\AfterProhibitionEconomy.dll`;
+    - preserved existing public package-only files, assets, `AssemblyPatchManifest.json`, and package guide/changelog files.
+  - validation:
+    - `dotnet build AfterProhibitionEconomy\AfterProhibitionEconomy.csproj -c Release` passed with `0` warnings and `0` errors;
+    - `dotnet build ClassLibrary1.sln -c Release` passed with `0` warnings and `0` errors;
+    - public package `plugins\AfterProhibitionEconomy.dll` matched timestamp `2026-06-05 12:00:03`, size `122368`;
+    - next pass can focus on `CHANGELOG.txt` and `GUIDE.txt` public wording, using `Things To Have\Old Stable\#Guide.txt` as source without deleting it.
+- Phase 8EZ economy mutation-detail public-log cleanup staged on 2026-06-05:
+  - user feedback after 8EY: check the logs and start the next step.
+  - latest live evidence:
+    - the live Steam `AfterProhibitionEconomy.dll` matched Phase 8EY at timestamp `2026-06-05 12:00:03`, size `122368`;
+    - the 8EY progress cleanup worked: the latest live log contained `0` `purchase-stock-refresh-progress` lines, `0` `empty-business-module-repair-progress` lines, and `0` `player-legal-business-consumer-runtime` routine lines;
+    - remaining public-log economy noise was now individual mutation detail rather than progress: `purchase-stock-refreshed` appeared `43` times, and Dirty Cash forced correction detail/summary appeared `15` times each for the same short run;
+    - no `Exception`, `NullReference`, or `InvalidOperationException` lines were found in the latest live log.
+  - implementation:
+    - gated individual `purchase-stock-refreshed` per-business detail behind `Diagnostics.EnableRuntimeEconomyRoutineLog`; aggregate `purchase-stock-refresh phase=complete` summaries still print;
+    - compact Dirty Cash correction detail now logs once per source/building/initial shape instead of once per day, unless `Diagnostics.EnableRuntimeEconomyRoutineLog=true`;
+    - compact Dirty Cash sweep summaries now log once per source/initial/counter shape instead of once per day, unless routine diagnostics are enabled;
+    - no economy behavior changed.
+  - public package action:
+    - rebuilt `AfterProhibitionEconomy.dll` and refreshed both `Things To Have\Current After Prohibition Mod\BepInEx\plugins\AfterProhibitionEconomy.dll` and `Things To Have\Current After Prohibition Mod\Public\Days Of Prohibition v1.3.98\After Prohibition Mod\BepInEx\plugins\AfterProhibitionEconomy.dll`;
+    - live Steam still needs the `12:16:27` Economy DLL copied before judging this 8EZ cleanup in-game.
+  - validation:
+    - `dotnet build AfterProhibitionEconomy\AfterProhibitionEconomy.csproj -c Release` passed with `0` warnings and `0` errors;
+    - `dotnet build ClassLibrary1.sln -c Release` passed with `0` warnings and `0` errors;
+    - staged and public package `plugins\AfterProhibitionEconomy.dll` matched timestamp `2026-06-05 12:16:27`, size `122880`;
+    - next live check should confirm that default logs keep aggregate Economy summaries but stop listing every refreshed shop and every repeated Dirty Cash forced correction.
+- Phase 8EZ live validation and public guide/changelog refresh on 2026-06-05:
+  - user feedback after 8EZ: check the logs and start the next step.
+  - latest live evidence:
+    - build, staged public, public package, and Steam live `AfterProhibitionEconomy.dll` matched timestamp `2026-06-05 12:16:27`, size `122880`;
+    - Steam live `GameplayTweaks.dll` matched timestamp `2026-06-05 11:16:42`, size `2526208`;
+    - Steam live `CopKilling.dll` matched timestamp `2026-06-05 11:17:00`, size `139776`;
+    - Phase 8EZ cleanup held in the live log: `purchase-stock-refreshed=0`, `purchase-stock-refresh-progress=0`, `empty-business-module-repair-progress=0`, and `player-legal-business-consumer-runtime=0`;
+    - compact Economy evidence remained available: one Dirty Cash runtime correction summary, two player legal-business consumer observations, and two aggregate purchase-stock-refresh completion summaries;
+    - no `Exception`, `NullReference`, or `InvalidOperationException` lines were found in the latest live log.
+  - documentation/package action:
+    - updated `Things To Have\Current After Prohibition Mod\GUIDE.md` with cleaned public release status, robbery/front-pressure behavior, combat vehicle notes, and diagnostics guidance;
+    - updated `Things To Have\Current After Prohibition Mod\CHANGELOG.md` with the June 5 public robbery/log-cleanup release section;
+    - updated public package `GUIDE.txt` and `CHANGELOG.txt` under `Things To Have\Current After Prohibition Mod\Public\Days Of Prohibition v1.3.98\After Prohibition Mod`;
+    - left `Things To Have\Old Stable\#Guide.txt` untouched as the legacy content reference.
+  - validation:
+    - this was a docs/package-note pass after the prior successful `AfterProhibitionEconomy` and solution builds;
+    - next step is final diff/status validation, then a separate public branch/tag push when the user is ready.

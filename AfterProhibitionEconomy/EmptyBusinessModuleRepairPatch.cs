@@ -349,16 +349,19 @@ namespace AfterProhibitionEconomy
 			bool completed = state.Cursor >= state.Buildings.Count;
 			if (!completed)
 			{
-				AfterProhibitionEconomyPlugin.Log?.LogInfo(
-					"empty-business-module-repair-progress source=" + sourceKey +
-					" scannedBatch=" + processed +
-					" scannedTotal=" + state.Scanned +
-					" totalBuildings=" + state.Buildings.Count +
-					" candidates=" + state.Candidates +
-					" repaired=" + state.Repaired +
-					" failed=" + state.Failed +
-					" elapsedMs=" + stopwatch.ElapsedMilliseconds +
-					" day=" + now.days);
+				if (state.Failed > 0 || AfterProhibitionEconomyPlugin.ShouldLogRuntimeEconomyProgress())
+				{
+					AfterProhibitionEconomyPlugin.Log?.LogInfo(
+						"empty-business-module-repair-progress source=" + sourceKey +
+						" scannedBatch=" + processed +
+						" scannedTotal=" + state.Scanned +
+						" totalBuildings=" + state.Buildings.Count +
+						" candidates=" + state.Candidates +
+						" repaired=" + state.Repaired +
+						" failed=" + state.Failed +
+						" elapsedMs=" + stopwatch.ElapsedMilliseconds +
+						" day=" + now.days);
+				}
 				return;
 			}
 

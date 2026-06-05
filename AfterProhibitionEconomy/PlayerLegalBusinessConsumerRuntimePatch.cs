@@ -78,7 +78,10 @@ namespace AfterProhibitionEconomy
 						" owner=AfterProhibitionEconomy");
 				}
 
-				AfterProhibitionEconomyPlugin.Log?.LogInfo("player-legal-business-consumer-runtime source=consumer-update " + summary.FormatBridgeSummary());
+				if (AfterProhibitionEconomyPlugin.ShouldLogRuntimeEconomyRoutine())
+				{
+					AfterProhibitionEconomyPlugin.Log?.LogInfo("player-legal-business-consumer-runtime source=consumer-update " + summary.FormatBridgeSummary());
+				}
 				LogConsumerIdleState(__instance, q, initial, enabled, __result);
 			}
 			catch (Exception ex)
@@ -110,6 +113,11 @@ namespace AfterProhibitionEconomy
 			int lastUpdateDay = module.data.lastUpdate.days;
 			int daysSinceLast = Math.Max(currentDay - lastUpdateDay, 0);
 			int daysUntilNext = Math.Max(consumeDays - daysSinceLast, 0);
+			if (!AfterProhibitionEconomyPlugin.ShouldLogRuntimeEconomyRoutine())
+			{
+				return;
+			}
+
 			string logKey = moduleId + "|consumeDays=" + consumeDays + "|daysUntilNext=" + daysUntilNext;
 			if (!LoggedConsumerIdleStates.Add(logKey))
 			{

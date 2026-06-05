@@ -1,0 +1,1 @@
+NOTE: Special field $$id is required in all files - it contains the ID of the language, used for merging different text files. Special field $$name is required in at least one file - it's the name of the language in its native alphabet.

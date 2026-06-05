@@ -1,0 +1,58 @@
+{
+  "labelFields": [
+    {
+      "targetType": "Game.Session.Sim.ResourceConstants",
+      "fieldName": "COUNTERFEITCASH",
+      "label": "counterfeitcash"
+    },
+    {
+      "targetType": "Game.Session.Sim.ResourceConstants",
+      "fieldName": "DIRTYCASH",
+      "label": "dirty-cash"
+    },
+    {
+      "targetType": "Game.Session.Sim.ResourceConstants",
+      "fieldName": "STOLENGOODS",
+      "label": "stolenelectronics"
+    },
+    {
+      "targetType": "Game.Session.Sim.ResourceConstants",
+      "fieldName": "CANNABIS",
+      "label": "cannabis-pound"
+    },
+    {
+      "targetType": "Game.Session.Sim.ResourceConstants",
+      "fieldName": "COCAINE",
+      "label": "cocaine-tiles"
+    },
+    {
+      "targetType": "Game.Session.Sim.ResourceConstants",
+      "fieldName": "HEROIN",
+      "label": "heroin-packs"
+    },
+    {
+      "targetType": "Game.Session.Sim.ResourceConstants",
+      "fieldName": "HOMES",
+      "label": "home-mid"
+    },
+    {
+      "targetType": "Game.Session.Sim.ResourceConstants",
+      "fieldName": "JAZZ",
+      "label": "bandlow"
+    }
+  ],
+  "fixnumFields": [
+    {
+      "targetType": "Game.Services.VictorySettings",
+      "fieldName": "amtDirtyCash"
+    },
+    {
+      "targetType": "Game.Services.VictorySettings",
+      "fieldName": "amtStolenGoods"
+    },
+    {
+      "targetType": "Game.Services.VictorySettings",
+      "fieldName": "amtCounterfeit"
+    }
+  ]
+}

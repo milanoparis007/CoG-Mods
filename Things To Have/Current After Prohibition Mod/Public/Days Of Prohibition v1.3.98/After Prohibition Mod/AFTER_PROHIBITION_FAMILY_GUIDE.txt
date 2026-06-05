@@ -1,0 +1,86 @@
+AFTER PROHIBITION FAMILY GUIDE
+==============================
+
+AfterProhibitionFamily is the standalone family and relationship plugin for the After Prohibition mod.
+
+INSTALL
+-------
+
+Place this DLL with the other BepInEx plugins:
+
+- BepInEx\plugins\AfterProhibitionFamily.dll
+
+Use the matching GameplayTweaks.dll from the same release package. GameplayTweaks checks the Family bridge before applying fallback family patches.
+
+CURRENT OWNERSHIP
+-----------------
+
+AfterProhibitionFamily currently owns:
+
+- spouse safety classification;
+- spouse search and spouse candidate scoring;
+- pregnancy scheduling bridge used by GameplayTweaks;
+- startup parent fallback and generated startup person fallback;
+- dead relationship cleanup for PeopleTracker.MarkAsDead and PlayerCrew.ProcessCrewMemberDeath;
+- read-only startup family and relationship audits.
+
+AfterProhibitionFamily does not own:
+
+- crew relationship UI buttons or portrait rendering;
+- spouse/family popup UI text;
+- safehouse ownership repair or business setup repair;
+- hire menu UI;
+- economy, banks, shops, warehouses, dirty-cash routing, routes, politics, combat, assets, or compatibility broad-unpatch behavior.
+
+EXPECTED LOGS
+-------------
+
+Healthy startup logs should include:
+
+- [Info   :After Prohibition Family] After Prohibition Family 0.7.2 loaded
+- [Info   :After Prohibition Family] spouse-search patches applied findRando=True scoreCandidate=True findMatch=True
+- [Info   :After Prohibition Family] pregnancy lifecycle audit patch applied peopleTurn=True
+- [Info   :After Prohibition Family] startup family-generation patches applied parentFallback=True gangCandidates=True copCandidates=True fedCandidates=True
+- [Info   :After Prohibition Family] dead relationship cleanup patches applied crewDeath=True peopleDeath=True
+- [VERIFY-HOTFIX] [Family] delegation-summary source=afterprohibition-family spouseSafety=bridge-available spouseSearch=delegated pregnancy=bridge-available startupGeneration=delegated deadCleanup=delegated
+
+The relationship audit may defer while startup people or relationships are still loading. If old saves have many dead relationship refs, it should wait for dead cleanup before reporting final counts. A clean post-cleanup audit should show deadRefs=0.
+
+CONFIG
+------
+
+Config section: Features
+
+- EnableFamilyBaselineLog
+- EnableStartupFamilyAudit
+- EnableRelationshipSafetyBridge
+- EnableRelationshipSafetySampleLog
+- EnableSpouseSearchMigration
+- EnableSpouseSearchSampleLog
+- EnablePregnancyLifecycleBridge
+- EnablePregnancyTurnAudit
+- EnablePregnancyAuditEveryTurn
+- EnablePregnancyStartupAudit
+- EnableStartupFamilyGenerationFallback
+- EnableDeadRelationshipCleanupMigration
+
+Config section: SpouseSearch
+
+- EnableSpouseEthnicityPreference
+- SpouseEthnicityPreferenceChance
+- MarriageMinAge
+- MarriageMaxAgeDifference
+
+Config section: Pregnancy
+
+- PregnancyMinDays
+- PregnancyMaxDays
+
+TROUBLESHOOTING
+---------------
+
+If the game loads but family behavior stays in GameplayTweaks fallback, check that AfterProhibitionFamily.dll is installed and that the delegation summary log reports delegated ownership.
+
+If startup audit logs still show deadRefs above zero after the cleanup batch, keep the log and check whether a dead-relationship-cleanup startup-batch line appeared before the final relationship-audit line.
+
+If spouse matching behaves incorrectly, check spouse-search sample logs and relationship-safety logs for the rejection reason.

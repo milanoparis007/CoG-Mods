@@ -286,7 +286,7 @@ namespace AfterProhibitionEconomy
 				doUpdateMethod.Invoke(modules, new object[] { now, initial });
 				fallbackAppliedCount++;
 
-				string logKey = buildingId + "|day=" + now.days + "|initial=" + initial;
+				string logKey = BuildRuntimeCorrectionLogKey("fallback", buildingId, now, initial);
 				if (LoggedIllegalBackroomBusinessTickFallbacks.Add(logKey))
 				{
 					AfterProhibitionEconomyPlugin.Log?.LogInfo(
@@ -346,7 +346,7 @@ namespace AfterProhibitionEconomy
 
 				forceAppliedCount++;
 
-				string logKey = source + "|" + updateKey;
+				string logKey = BuildRuntimeCorrectionLogKey(source, buildingId, now, initial);
 				if (LoggedIllegalBackroomBusinessTickFallbacks.Add(logKey))
 				{
 					AfterProhibitionEconomyPlugin.Log?.LogInfo(
@@ -520,9 +520,15 @@ namespace AfterProhibitionEconomy
 		private static void LogIllegalBackroomSafetySweepSummary(string source, SimTime now, bool initial, int candidateCount, int appliedCount, int observedCount, int alreadyUpdatedCount)
 		{
 			bool noWork = candidateCount == 0 && appliedCount == 0 && observedCount == 0 && alreadyUpdatedCount == 0;
+			bool shouldLog = appliedCount > 0 || AfterProhibitionEconomyPlugin.ShouldLogRuntimeEconomyRoutine();
+			if (!shouldLog)
+			{
+				return;
+			}
+
 			string logKey = noWork
 				? source + "|zero-work|initial=" + initial
-				: source + "|day=" + now.days + "|initial=" + initial + "|candidates=" + candidateCount + "|applied=" + appliedCount + "|observed=" + observedCount + "|alreadyUpdated=" + alreadyUpdatedCount;
+				: BuildRuntimeSweepSummaryLogKey(source, now, initial, candidateCount, appliedCount, observedCount, alreadyUpdatedCount);
 			if (!LoggedIllegalBackroomSafetySweepSummaries.Add(logKey))
 			{
 				return;
@@ -546,6 +552,26 @@ namespace AfterProhibitionEconomy
 				(noWork ? " repeatZeroWorkSuppressed=True" : string.Empty));
 
 			AfterProhibitionEconomyPlugin.Log?.LogInfo(DirtyCashRuntimeSweepClassifier.Classify(source).FormatBridgeSummary());
+		}
+
+		private static string BuildRuntimeCorrectionLogKey(string source, EntityID buildingId, SimTime now, bool initial)
+		{
+			if (AfterProhibitionEconomyPlugin.ShouldLogRuntimeEconomyRoutine())
+			{
+				return source + "|" + buildingId + "|day=" + now.days + "|initial=" + initial;
+			}
+
+			return source + "|" + buildingId + "|initial=" + initial;
+		}
+
+		private static string BuildRuntimeSweepSummaryLogKey(string source, SimTime now, bool initial, int candidateCount, int appliedCount, int observedCount, int alreadyUpdatedCount)
+		{
+			if (AfterProhibitionEconomyPlugin.ShouldLogRuntimeEconomyRoutine())
+			{
+				return source + "|day=" + now.days + "|initial=" + initial + "|candidates=" + candidateCount + "|applied=" + appliedCount + "|observed=" + observedCount + "|alreadyUpdated=" + alreadyUpdatedCount;
+			}
+
+			return source + "|initial=" + initial + "|candidates=" + candidateCount + "|applied=" + appliedCount + "|observed=" + observedCount + "|alreadyUpdated=" + alreadyUpdatedCount;
 		}
 
 		private static string BuildIllegalBackroomBuildingUpdateKey(EntityID buildingId, SimTime time, bool initial)

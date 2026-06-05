@@ -1,0 +1,163 @@
+AfterProhibitionAssets Guide
+
+Purpose
+
+AfterProhibitionAssets is a standalone BepInEx plugin for image assets used by the After Prohibition mod. It is separate from GameplayTweaks and does not patch economy, routes, politics, families, or AI.
+
+Install Layout
+
+Place the files like this in the City of Gangsters game folder:
+
+BepInEx\plugins\AfterProhibitionAssets.dll
+BepInEx\plugins\AfterProhibitionAssets\images.txt
+BepInEx\plugins\AfterProhibitionAssets\images\
+
+Adding Images
+
+Put PNG or JPG files in:
+
+BepInEx\plugins\AfterProhibitionAssets\images\
+
+Then add a line to:
+
+BepInEx\plugins\AfterProhibitionAssets\images.txt
+
+Format:
+
+key=relative/path/from/AfterProhibitionAssets
+
+Example:
+
+main-menu.primary=images/after_prohibition_main_menu.png
+main-menu.alt1=images/after_prohibition_main_menu_alt1.png
+main-menu.alt2=images/after_prohibition_main_menu_alt2.png
+
+Main Menu Image
+
+The primary main menu key is:
+
+main-menu.primary
+
+Optional rotating main menu keys are:
+
+main-menu.alt1
+main-menu.alt2
+
+To force a custom main menu image, use:
+
+main-menu.primary=images/after_prohibition_main_menu.png
+
+To rotate between multiple custom main menu images, add one or both optional slots:
+
+main-menu.alt1=images/after_prohibition_main_menu_alt1.png
+main-menu.alt2=images/after_prohibition_main_menu_alt2.png
+
+Each time the main menu opens, the plugin chooses one loaded main-menu slot and keeps that same choice during the delayed retry window so the image does not flicker.
+
+To disable custom main menu images, remove the lines or comment them out:
+
+# main-menu.primary=images/after_prohibition_main_menu.png
+# main-menu.alt1=images/after_prohibition_main_menu_alt1.png
+# main-menu.alt2=images/after_prohibition_main_menu_alt2.png
+
+When disabled, the plugin falls back to the vanilla embedded main menu image and reapplies it after CoGCustomAssets tries to replace the menu background.
+
+Game Resources
+
+Some base game resources can be referenced with:
+
+key=game:Resource Path
+
+Example:
+
+city.chicago=game:City Screenshots/Chicago Screenshot
+
+This only works for assets exposed through Unity Resources.Load.
+
+Public API For Other Plugins
+
+Other plugins can query loaded assets by reflection without taking a compile-time dependency.
+
+Reflection type:
+
+AfterProhibitionAssets.AssetRegistry, AfterProhibitionAssets
+
+Useful public members:
+
+IsReady
+Count
+ContainsKey(string key)
+GetSourcePath(string key)
+TryGetSprite(string key, out UnityEngine.Sprite sprite)
+TryGetTexture(string key, out UnityEngine.Texture2D texture)
+Reload()
+
+Future Consumer Examples
+
+Main menu:
+
+Use key main-menu.primary. Optional rotating slots are main-menu.alt1 and main-menu.alt2. These are already active in AfterProhibitionAssets.
+
+Loading screen:
+
+loading.primary=images/loading_screen.png
+
+A future loading-screen patch can call TryGetSprite("loading.primary", out sprite) and apply the returned sprite to the loading UI.
+
+Custom icons:
+
+icon.resource.cash=images/icons/cash.png
+icon.business.bank=images/icons/bank.png
+
+A future UI icon patch can call TryGetTexture or TryGetSprite by key and apply the returned asset to an Image component.
+
+Future portrait replacement:
+
+portrait.boss.steven=images/portraits/steven.png
+
+A future portrait patch should query AfterProhibitionAssets by key and fall back to vanilla portraits when TryGetTexture returns false.
+
+Recommended reflection lookup:
+
+Type api = Type.GetType("AfterProhibitionAssets.AssetRegistry, AfterProhibitionAssets");
+
+Do not take a direct compile-time dependency from GameplayTweaks or other gameplay plugins unless a shared API package is created later.
+
+CoGCustomAssets Compatibility
+
+AfterProhibitionAssets soft-detects CoGCustomAssets by reflection. It does not require CoGCustomAssets, does not decrypt or import its packed assets, and does not take a compile-time dependency on the DLL.
+
+When CoGCustomAssets is present, logs report whether the bridge is unavailable, detected, or active, plus manifest entry count, UI asset count, and main menu asset count.
+
+Useful CoGCustomAssets behavior absorbed into AfterProhibitionAssets:
+
+- Main menu override timing that reapplies after CoGCustomAssets.
+- External PNG/JPG loading through images.txt.
+- Public reflection API for future plugins.
+
+Skipped for stability:
+
+- Importing encrypted CoGCustomAssets manifest.bin.
+- Depending directly on CoGCustomAssets loader classes.
+- Replacing portrait, vehicle, newspaper, or UI-icon systems during this phase.
+
+Expected Logs
+
+When working, Player.log should show lines similar to:
+
+Loading [After Prohibition Assets 0.1.3]
+Image manifest loaded. entries=1
+Loaded image key='main-menu.primary'
+Image registry ready. loaded=1 entries=1
+Asset API ready. isReady=True count=1
+Main menu image override applied
+
+Troubleshooting
+
+If the custom image does not show:
+
+1. Make sure at least one main-menu slot is not commented out with #.
+2. Make sure the file name in images.txt exactly matches the image file name.
+3. Make sure the image is inside BepInEx\plugins\AfterProhibitionAssets\images\.
+4. Restart the game after changing images.txt.
+5. Check Player.log for Image manifest and Loaded image lines.

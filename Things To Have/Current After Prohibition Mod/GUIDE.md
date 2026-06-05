@@ -1,12 +1,12 @@
 # Current After Prohibition Mod Guide
 
-## Dev Snapshot Notice
+## Public Release Status
 
-The current GitHub snapshot is a development build for robbery/front-pressure validation. It is not the cleaned public release. Verification logging is still intentionally heavy so the next live passes can confirm duplicate robbery prompt cleanup, deferred prompt timing, important-business closure follow-through, and AI pressure routing.
+This package is the current public After Prohibition build for the v1.3.98 package line. It includes StreamingAssets content plus staged BepInEx plugins for the active runtime systems.
 
-Use this snapshot for testing only. After the log cleanup pass is finished, the guide and changelog should be refreshed back to public-release wording and the cleaned package should be pushed/tagged separately.
+The June 5, 2026 cleanup pass removed the temporary dev-log noise from the robbery/front-pressure project while keeping compact first-report breadcrumbs in normal logs. Players can send a normal `Player.log` first; detailed diagnostics can be enabled later only if a bug needs a deeper repro.
 
-This package is the current public After Prohibition build. It includes StreamingAssets content plus staged BepInEx plugins for the active runtime systems.
+The older stable guide at `Things To Have\Old Stable\#Guide.txt` remains a legacy content reference and was not removed.
 
 For the full gameplay explanation, read `SYSTEMS_GUIDE.md` in this folder.
 
@@ -66,10 +66,41 @@ When installing a public build, copy the `CoG_Data` folder from this package alo
 
 - Use normal City of Gangsters play as the base.
 - Crew members now have more long-term identity through loyalty, happiness, odd jobs, spouse/family hooks, snitch risk, and street credit.
-- Pacts and independent gangs can build pressure, retaliate, protect turf, and expand.
+- Pacts and independent gangs can build pressure, retaliate, protect turf, expand, rob weak or exposed crews, and respond to refusals through important-business pressure or rare quick attacks.
 - Legal-front businesses, banks, schools, churches, train stations, and map generation are also changed through StreamingAssets data.
 - Safehouse and owned-building storage follow stricter vehicle-position rules.
 - Delivery routes can optionally try to expand collection fronts with the compact `+` toggle on `Collect front` steps.
+
+## Robbery And Front Pressure
+
+- Enemy outfits can try robbery/extortion when a human crew is exposed in enemy territory, when the player looks weak to a nearby outfit, or when local pressure says the outfit should test the player.
+- Peaceful outfits should generally avoid robbery pressure, while aggressive and expansion-minded outfits are more willing to use robbery, important-business pressure, or quick attacks.
+- The player can leave robbery prompts enabled, or open the boss crew relations menu and switch `Robbery: Prompt` to `Robbery: Auto Evade`.
+- Prompt mode lets the player manually pay, use a favor when available, evade, or refuse.
+- Auto Evade mode suppresses the prompt and lets crews use the standing order automatically. Failed evasion can still cost money or trigger retaliation.
+- Robbery pair cooldowns are six months, so the same robber outfit should not immediately keep trying the same human target after a resolved attempt.
+- Successful refusals can lead to important shop closures or, more rarely, a coordinated attack warning for the next turn.
+- Important-business closures target valid visible shops tied to the defender's territory or economic activity. Closed shops should block buying and selling until reopened by game rules.
+- Normal AI expansion and war pressure still exists alongside robbery. Robbery is an added pressure path, not the only reason outfits attack fronts or businesses.
+
+## Combat And Vehicle Crews
+
+- Vehicle attacks can include confirmed passengers in the target vehicle, so the attack popup can focus one passenger or spread damage across multiple occupants.
+- The combat popup includes `Attack Type`, `On-Foot Crew`, `Range`, and `Targets` controls when the situation supports them.
+- `Attack Type` switches between drive-by and on-foot behavior when available.
+- `On-Foot Crew` selects how many available attackers join an on-foot attack.
+- `Range` filters on-foot attacks between any, melee, and ranged weapons.
+- `Targets` switches between focused targeting and spread targeting when multiple enemy targets are available.
+- Passenger and driver routing remains strict for movement so future passengers should not be treated as already present attackers.
+
+## Public Logging And Diagnostics
+
+- Normal logs keep compact breadcrumbs for robbery prompts, robbery resolutions, front/business closure outcomes, combat commits, route problems, forced shop locks, and true anomalies.
+- Detailed verification logs are disabled by default. Enable `Diagnostics.EnableVerboseVerificationLogs=true` only when a compact log is not enough.
+- Area-specific diagnostics can be enabled with `Diagnostics.EnableRobberyDiagnostics`, `Diagnostics.EnableFrontPressureDiagnostics`, `Diagnostics.EnableVehicleAuthorityDiagnostics`, `Diagnostics.EnableVehicleCombatDiagnostics`, and `Diagnostics.EnableCompatibilityDiagnostics`.
+- Detailed performance telemetry is disabled by default. Enable `Diagnostics.EnablePerformanceDiagnostics=true` only when profiling a slowdown.
+- Routine Economy batch progress and mutation-detail logs are disabled by default through `AfterProhibitionEconomy` diagnostics. Use `Diagnostics.EnableRuntimeEconomyProgressLog=true` or `Diagnostics.EnableRuntimeEconomyRoutineLog=true` only for economy repros.
+- Always-on Unity errors and compact gameplay breadcrumbs remain useful for first bug reports. Do not ask players to rerun with verbose logs unless the first log does not contain enough evidence.
 
 ## Content To Look For
 

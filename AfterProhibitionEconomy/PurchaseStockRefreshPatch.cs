@@ -390,21 +390,24 @@ namespace AfterProhibitionEconomy
 			bool completed = state.Cursor >= state.Buildings.Count;
 			if (!completed)
 			{
-				AfterProhibitionEconomyPlugin.Log?.LogInfo(
-					"purchase-stock-refresh-progress source=" + sourceKey +
-					" scannedBatch=" + processed +
-					" scannedTotal=" + state.Scanned +
-					" totalBuildings=" + state.Buildings.Count +
-					" candidates=" + state.Candidates +
-					" candidateUpdatesBatch=" + candidatesProcessed +
-					" deferredCandidates=" + state.DeferredCandidates +
-					" refreshed=" + state.Refreshed +
-					" partial=" + state.PartialRefreshes +
-					" directTopOffs=" + state.DirectTopOffs +
-					" failed=" + state.Failed +
-					" catchupPasses=" + state.CatchupPasses +
-					" elapsedMs=" + stopwatch.ElapsedMilliseconds +
-					" day=" + now.days);
+				if (state.Failed > 0 || AfterProhibitionEconomyPlugin.ShouldLogRuntimeEconomyProgress())
+				{
+					AfterProhibitionEconomyPlugin.Log?.LogInfo(
+						"purchase-stock-refresh-progress source=" + sourceKey +
+						" scannedBatch=" + processed +
+						" scannedTotal=" + state.Scanned +
+						" totalBuildings=" + state.Buildings.Count +
+						" candidates=" + state.Candidates +
+						" candidateUpdatesBatch=" + candidatesProcessed +
+						" deferredCandidates=" + state.DeferredCandidates +
+						" refreshed=" + state.Refreshed +
+						" partial=" + state.PartialRefreshes +
+						" directTopOffs=" + state.DirectTopOffs +
+						" failed=" + state.Failed +
+						" catchupPasses=" + state.CatchupPasses +
+						" elapsedMs=" + stopwatch.ElapsedMilliseconds +
+						" day=" + now.days);
+				}
 				return;
 			}
 
@@ -884,6 +887,11 @@ namespace AfterProhibitionEconomy
 
 		private static void LogBusinessPurchaseStockRefresh(string source, Entity building, PurchaseStockRefreshResult result)
 		{
+			if (!AfterProhibitionEconomyPlugin.ShouldLogRuntimeEconomyRoutine())
+			{
+				return;
+			}
+
 			Entity biz = BuildingUtil.FindBizForBuilding(building);
 			string key = (building?.Id.ToString() ?? "null") + "|" + (biz?.Id.ToString() ?? "null");
 			if (!LoggedRefreshedBusinesses.Add(key))

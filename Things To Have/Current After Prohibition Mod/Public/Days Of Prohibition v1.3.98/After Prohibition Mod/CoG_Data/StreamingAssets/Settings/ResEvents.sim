@@ -1,0 +1,2701 @@
+{
+	people {
+
+
+	residentialEvents {
+
+		resSearchNearbyCorners 8
+
+		events [
+		{ 
+			id 			dinner-party	
+			visreqs 	[
+				{ #type check-is-convo-at-controlled-building expected #false }
+				{ #type check-player-territory-size is atleast value 8 }
+			]
+			waitturns	{ value 2 }
+			buyincash	{ value -100 mods [ 
+					{ #type territory-size-mod pernode -10 skip 1 }
+				] }
+			probskip	{ value 0.75 }
+			locroot		"resevents.dinner-party"
+			locicon		"resevents.dinner-party.icon"
+			locname		"resevents.dinner-party.name"
+			locdesc		"resevents.dinner-party.desc"
+			npcintro	"resevents.dinner-party.npc-intro"
+			
+			tickerinfo	"resevents.dinner-party.tickerinfo"
+			tickerstart	"resevents.dinner-party.tickerstart"
+			
+			results		{ ;; result ids and probabilities; everyone should have intros for fallback
+				result-intro 0.01
+				result-relbuff-enemy 0.5
+				result-relbuff-other 0.05
+				result-intro-business 1
+				smuggling-brick-wine-low 0.5
+				smuggling-brick-wine-high 0.3
+				result-homebooze-skills 0.2
+				result-visible-gain-one 1
+				result-visible-gain-two 1
+				result-visible-gain-three 1
+				result-visible-gain-four 1
+				result-add-fireplace 1
+			}
+		}
+		{ 
+			id 			poker-night
+			visreqs 	[
+				{ #type check-is-convo-at-controlled-building expected #false }
+				{ #type check-player-cash type highwater is atleast value 2500 }
+			]
+			waitturns	{ value 3 }
+			buyincash	{ value -400 }
+			probskip	{ value 0.75 }
+			locroot		"resevents.poker-night"
+			locicon		"resevents.poker-night.icon"
+			locname		"resevents.poker-night.name"
+			locdesc		"resevents.poker-night.desc"
+			npcintro	"resevents.poker-night.npc-intro"
+
+			tickerinfo	"resevents.poker-night.tickerinfo"
+			tickerstart	"resevents.poker-night.tickerstart"
+
+			results		{ ;; result ids and probabilities; everyone should have intros for fallback
+				smuggling-cider-low 0.4
+				smuggling-cider-high 0.4
+				result-homebooze-skills 0.3
+				result-relbuff-enemy 0.2
+			;	result-permits 0.5
+				result-intro 0.01 
+			}
+		}
+		{
+			id			working-lunch
+			visreqs		[
+				{ #type check-is-convo-at-controlled-building expected #false }
+				{ #type check-is-convo-inside-territory player human expected #true }
+				{ #type check-player-cash type highwater is atleast value 2000 }
+			]
+			waitturns	{ value 3 }
+			buyincash	{ value -200 }
+			probskip	{ value 0.75 }
+			locroot		"resevents.working-lunch"
+			locicon		"resevents.working-lunch.icon"
+			locname		"resevents.working-lunch.name"
+			locdesc		"resevents.working-lunch.desc"
+			npcintro 	"resevents.working-lunch.npc-intro"
+
+			tickerinfo	"resevents.working-lunch.tickerinfo"
+			tickerstart	"resevents.working-lunch.tickerstart"
+
+			results		{
+				result-homebooze-skills 0.7
+				smuggling-brick-wine-low 0.3
+				smuggling-brick-wine-high 0.4
+				result-relbuff-enemy 0.4
+				smuggling-cider-high 0.5
+				result-intro 0.01
+			}
+		}
+		{
+			id		bourbon-smuggling
+			visreqs [
+				{ #type always-false } ;; turn this off pending localisation
+				{ #type check-current-city is any of [ cincinnati ] }
+				{ #type check-location-district-tags has any of [ pricehill downtown hydepark ] }
+				{ #type check-is-convo-at-controlled-building expected #false }
+				{ #type check-player-unlocked-resources has any of [ corn-whiskey ] }
+				{ #type check-quests has none of [ bourbon-unlock bourbon-smuggling-one bourbon-smuggling-two bourbon-smuggling-kentucky bourbon-supplies bourbon-knowledge-quest ] status active }
+				{ #type check-owner-relbuffs has none of [ relbuff-resevent-quest-expired ] }
+			]
+			waitturns	{ value 6 }
+			buyincash	{ value -200 } 
+			probskip	{ value 0.25 }
+			locroot		"resevents.bourbon-smuggling"
+			locicon		"resevents.bourbon-smuggling.icon"
+			locname		"resevents.bourbon-smuggling.name"
+			locdesc		"resevents.bourbon-smuggling.desc"
+			npcintro	"resevents.bourbon-smuggling.npcintro"
+
+			tickerinfo	"resevents.bourbon-smuggling.tickerinfo"
+			tickerstart "resevents.bourbon-smuggling.tickerstart"
+
+			results {
+				bourbon-unlock 1
+				bourbon-smuggling-one 1
+				bourbon-smuggling-two 1
+				smuggling-cider-low 0.6
+				smuggling-cider-high 0.4
+				bourbon-supplies 1
+			}
+		}
+		{
+			id		bourbon-kentucky
+			visreqs [
+				{ #type always-false } ;; turn this off pending localisation
+				{ #type check-location-district-tags has any of [ kentucky ] }
+				{ #type check-current-city is any of [ cincinnati ] }
+				{ #type check-is-convo-at-controlled-building expected #false }
+				{ #type check-player-unlocked-resources has any of [ corn-whiskey ] }
+				{ #type check-quests has none of [ bourbon-unlock bourbon-smuggling-kentucky bourbon-knowledge-quest bourbon-supplies ] status active }
+				{ #type check-owner-relbuffs has none of [ relbuff-resevent-quest-expired ] }
+			]
+			waitturns	{ value 6 }
+			buyincash 	{ value -400 }
+			probskip	{ value 0.15 }
+			locroot 	"resevents.bourbon-kentucky"
+			locicon		"resevents.bourbon-kentucky.icon"
+			locdesc		"resevents.bourbon-kentucky.desc"
+			locname 	"resevents.bourbon-kentucky.name"
+			npcintro	"resevents.bourbon-kentucky.npcintro"
+
+			tickerinfo	"resevents.bourbon-smuggling.tickerinfo"
+			tickerstart "resevents.bourbon-smuggling.tickerstart"
+
+			results {
+				bourbon-unlock 1
+				bourbon-smuggling-kentucky 1
+				bourbon-knowledge-quest 1
+				bourbon-supplies 1
+			}
+		}
+		]
+
+		results [
+		{
+			#type			res-event-result-intro
+			id 				result-intro
+			; visreqs			[]  ;; intro is fallback, it should have no visreqs
+			locroot			"resresults.intro"
+			loceventresult	"resresults.intro.eventresult"
+
+			grants 			[{ #type consume-actions for convo }]
+		}
+		{
+		 	#type			res-event-result-relbuff
+		 	id 				result-relbuff-enemy
+		 	visreqs			[{ #type check-player-negative-connections is atleast value 1 }]
+		 	locroot			"resresults.relbuff-enemy"
+		 	loceventresult	"resresults.relbuff-enemy.eventresult"
+		 	relbuffenemy	#true
+		}
+		{
+		 	#type			res-event-result-relbuff
+		 	id 				result-relbuff-other
+		 	visreqs			[{ #type check-player-negative-connections is equalto value 0 }]
+		 	locroot			"resresults.relbuff-other"
+		 	loceventresult	"resresults.relbuff-other.eventresult"
+		 	relbuffenemy	#false
+		}
+		{
+			#type			res-event-result-intro
+			id				result-intro-business
+			visreqs			[{ #type check-can-intro-for-business }]
+			locroot			"resresults.business-intro"
+			loceventresult	"resresults.business-intro.eventresult"
+
+			grants 			[ { #type consume-actions for convo } { #type intro-to-useful-friend } ]
+		}
+		{
+			#type			res-event-result-quest
+			id				result-visible-gain-one
+			visreqs 		[ 
+				{ #type check-player-unlocked-resources has none of [ sparkling-cider ] } 
+				{ #type check-module-in-player-territory has any of [ production-homebooze-cider production-homebooze-cider-improved production-homebooze-cider-improved-upgrade ] scope player-only }
+			]
+
+			locroot			"resresults.visible-gain"
+			loceventresult	"resresults.visible-gain.eventresult"
+
+			grants [ { #type consume-actions for convo } { #type unlock-resource id sparkling-cider } ]
+		}
+		{
+			#type			res-event-result-quest
+			id				result-visible-gain-two
+			visreqs 		[ 
+				{ #type check-player-unlocked-resources has none of [ fake-wine ] } 
+				{ #type check-module-in-player-territory has any of [ production-homebooze-brick-wine production-homebooze-brick-wine-improved production-homebooze-brick-wine-improved-upgrade ] scope player-only }
+			]
+
+			locroot			"resresults.visible-gain"
+			loceventresult	"resresults.visible-gain.eventresult"
+
+			grants [ { #type consume-actions for convo } { #type unlock-resource id fake-wine } ]
+		}
+		{
+			#type			res-event-result-quest
+			id				result-visible-gain-three
+			visreqs 		[ 
+				{ #type check-player-unlocked-resources has none of [ fake-beer ] } 
+				{ #type check-module-in-player-territory has any of [ production-homebooze-home-brew production-homebooze-home-brew-improved production-homebooze-home-brew-improved-upgrade ] scope player-only }
+			]
+
+			locroot			"resresults.visible-gain"
+			loceventresult	"resresults.visible-gain.eventresult"
+
+			grants [ { #type consume-actions for convo } { #type unlock-resource id fake-beer } ]
+		}
+		{
+			#type			res-event-result-quest
+			id				result-visible-gain-four
+			visreqs 		[ 
+				{ #type check-player-unlocked-resources has none of [ bathtub-gin ] } 
+				{ #type check-module-in-player-territory has any of [ production-homebooze-moonshine production-homebooze-moonshine-improved production-homebooze-moonshine-improved-upgrade ] scope player-only }
+			]
+
+			locroot			"resresults.visible-gain"
+			loceventresult	"resresults.visible-gain.eventresult"
+
+			grants [ { #type consume-actions for convo } { #type unlock-resource id bathtub-gin } ]
+		}
+
+;; POKER GAMES - Smuggling opps
+
+		{ ;; get a dump of a type of homemade booze that you don't make
+			#type			res-event-result-quest
+			id				result-quest-homebooze-one
+			visreqs			[
+				{ #type check-player-produced-total resource fake-wine is lessthan value 1 }
+				{ #type check-player-produced-total resource fake-beer is lessthan value 1 }
+				{ #type check-player-produced-total resource sparkling-cider is lessthan value 1 }
+				{ #type check-player-produced-total resource bathtub-gin is lessthan value 1 }
+			]
+			locroot			"resresults.quest-homebooze"
+			loceventresult	"resresults.quest-homebooze.eventresult"
+
+			grants			[{ #type consume-actions for convo }]
+
+			quest			{
+				id result-quest-homebooze
+				locname		"resultquest.quest-homebooze.name"
+				locdesc		"resultquest.quest-homebooze.desc"
+				locicon		"quest.generic.icon"
+
+				goals		[
+					{ #type goal-deliver-cash test atleast goal 750 }
+				]
+
+				beforechoice "resultquest.quest-homebooze.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.quest-homebooze.c1"
+						grants [ { #type add-resource id brick-wine qty 135 at safehouse } ]
+					}
+					{
+						locdesc "resultquest.quest-homebooze.c2"
+						grants [ { #type add-resource id cider qty 125 at safehouse } ]
+					}
+					{
+						locdesc "resultquest.quest-homebooze.c3"
+						grants [ { #type add-resource id home-brew qty 175 at safehouse } ]
+					}
+					{
+						locdesc "resultquest.quest-homebooze.c4"
+						grants [ { #type add-resource id moonshine qty 75 at safehouse } ]
+					}
+					{
+						visreqs [
+							{ #type check-current-city is any of [ pittsburgh ] }
+						]
+						locdesc "resultquest.quest-homebooze.c5"
+						grants [ { #type add-resource id apple-jack qty 120 } ]
+					}
+					{
+						visreqs [
+							{ #type check-current-city is any of [ detroit ] }
+						]
+						locdesc "resultquest.quest-homebooze.c6"
+						grants [ { #type add-resource id fruit-wine qty 135 at safehouse } ]
+					}
+				]
+				afterchoice "quest.quest-homebooze.afterchoice"
+				expiration {
+                    expiresAfterDayz 70
+                    locblurb  "convo.expired-homebooze-quest.finish.blurb"
+                    locdesc     "convo.expired-homebooze-quest.finish.button"
+                    locepilogue "convo.expired-homebooze-quest.finish.post.blurb"
+
+                    refundPercent 	{ value 20 }
+                    grants [
+                        { #type add-rel-buff with owner id "relbuff-resevent-quest-expired" }
+                    ]
+                }
+			}
+		}
+		{ ;; get some useful documents
+			#type res-event-result-quest
+			id result-permits
+			visreqs [
+				{ #type check-current-turn is atleast value 20 }
+			]
+			locroot "resresults.permits"
+			loceventresult "resresults.permits.eventresult"
+
+			grants [
+				{ #type consume-actions for convo }
+			]
+
+			quest 	{
+				id result-quest-permits
+				locname "resultquest.quest-permits.name"
+				locdesc "resultquest.quest-permits.desc"
+				locicon "quest.generic.icon"
+
+				goals [
+					{ #type goal-deliver-cash test atleast goal 100 }
+				]
+
+				beforechoice "resultquest.quest-permits.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.quest-permits.c1"
+						grants [
+							{ #type add-resource id permits qty 1 at safehouse }
+						]
+					}
+				]
+				afterchoice "resultquest.quest-permits.afterchoice"
+				expiration {
+					expiresAfterDayz 35
+					locblurb "convo.expired-poker-night.finish.blurb"
+					locdesc "convo.expired-poker-night.finish.button"
+					locepilogue "convo.expired-poker-night.post.blurb"
+
+					refundPercent { value 1 }
+					grants [
+                        { #type add-rel-buff with owner id "relbuff-resevent-quest-expired" }
+                    ]
+				}
+			}
+		}
+		{
+			#type res-event-result-quest
+			id smuggling-brick-wine-low
+			visreqs []
+			locroot "resresults.smuggling-quest"
+			loceventresult "resresults.smuggling-homemade-booze.eventresult"
+
+			grants [
+				{ #type consume-actions for convo }
+			]
+
+			quest {
+				id resultquest-brick-wine-smuggling-low
+				locname "resultquest.brick-wine-smuggling.name"
+				locdesc "resultquest.brick-wine-smuggling.desc"
+				locicon "quest.generic.icon"
+
+				goals [
+					{ #type goal-deliver-cash test atleast goal 800 }
+				]
+
+				beforechoice "resultquest.smuggling-quest.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.smuggling-booze.c1"
+						grants [
+							{ #type add-resource id brick-wine qty 170 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 8 9 10 11 ] }
+							{ #type check-current-turn is moreorequalto value 58 }
+						]
+						locdesc "resultquest.smuggling-booze.c2"
+						grants [
+							{ #type add-resource id weapon-pistol qty 2 at safehouse }
+							{ #type add-resource id apple-juice qty 40 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 8 9 10 11 ] }
+							{ #type check-current-turn is moreorequalto value 58 }
+						]
+						locdesc "resultquest.smuggling-booze.c3"
+						grants [
+							{ #type add-resource id weapon-pistol qty 2 at safehouse }
+							{ #type add-resource id grape-juice qty 30 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 2 3 4 ] }
+							{ #type check-current-turn is moreorequalto value 58 }
+						]
+						locdesc "resultquest.smuggling-booze.c4"
+						grants [
+							{ #type add-resource id weapon-pistol qty 2 at safehouse }
+							{ #type add-resource id neutral-alcohol qty 20 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 5 6 7 12 ] }
+							{ #type check-current-turn is moreorequalto value 58 }
+						]
+						locdesc "resultquest.smuggling-booze.c5"
+						grants [
+							{ #type add-resource id weapon-pistol qty 2 at safehouse }
+							{ #type add-resource id malt qty 50 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-current-turn is moreorequalto value 58 }
+						]
+						locdesc "resultquest.smuggling-booze.c6"
+						grants [
+							{ #type add-resource id weapon-pistol qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-current-turn is moreorequalto value 58 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-pistol qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 58 }
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+						]
+						locdesc "resultquest.smuggling-booze.c8"
+						grants [
+							{ #type add-resource id weapon-pistol qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 58 }
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+						]
+						locdesc "resultquest.smuggling-booze.c9"
+						grants [
+							{ #type add-resource id weapon-pistol qty 2 at safehouse }
+						]
+					}
+				]
+				afterchoice "resultquest.smuggling-booze.afterchoice"
+
+				expiration {
+					expiresAfterDayz 105
+					locblurb "convo.expired-smuggling-booze.finish.blurb"
+					locdesc "convo.expired-smuggling-booze.finish.button"
+					locepilogue "convo.expired-smuggling-booze.post.blurb"
+					
+					refundPercent { value 50 }
+					grants [
+						{ #type add-rel-buff with owner id "relbuff-resevent-quest-expired" }
+					]
+				}
+			}
+		}
+		{
+			#type res-event-result-quest
+			id smuggling-brick-wine-high
+			visreqs []
+			locroot "resresults.smuggling-quest"
+			loceventresult "resresults.smuggling-homemade-booze.eventresult"
+
+			grants [
+				{ #type consume-actions for convo }
+			]
+
+			quest {
+				id resultquest-brick-wine-smuggling-high
+				locname "resultquest.brick-wine-smuggling.name"
+				locdesc "resultquest.brick-wine-smuggling.desc"
+				locicon "quest.generic.icon"
+
+				goals [
+					{ #type goal-deliver-cash test atleast goal 900 }
+				]
+
+				beforechoice "resultquest.smuggling-quest.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.smuggling-booze.c1"
+						grants [
+							{ #type add-resource id brick-wine qty 170 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 78 }
+						]
+						locdesc "resultquest.smuggling-booze.c10"
+						grants [
+							{ #type add-resource id fake-wine qty 75 at safehouse }
+							{ #type add-resource id weapon-colt qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 78 }
+						]
+						locdesc "resultquest.smuggling-booze.c11"
+						grants [
+							{ #type add-resource id sparkling-cider qty 90 at safehouse }
+							{ #type add-resource id weapon-colt qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 78 }
+						]
+						locdesc "resultquest.smuggling-booze.c12"
+						grants [
+							{ #type add-resource id fake-beer qty 90 at safehouse }
+							{ #type add-resource id weapon-colt qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 78 }
+						]
+						locdesc "resultquest.smuggling-booze.c13"
+						grants [
+							{ #type add-resource id bathtub-gin qty 70 at safehouse }
+							{ #type add-resource id weapon-colt qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+						{ #type check-current-turn is moreorequalto value 78 }
+						]
+						locdesc "resultquest.smuggling-booze.c6"
+						grants [
+							{ #type add-resource id weapon-colt qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 78 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id paper qty 20 at safehouse }
+							{ #type add-resource id weapon-colt qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 78 }
+						]
+						locdesc "resultquest.smuggling-booze.c14"
+						grants [
+							{ #type add-resource id dirt-barrel qty 30 at safehouse }
+							{ #type add-resource id weapon-colt qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 78 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-colt qty 2 at safehouse }
+						]
+					}
+				]
+				afterchoice "resultquest.smuggling-booze.afterchoice"
+
+				expiration {
+					expiresAfterDayz 105
+					locblurb "convo.expired-smuggling-booze.finish.blurb"
+					locdesc "convo.expired-smuggling-booze.finish.button"
+					locepilogue "convo.expired-smuggling-booze.post.blurb"
+					
+					refundPercent { value 50 }
+					grants [
+						{ #type add-rel-buff with owner id "relbuff-resevent-quest-expired" }
+					]
+				}
+			}
+		}
+		{
+			#type res-event-result-quest
+			id smuggling-cider-low
+			visreqs [
+				{ #type check-player-produced-total resource cider is moreorequalto value 1 }
+				{ #type check-player-skills has none of [ improved-homebooze-cider ] }
+			]
+			locroot "resresults.smuggling-quest"
+			loceventresult "resresults.smuggling-homemade-booze.eventresult"
+
+			grants [
+				{ #type consume-actions for convo }
+			]
+
+			quest {
+				id resultquest-cider-low
+				locname "resultquest.cider-smuggling.name"
+				locdesc "resultquest.cider-smuggling.desc"
+				locicon "quest.generic.icon"
+
+				goals [
+					{ #type goal-deliver-cash test atleast goal 2500 }
+				]
+
+				beforechoice "resultquest.smuggling-quest.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.smuggling-booze.c1"
+						grants [
+							{ #type add-resource id cannabis qty 300 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 8 9 10 11 ] }
+							{ #type check-player-produced-total resource apple-juice is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c2"
+						grants [
+							{ #type add-resource id cannabis qty 300 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 8 9 10 11 ] }
+							{ #type check-player-produced-total resource grape-juice is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c3"
+						grants [
+							{ #type add-resource id cannabis qty 300 at safehouse }
+							{ #type add-resource id grape-juice qty 30 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 2 3 4 ] }
+							{ #type check-player-produced-total resource neutral-alcohol is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c4"
+						grants [
+							{ #type add-resource id cannabis qty 300 at safehouse }
+							{ #type add-resource id neutral-alcohol qty 20 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 5 6 7 12 ] }
+							{ #type check-player-produced-total resource malt is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c5"
+						grants [
+							{ #type add-resource id cannabis qty 300 at safehouse }
+							{ #type add-resource id malt qty 50 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-player-crew-size is atleast value 3 }
+							{ #type check-player-crew-size is lessthan value 8 }
+						]
+						locdesc "resultquest.smuggling-booze.c6"
+						grants [
+							{ #type add-resource id cannabis qty 300 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-player-crew-size is atleast value 3 }
+							{ #type check-player-crew-size is lessthan value 8 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id cannabis qty 300 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-crew-size is lessthan value 4 }
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+						]
+						locdesc "resultquest.smuggling-booze.c8"
+						grants [
+							{ #type add-resource id cannabis qty 300 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-crew-size is lessthan value 4 }
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+						]
+						locdesc "resultquest.smuggling-booze.c9"
+						grants [
+							{ #type add-resource id cannabis qty 300 at safehouse }
+						]
+					}
+				]
+				afterchoice "resultquest.smuggling-booze.afterchoice"
+
+				expiration {
+					expiresAfterDayz 184
+					locblurb "convo.expired-smuggling-booze.finish.blurb"
+					locdesc "convo.expired-smuggling-booze.finish.button"
+					locepilogue "convo.expired-smuggling-booze.post.blurb"
+					
+					refundPercent { value 50 }
+					grants [
+						{ #type add-rel-buff with owner id "relbuff-resevent-quest-expired" }
+					]
+				}
+			}
+		}
+		{
+			#type res-event-result-quest
+			id smuggling-cider-high
+			visreqs [
+				{ #type check-player-skills has any of [ improved-homebooze-cider ] }
+				{ #type check-player-produced-total resource sparkling-cider is lessthan value 1 }
+			]
+			locroot "resresults.smuggling-quest"
+			loceventresult "resresults.smuggling-homemade-booze.eventresult"
+
+			grants [
+				{ #type consume-actions for convo }
+			]
+
+			quest {
+				id resultquest-cider-high
+				locname "resultquest.cider-smuggling.name"
+				locdesc "resultquest.cider-smuggling.desc"
+				locicon "quest.generic.icon"
+
+				goals [
+					{ #type goal-deliver-cash test atleast goal 800 }
+				]
+
+				beforechoice "resultquest.smuggling-quest.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.smuggling-booze.c1"
+						grants [
+							{ #type add-resource id brick-wine qty 135 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 58 }
+						]
+						locdesc "resultquest.smuggling-booze.c10"
+						grants [
+							{ #type add-resource id weapon-pistol qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 58 }
+						]
+						locdesc "resultquest.smuggling-booze.c11"
+						grants [
+							{ #type add-resource id weapon-pistol qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 58 }
+						]
+						locdesc "resultquest.smuggling-booze.c12"
+						grants [
+
+							{ #type add-resource id weapon-pistol qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 58 }
+						]
+						locdesc "resultquest.smuggling-booze.c13"
+						grants [
+							{ #type add-resource id weapon-pistol qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 703 }
+						]
+						locdesc "resultquest.smuggling-booze.c6"
+						grants [
+							{ #type add-resource id weapon-broomhandle qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 703 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-broomhandle qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 703 }
+						]
+						locdesc "resultquest.smuggling-booze.c14"
+						grants [
+							{ #type add-resource id weapon-broomhandle qty 2 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-turn is moreorequalto value 703 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-broomhandle qty 2 at safehouse }
+						]
+					}
+				]
+				afterchoice "resultquest.smuggling-booze.afterchoice"
+
+				expiration {
+					expiresAfterDayz 184
+					locblurb "convo.expired-smuggling-booze.finish.blurb"
+					locdesc "convo.expired-smuggling-booze.finish.button"
+					locepilogue "convo.expired-smuggling-booze.post.blurb"
+					
+					refundPercent { value 50 }
+					grants [
+						{ #type add-rel-buff with owner id "relbuff-resevent-quest-expired" }
+					]
+				}
+			}
+		}
+		{
+			#type res-event-result-quest
+			id smuggling-home-brew-low
+			visreqs [
+				{ #type check-player-skills has none of [ improved-homebooze-home-brew ] }
+				{ #type check-player-produced-total resource fake-beer is lessthan value 1 }
+			]
+			locroot "resresults.smuggling-quest"
+			loceventresult "resresults.smuggling-homemade-booze.eventresult"
+
+			grants [
+				{ #type consume-actions for convo }
+			]
+
+			quest {
+				id resultquest-home-brew-low
+				locname "resultquest.home-brew-smuggling.name"
+				locdesc "resultquest.home-brew-smuggling.desc"
+				locicon "quest.generic.icon"
+
+				goals [
+					{ #type goal-deliver-goods resource home-brew test atleast goal 75 }
+				]
+
+				beforechoice "resultquest.smuggling-quest.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.smuggling-booze.c1"
+						grants [
+							{ #type add-cash amount 1000 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 8 9 10 11 ] }
+							{ #type check-player-produced-total resource apple-juice is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c2"
+						grants [
+							{ #type add-cash amount 500 at safehouse }
+							{ #type add-resource id apple-juice qty 40 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 8 9 10 11 ] }
+							{ #type check-player-produced-total resource grape-juice is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c3"
+						grants [
+							{ #type add-cash amount 500 at safehouse }
+							{ #type add-resource id grape-juice qty 30 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 2 3 4 ] }
+							{ #type check-player-produced-total resource neutral-alcohol is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c4"
+						grants [
+							{ #type add-cash amount 500 at safehouse }
+							{ #type add-resource id neutral-alcohol qty 20 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 5 6 7 12 ] }
+							{ #type check-player-produced-total resource malt is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c5"
+						grants [
+							{ #type add-cash amount 500 at safehouse }
+							{ #type add-resource id malt qty 50 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-player-crew-size is atleast value 3 }
+							{ #type check-player-crew-size is lessthan value 8 }
+						]
+						locdesc "resultquest.smuggling-booze.c6"
+						grants [
+							{ #type add-resource id weapon-pistol qty 4 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-player-crew-size is atleast value 3 }
+							{ #type check-player-crew-size is lessthan value 8 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-colt qty 4 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-crew-size is lessthan value 4 }
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+						]
+						locdesc "resultquest.smuggling-booze.c8"
+						grants [
+							{ #type add-resource id weapon-switchblade qty 2 at safehouse }
+							{ #type add-cash amount 400 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-crew-size is lessthan value 4 }
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+						]
+						locdesc "resultquest.smuggling-booze.c9"
+						grants [
+							{ #type add-resource id weapon-knife qty 2 at safehouse }
+							{ #type add-cash amount 400 at safehouse }
+						]
+					}
+				]
+				afterchoice "resultquest.smuggling-booze.afterchoice"
+
+				expiration {
+					expiresAfterDayz 63
+					locblurb "convo.expired-smuggling-booze.finish.blurb"
+					locdesc "convo.expired-smuggling-booze.finish.button"
+					locepilogue "convo.expired-smuggling-booze.post.blurb"
+					
+					refundPercent { value 50 }
+					grants [
+						{ #type add-rel-buff with owner id "relbuff-resevent-quest-expired" }
+					]
+				}
+			}
+		}
+		{
+			#type res-event-result-quest
+			id smuggling-home-brew-high
+			visreqs [
+				{ #type check-player-skills has any of [ improved-homebooze-home-brew ] }
+				{ #type check-player-produced-total resource fake-beer is lessthan value 1 }
+			]
+			locroot "resresults.smuggling-quest"
+			loceventresult "resresults.smuggling-homemade-booze.eventresult"
+
+			grants [
+				{ #type consume-actions for convo }
+			]
+
+			quest {
+				id resultquest-home-brew-high
+				locname "resultquest.home-brew-smuggling.name"
+				locdesc "resultquest.home-brew-smuggling.desc"
+				locicon "quest.generic.icon"
+
+				goals [
+					{ #type goal-deliver-goods resource home-brew test atleast goal 150 }
+				]
+
+				beforechoice "resultquest.smuggling-quest.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.smuggling-booze.c1"
+						grants [
+							{ #type add-cash amount 2000 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ fake-wine ] }
+							{ #type check-player-produced-total resource fake-wine is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c10"
+						grants [
+							{ #type add-resource id fake-wine qty 50 at safehouse }
+							{ #type add-cash amount 1000 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ sparkling-cider ] }
+							{ #type check-player-produced-total resource sparkling-cider is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c11"
+						grants [
+							{ #type add-resource id sparkling-cider qty 60 at safehouse }
+							{ #type add-cash amount 1000 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ fake-beer ] }
+							{ #type check-player-produced-total resource fake-beer is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c12"
+						grants [
+							{ #type add-resource id fake-beer qty 60 at safehouse }
+							{ #type add-cash amount 1000 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ bathtub-gin ] }
+							{ #type check-player-produced-total resource bathtub-gin is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c13"
+						grants [
+							{ #type add-resource id bathtub-gin qty 40 at safehouse }
+							{ #type add-cash amount 1000 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-player-crew-size is atleast value 3 }
+							{ #type check-player-crew-size is lessthan value 8 }
+						]
+						locdesc "resultquest.smuggling-booze.c6"
+						grants [
+							{ #type add-resource id weapon-pistol qty 4 at safehouse }
+							{ #type add-cash amount 800 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-player-crew-size is atleast value 3 }
+							{ #type check-player-crew-size is lessthan value 8 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-colt qty 4 at safehouse }
+							{ #type add-cash amount 800 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c14"
+						grants [
+							{ #type add-resource id weapon-winchester qty 6 at safehouse }
+							{ #type add-cash amount 500 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-colt qty 6 at safehouse }
+							{ #type add-cash amount 500 at safehouse }
+						]
+					}
+				]
+				afterchoice "resultquest.smuggling-booze.afterchoice"
+
+				expiration {
+					expiresAfterDayz 63
+					locblurb "convo.expired-smuggling-booze.finish.blurb"
+					locdesc "convo.expired-smuggling-booze.finish.button"
+					locepilogue "convo.expired-smuggling-booze.post.blurb"
+					
+					refundPercent { value 50 }
+					grants [
+						{ #type add-rel-buff with owner id "relbuff-resevent-quest-expired" }
+					]
+				}
+			}
+		}
+		{
+			#type res-event-result-quest
+			id smuggling-moonshine-low
+			visreqs [
+				{ #type check-player-skills has none of [ improved-homebooze-moonshine ] }
+				{ #type check-player-produced-total resource bathtub-gin is lessthan value 1 }
+			]
+			locroot "resresults.smuggling-quest"
+			loceventresult "resresults.smuggling-homemade-booze.eventresult"
+
+			grants [
+				{ #type consume-actions for convo }
+			]
+
+			quest {
+				id resultquest-moonshine-low
+				locname "resultquest.moonshine-smuggling.name"
+				locdesc "resultquest.moonshine-smuggling.desc"
+				locicon "quest.generic.icon"
+
+				goals [
+					{ #type goal-deliver-goods resource moonshine test atleast goal 40 }
+				]
+
+				beforechoice "resultquest.smuggling-quest.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.smuggling-booze.c1"
+						grants [
+							{ #type add-cash amount 1500 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 8 9 10 11 ] }
+							{ #type check-player-produced-total resource apple-juice is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c2"
+						grants [
+							{ #type add-cash amount 1000 at safehouse }
+							{ #type add-resource id apple-juice qty 40 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 8 9 10 11 ] }
+							{ #type check-player-produced-total resource grape-juice is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c3"
+						grants [
+							{ #type add-cash amount 1000 at safehouse }
+							{ #type add-resource id grape-juice qty 30 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 2 3 4 ] }
+							{ #type check-player-produced-total resource neutral-alcohol is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c4"
+						grants [
+							{ #type add-cash amount 1000 at safehouse }
+							{ #type add-resource id neutral-alcohol qty 20 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 5 6 7 12 ] }
+							{ #type check-player-produced-total resource malt is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c5"
+						grants [
+							{ #type add-cash amount 1000 at safehouse }
+							{ #type add-resource id malt qty 50 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-player-crew-size is atleast value 3 }
+							{ #type check-player-crew-size is lessthan value 8 }
+						]
+						locdesc "resultquest.smuggling-booze.c6"
+						grants [
+							{ #type add-resource id weapon-pistol qty 4 at safehouse }
+							{ #type add-cash amount 750 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-player-crew-size is atleast value 3 }
+							{ #type check-player-crew-size is lessthan value 8 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-colt qty 4 at safehouse }
+							{ #type add-cash amount 750 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-crew-size is lessthan value 4 }
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+						]
+						locdesc "resultquest.smuggling-booze.c8"
+						grants [
+							{ #type add-resource id weapon-switchblade qty 2 at safehouse }
+							{ #type add-cash amount 1000 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-crew-size is lessthan value 4 }
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+						]
+						locdesc "resultquest.smuggling-booze.c9"
+						grants [
+							{ #type add-resource id weapon-knife qty 2 at safehouse }
+							{ #type add-cash amount 1000 at safehouse }
+						]
+					}
+				]
+				afterchoice "resultquest.smuggling-booze.afterchoice"
+
+				expiration {
+					expiresAfterDayz 70
+					locblurb "convo.expired-smuggling-booze.finish.blurb"
+					locdesc "convo.expired-smuggling-booze.finish.button"
+					locepilogue "convo.expired-smuggling-booze.post.blurb"
+					
+					refundPercent { value 50 }
+					grants [
+						{ #type add-rel-buff with owner id "relbuff-resevent-quest-expired" }
+					]
+				}
+			}
+		}
+		{
+			#type res-event-result-quest
+			id smuggling-moonshine-high
+			visreqs [
+				{ #type check-player-skills has any of [ improved-homebooze-moonshine ] }
+				{ #type check-player-produced-total resource bathtub-gin is lessthan value 1 }
+			]
+			locroot "resresults.smuggling-quest"
+			loceventresult "resresults.smuggling-homemade-booze.eventresult"
+
+			grants [
+				{ #type consume-actions for convo }
+			]
+
+			quest {
+				id resultquest-moonshine-high
+				locname "resultquest.cider-smuggling.name"
+				locdesc "resultquest.cider-smuggling.desc"
+				locicon "quest.generic.icon"
+
+				goals [
+					{ #type goal-deliver-goods resource home-brew test atleast goal 75 }
+				]
+
+				beforechoice "resultquest.smuggling-quest.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.smuggling-booze.c1"
+						grants [
+							{ #type add-cash amount 2500 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ fake-wine ] }
+							{ #type check-player-produced-total resource fake-wine is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c10"
+						grants [
+							{ #type add-resource id fake-wine qty 60 at safehouse }
+							{ #type add-cash amount 1250 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ sparkling-cider ] }
+							{ #type check-player-produced-total resource sparkling-cider is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c11"
+						grants [
+							{ #type add-resource id sparkling-cider qty 70 at safehouse }
+							{ #type add-cash amount 1250 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ fake-beer ] }
+							{ #type check-player-produced-total resource fake-beer is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c12"
+						grants [
+							{ #type add-resource id fake-beer qty 70 at safehouse }
+							{ #type add-cash amount 1250 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ bathtub-gin ] }
+							{ #type check-player-produced-total resource bathtub-gin is lessthan value 1 }
+						]
+						locdesc "resultquest.smuggling-booze.c13"
+						grants [
+							{ #type add-resource id bathtub-gin qty 50 at safehouse }
+							{ #type add-cash amount 1250 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-player-crew-size is atleast value 3 }
+							{ #type check-player-crew-size is lessthan value 8 }
+						]
+						locdesc "resultquest.smuggling-booze.c6"
+						grants [
+							{ #type add-resource id weapon-pistol qty 4 at safehouse }
+							{ #type add-cash amount 1200 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-player-crew-size is atleast value 3 }
+							{ #type check-player-crew-size is lessthan value 8 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-colt qty 4 at safehouse }
+							{ #type add-cash amount 1200 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c14"
+						grants [
+							{ #type add-resource id weapon-winchester qty 6 at safehouse }
+							{ #type add-cash amount 750 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-colt qty 6 at safehouse }
+							{ #type add-cash amount 750 at safehouse }
+						]
+					}
+				]
+				afterchoice "resultquest.smuggling-booze.afterchoice"
+
+				expiration {
+					expiresAfterDayz 70
+					locblurb "convo.expired-smuggling-booze.finish.blurb"
+					locdesc "convo.expired-smuggling-booze.finish.button"
+					locepilogue "convo.expired-smuggling-booze.post.blurb"
+					
+					refundPercent { value 50 }
+					grants [
+						{ #type add-rel-buff with owner id "relbuff-resevent-quest-expired" }
+					]
+				}
+			}
+		}
+		{
+			#type res-event-result-quest
+			id smuggling-fake-wine
+			visreqs [
+				{ #type check-player-produced-total resource fake-wine is moreorequalto value 1 }
+				{ #type check-player-skills has none of [ bootleg-whiskey bootleg-brandy bootleg-vodka bootleg-rum ] }
+			]
+			locroot "resresults.smuggling-quest"
+			loceventresult "resresults.smuggling-level-two-booze.eventresult"
+
+			grants [
+				{ #type consume-actions for convo }
+			]
+
+			quest {
+				id resultquest-fake-wine
+				locname "resultquest.fake-wine-smuggling.name"
+				locdesc "resultquest.fake-wine-smuggling.desc"
+				locicon "quest.generic.icon"
+
+				goals [
+					{ #type goal-deliver-goods resource fake-wine test atleast goal 130 }
+				]
+
+				beforechoice "resultquest.smuggling-quest.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.smuggling-booze.c1"
+						grants [
+							{ #type add-cash amount 6500 at safehouse }
+						]
+					}
+					{
+						locdesc "resultquest.smuggling-booze.c15"
+						grants [
+							{ #type add-resource id labels qty 180 at safehouse }
+							{ #type add-cash amount 5000 }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ whiksey-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c16"
+						grants [
+							{ #type add-resource id whiksey-bottled qty 160 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ brandy-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c17"
+						grants [
+							{ #type add-resource id brandy-bottled qty 250 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ vodka-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c18"
+						grants [
+							{ #type add-resource id vodka-bottled qty 200 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ rum-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c19"
+						grants [
+							{ #type add-resource id rum-bottled qty 275 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c14"
+						grants [
+							{ #type add-resource id weapon-winchester qty 6 at safehouse }
+							{ #type add-cash amount 3500 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-colt qty 6 at safehouse }
+							{ #type add-cash amount 3500 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-player-crew-size is atleast value 12 }
+							{ #type check-player-crew-size is lessthan value 16 }
+						]
+						locdesc "resultquest.smuggling-booze.c14"
+						grants [
+							{ #type add-resource id weapon-winchester qty 10 at safehouse }
+							{ #type add-cash amount 2000 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-colt qty 10 at safehouse }
+							{ #type add-cash amount 2000 at safehouse }
+						]
+					}
+				]
+				afterchoice "resultquest.smuggling-booze.afterchoice"
+
+				expiration {
+					expiresAfterDayz 70
+					locblurb "convo.expired-smuggling-booze.finish.blurb"
+					locdesc "convo.expired-smuggling-booze.finish.button"
+					locepilogue "convo.expired-smuggling-booze.post.blurb"
+					
+					refundPercent { value 50 }
+					grants [
+						{ #type add-rel-buff with owner id "relbuff-resevent-quest-expired" }
+					]
+				}
+			}
+		}
+		{
+			#type res-event-result-quest
+			id smuggling-sparkling-cider
+			visreqs [
+				{ #type check-player-produced-total resource sparkling-cider is moreorequalto value 1 }
+				{ #type check-player-skills has none of [ bootleg-whiskey bootleg-brandy bootleg-vodka bootleg-rum ] }
+			]
+			locroot "resresults.smuggling-quest"
+			loceventresult "resresults.smuggling-level-two-booze.eventresult"
+
+			grants [
+				{ #type consume-actions for convo }
+			]
+
+			quest {
+				id resultquest-sparkling-cider
+				locname "resultquest.sparkling-cider-smuggling.name"
+				locdesc "resultquest.sparkling-cider-smuggling.desc"
+				locicon "quest.generic.icon"
+
+				goals [
+					{ #type goal-deliver-goods resource sparkling-cider test atleast goal 120 }
+				]
+
+				beforechoice "resultquest.smuggling-quest.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.smuggling-booze.c1"
+						grants [
+							{ #type add-cash amount 5000 at safehouse }
+						]
+					}
+					{
+						locdesc "resultquest.smuggling-booze.c20"
+						grants [
+							{ #type add-resource id sugar qty 40 at safehouse }
+							{ #type add-cash amount 4500 }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ whiksey-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c16"
+						grants [
+							{ #type add-resource id whiksey-bottled qty 150 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ brandy-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c17"
+						grants [
+							{ #type add-resource id brandy-bottled qty 225 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ vodka-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c18"
+						grants [
+							{ #type add-resource id vodka-bottled qty 180 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ rum-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c19"
+						grants [
+							{ #type add-resource id rum-bottled qty 250 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c14"
+						grants [
+							{ #type add-resource id weapon-winchester qty 6 at safehouse }
+							{ #type add-cash amount 2500 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-colt qty 6 at safehouse }
+							{ #type add-cash amount 2500 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-player-crew-size is atleast value 12 }
+							{ #type check-player-crew-size is lessthan value 16 }
+						]
+						locdesc "resultquest.smuggling-booze.c14"
+						grants [
+							{ #type add-resource id weapon-winchester qty 10 at safehouse }
+							{ #type add-cash amount 1500 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-colt qty 10 at safehouse }
+							{ #type add-cash amount 1500 at safehouse }
+						]
+					}
+				]
+				afterchoice "resultquest.smuggling-booze.afterchoice"
+
+				expiration {
+					expiresAfterDayz 105
+					locblurb "convo.expired-smuggling-booze.finish.blurb"
+					locdesc "convo.expired-smuggling-booze.finish.button"
+					locepilogue "convo.expired-smuggling-booze.post.blurb"
+					
+					refundPercent { value 50 }
+					grants [
+						{ #type add-rel-buff with owner id "relbuff-resevent-quest-expired" }
+					]
+				}
+			}
+		}
+		{
+			#type res-event-result-quest
+			id smuggling-fake-beer
+			visreqs [
+				{ #type check-player-produced-total resource fake-beer is moreorequalto value 1 }
+				{ #type check-player-skills has none of [ bootleg-whiskey bootleg-brandy bootleg-vodka bootleg-rum ] }
+			]
+			locroot "resresults.smuggling-quest"
+			loceventresult "resresults.smuggling-level-two-booze.eventresult"
+
+			grants [
+				{ #type consume-actions for convo }
+			]
+
+			quest {
+				id resultquest-fake-beer
+				locname "resultquest.fake-beer-smuggling.name"
+				locdesc "resultquest.fake-beer-smuggling.desc"
+				locicon "quest.generic.icon"
+
+				goals [
+					{ #type goal-deliver-goods resource fake-beer test atleast goal 90 }
+				]
+
+				beforechoice "resultquest.smuggling-quest.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.smuggling-booze.c1"
+						grants [
+							{ #type add-cash amount 4000 at safehouse }
+						]
+					}
+					{
+						locdesc "resultquest.smuggling-booze.c21"
+						grants [
+							{ #type add-resource id hops qty 40 at safehouse }
+							{ #type add-cash amount 3000 }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ whiksey-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c16"
+						grants [
+							{ #type add-resource id whiksey-bottled qty 125 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ brandy-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c17"
+						grants [
+							{ #type add-resource id brandy-bottled qty 175 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ vodka-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c18"
+						grants [
+							{ #type add-resource id vodka-bottled qty 150 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ rum-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c19"
+						grants [
+							{ #type add-resource id rum-bottled qty 200 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c14"
+						grants [
+							{ #type add-resource id weapon-winchester qty 6 at safehouse }
+							{ #type add-cash amount 2000 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-colt qty 6 at safehouse }
+							{ #type add-cash amount 2000 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-player-crew-size is atleast value 12 }
+							{ #type check-player-crew-size is lessthan value 16 }
+						]
+						locdesc "resultquest.smuggling-booze.c14"
+						grants [
+							{ #type add-resource id weapon-winchester qty 10 at safehouse }
+							{ #type add-cash amount 750 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-colt qty 10 at safehouse }
+							{ #type add-cash amount 750 at safehouse }
+						]
+					}
+				]
+				afterchoice "resultquest.smuggling-booze.afterchoice"
+
+				expiration {
+					expiresAfterDayz 84
+					locblurb "convo.expired-smuggling-booze.finish.blurb"
+					locdesc "convo.expired-smuggling-booze.finish.button"
+					locepilogue "convo.expired-smuggling-booze.post.blurb"
+					
+					refundPercent { value 50 }
+					grants [
+						{ #type add-rel-buff with owner id "relbuff-resevent-quest-expired" }
+					]
+				}
+			}
+		}
+		{
+			#type res-event-result-quest
+			id smuggling-bathtub-gin
+			visreqs [
+				{ #type check-player-produced-total resource bathtub-gin is moreorequalto value 1 }
+				{ #type check-player-skills has none of [ bootleg-whiskey bootleg-brandy bootleg-vodka bootleg-rum ] }
+			]
+			locroot "resresults.smuggling-quest"
+			loceventresult "resresults.smuggling-level-two-booze.eventresult"
+
+			grants [
+				{ #type consume-actions for convo }
+			]
+
+			quest {
+				id resultquest-bathtub-gin
+				locname "resultquest.bathtub-gin-smuggling.name"
+				locdesc "resultquest.bathtub-gin-smuggling.desc"
+				locicon "quest.generic.icon"
+
+				goals [
+					{ #type goal-deliver-goods resource bathtub-gin test atleast goal 90 }
+				]
+
+				beforechoice "resultquest.smuggling-quest.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.smuggling-booze.c1"
+						grants [
+							{ #type add-cash amount 5000 at safehouse }
+						]
+					}
+					{
+						locdesc "resultquest.smuggling-booze.c22"
+						grants [
+							{ #type add-resource id spices qty 40 at safehouse }
+							{ #type add-cash amount 4500 }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ whiksey-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c16"
+						grants [
+							{ #type add-resource id whiksey-bottled qty 150 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ brandy-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c17"
+						grants [
+							{ #type add-resource id brandy-bottled qty 225 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ vodka-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c18"
+						grants [
+							{ #type add-resource id vodka-bottled qty 180 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-player-unlocked-resources has all of [ rum-bottled ] }
+						]
+						locdesc "resultquest.smuggling-booze.c19"
+						grants [
+							{ #type add-resource id rum-bottled qty 250 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c14"
+						grants [
+							{ #type add-resource id weapon-winchester qty 6 at safehouse }
+							{ #type add-cash amount 2500 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-colt qty 6 at safehouse }
+							{ #type add-cash amount 2500 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 2 4 6 8 10 12 ] }
+							{ #type check-player-crew-size is atleast value 12 }
+							{ #type check-player-crew-size is lessthan value 16 }
+						]
+						locdesc "resultquest.smuggling-booze.c14"
+						grants [
+							{ #type add-resource id weapon-winchester qty 10 at safehouse }
+							{ #type add-cash amount 1500 at safehouse }
+						]
+					}
+					{
+						visreqs [
+							{ #type check-current-month is any of [ 1 3 5 7 9 11 ] }
+							{ #type check-player-crew-size is atleast value 8 }
+							{ #type check-player-crew-size is lessthan value 12 }
+						]
+						locdesc "resultquest.smuggling-booze.c7"
+						grants [
+							{ #type add-resource id weapon-colt qty 10 at safehouse }
+							{ #type add-cash amount 1500 at safehouse }
+						]
+					}
+
+				]
+				afterchoice "resultquest.smuggling-booze.afterchoice"
+
+				expiration {
+					expiresAfterDayz 84
+					locblurb "convo.expired-smuggling-booze.finish.blurb"
+					locdesc "convo.expired-smuggling-booze.finish.button"
+					locepilogue "convo.expired-smuggling-booze.post.blurb"
+					
+					refundPercent { value 50 }
+					grants [
+						{ #type add-rel-buff with owner id "relbuff-resevent-quest-expired" }
+					]
+				}
+			}
+		}
+
+;; Cincinnati - bourbon events
+
+		{
+			#type		res-event-result-quest
+			id			bourbon-unlock
+			visreqs		[ { #type check-player-skills has none of [ bourbon-reveal ] } ]
+			locroot		"resresults.bourbon-unlock"
+			loceventresult	"resresults.bourbon-unlock.eventresult"
+
+			grants [ { #type consume-actions for convo } ]
+
+			quest {
+				id bourbon-unlock
+				locname "bourbon-unlock-quest.name"
+				locdesc "bourbon-unlock-quest.desc"
+				locicon "quest.bottles.icon"
+
+				goals [
+					{ #type goal-deliver-cash test atleast goal 500 }
+				]
+				beforechoice "quest.bourbon-result.beforechoice"
+				choices [
+					{
+						locdesc "bourbon-unlock.choice"
+						grants [ { #type add-skill id bourbon-reveal } ]
+					}
+				]
+				afterchoice "quest.generic-skill.afterchoice"
+				expiration {
+	        		expiresAfterDayz 84
+	        		locblurb 	"convo.expired.bourbon-result.finish.blurb"
+	        		locdesc 	"convo.expired.bourbon-result.finish.button"
+	        		locepilogue	"convo.expired.bourbon-result.finish.post.blurb"
+
+	        		refundPercent	{ value 0 }
+	        	}
+			}
+		}
+		{
+			#type		res-event-result-quest
+			id			bourbon-smuggling-one
+			visreqs		[ { #type check-player-skills has any of [ bourbon-reveal ] } { #type check-player-skills has none of [ bourbon-making ] } { #type check-player-crew-size is lessthan value 5 } ]
+			locroot 	"resresults.bourbon-smuggling"
+			loceventresult	"resresults.bourbon-smuggling.eventresult"
+
+			grants [ { #type consume-actions for convo } ]
+
+			quest {
+				id bourbon-smuggling-one
+				locname "bourbon-smuggling.name"
+				locdesc "bourbon-smuggling.desc"
+				locicon "quest.bottles.icon"
+
+				goals [
+					{ #type goal-deliver-cash test atleast goal 750 }
+				]
+				beforechoice "quest.bourbon-result.beforechoice"
+				choices [
+					{
+						visreqs [ { #type check-current-month is any of [ 3 4 5 6 7 8 9 10 11 ] } ]
+						locdesc "bourbon-smuggling.notwinter"
+						grants [ { #type add-resource id bourbon qty 40 at safehouse } ]
+					}
+					{
+						visreqs [ { #type check-current-month is any of [ 12 1 2 ] } ]
+						locdesc "bourbon-smuggling.winter"
+						grants [ { #type add-resource id bourbon qty 50 at safehouse } ]
+					}
+				]
+				afterchoice "quest.generic-skill.afterchoice"
+				expiration {
+	        		expiresAfterDayz 84
+	        		locblurb 	"convo.expired.bourbon-result.finish.blurb"
+	        		locdesc 	"convo.expired.bourbon-result.finish.button"
+	        		locepilogue	"convo.expired.bourbon-result.finish.post.blurb"
+
+	        		refundPercent	{ value 0 }
+	        	}
+			}
+		}
+		{
+			#type		res-event-result-quest
+			id			bourbon-smuggling-two
+			visreqs		[ { #type check-player-skills has any of [ bourbon-reveal ] } { #type check-player-skills has none of [ bourbon-making ] } { #type check-player-crew-size is atleast value 5 } ]
+			locroot 	"resresults.bourbon-smuggling"
+			loceventresult	"resresults.bourbon-smuggling.eventresult"
+
+			grants [ { #type consume-actions for convo } ]
+
+			quest {
+				id bourbon-smuggling-two
+				locname "bourbon-smuggling.name"
+				locdesc "bourbon-smuggling.desc"
+				locicon "quest.bottles.icon"
+
+				goals [
+					{ #type goal-deliver-cash test atleast goal 1500 }
+				]
+				beforechoice "quest.bourbon-result.beforechoice"
+				choices [
+					{
+						visreqs [ { #type check-current-month is any of [ 3 4 5 6 7 8 9 10 11 ] } ]
+						locdesc "bourbon-smuggling.notwinter"
+						grants [ { #type add-resource id bourbon qty 80 at safehouse } ]
+					}
+					{
+						visreqs [ { #type check-current-month is any of [ 12 1 2 ] } ]
+						locdesc "bourbon-smuggling.winter"
+						grants [ { #type add-resource id bourbon qty 100 at safehouse } ]
+					}
+				]
+				afterchoice "quest.generic-skill.afterchoice"
+				expiration {
+	        		expiresAfterDayz 84
+	        		locblurb 	"convo.expired.bourbon-result.finish.blurb"
+	        		locdesc 	"convo.expired.bourbon-result.finish.button"
+	        		locepilogue	"convo.expired.bourbon-result.finish.post.blurb"
+
+	        		refundPercent	{ value 0 }
+	        	}
+			}
+		}
+
+		{
+			#type		res-event-result-quest
+			id			bourbon-supplies
+			visreqs		[ { #type check-player-skills has all of [ bourbon-making ] } ]
+			locroot 	"resresults.bourbon-supplies"
+			loceventresult	"resresults.bourbon-supplies.eventresult"
+
+			grants [ { #type consume-actions for convo } ]
+
+			quest {
+				id bourbon-supplies
+				locname "bourbon-supplies.name"
+				locdesc "bourbon-supplies.desc"
+				locicon "quest.bottles.icon"
+
+				goals [
+					{ #type goal-deliver-cash test atleast goal 250 }
+				]
+
+				beforechoice "quest.bourbon-result.beforechoice"
+				choices [
+					{
+						locdesc "bourbon-supplies.oak-barrels"
+						grants [ { #type add-resource id oak-barrels qty 25 at safehouse } ]
+					}
+					{
+						locdesc "bourbon-supplies.food-dyes"
+						grants [ { #type add-resource id food-dyes qty 15 at safehouse } ]
+					}
+					{
+						locdesc "bourbon-supplies.labels"
+						grants [ { #type add-resource id labels qty 25 at safehouse } ]
+					}
+				]
+				afterchoice "quest.generic-skill.afterchoice"
+				expiration {
+	        		expiresAfterDayz 84
+	        		locblurb 	"convo.expired.bourbon-result.finish.blurb"
+	        		locdesc 	"convo.expired.bourbon-result.finish.button"
+	        		locepilogue	"convo.expired.bourbon-result.finish.post.blurb"
+
+	        		refundPercent	{ value 0 }
+	        	}
+			}
+		}
+		{
+			#type 		res-event-result-quest
+			id 			bourbon-knowledge-quest
+			visreqs [ { #type check-player-skills has none of [ bourbon-making ] } ]
+			locroot		"resresults.bourbon-knowledge-quest"
+			loceventresult	"resresults.bourbon-knowledge-quest.eventresult"
+
+			grants [ { #type consume-actions for convo } ]
+
+			quest {
+				id bourbon-knowledge-quest
+				locname "bourbon-knowledge-quest.name"
+				locdesc "bourbon-knowledge-quest.desc"
+				locicon "quest.bottles.icon"
+
+				goals [
+					{ #type goal-deliver-cash test atleast goal 1000 }
+				]
+
+				beforechoice "quest.bourbon-result.beforechoice"
+				choices [
+					{
+						locdesc "bourbon-knowledge-quest.choice"
+						grants [
+							{ #type add-skill id bourbon-making }
+						]
+					}
+				]
+				afterchoice "quest.generic-skill.afterchoice"
+				expiration {
+	        		expiresAfterDayz 56
+	        		locblurb 	"convo.expired.bourbon-result.finish.blurb"
+	        		locdesc 	"convo.expired.bourbon-result.finish.button"
+	        		locepilogue	"convo.expired.bourbon-result.finish.post.blurb"
+
+	        		refundPercent	{ value 0 }
+	        	}
+			}
+		}
+		{
+			#type		res-event-result-quest
+			id			bourbon-smuggling-kentucky
+			visreqs		[ { #type check-player-crew-size is atleast value 3 } ]
+			locroot		"resresults.bourbon-smuggling-kentucky"
+			loceventresult	"resresults.bourbon-smuggling-kentucky.eventresult"
+
+			grants [ { #type consume-actions for convo } ]
+
+			quest {
+				id bourbon-smuggling-kentucky
+				locname "bourbon-smuggling-kentucky.name"
+				locdesc "bourbon-smuggling-kentucky.desc"
+				locicon "quest.bottles.icon"
+
+				goals [
+					{ #type goal-deliver-goods resource bottles test atleast goal 80 }
+					{ #type goal-deliver-cash test atleast goal 100 }
+				]
+
+				beforechoice "quest.bourbon-result.beforechoice"
+				choices [
+					{
+						locdesc "bourbon-smuggling-kentucky.choice"
+						grants [
+							{ #type add-resource id bourbon qty 80 at safehouse }
+						]
+					}
+				]
+				afterchoice "quest.generic-skill.afterchoice"
+				expiration {
+	        		expiresAfterDayz 56
+	        		locblurb 	"convo.expired.bourbon-result.finish.blurb"
+	        		locdesc 	"convo.expired.bourbon-result.finish.button"
+	        		locepilogue	"convo.expired.bourbon-result.finish.post.blurb"
+
+	        		refundPercent	{ value 0 }
+	        	}
+			}
+		}
+
+;; LUNCHES - Skills and reveals
+
+		{
+			#type		res-event-result-quest
+			id			result-homebooze-skills
+			visreqs		[
+				{ #type check-player-skills has any of [ homebooze-moonshine homebooze-brick-wine homebooze-cider homebooze-home-brew homebooze-corn-moonshine homebooze-apple-jack homebooze-fruit-wine ] status locked }
+			]
+			locroot		"resresults.result-homebooze-skills"
+			loceventresult	"resresults.result-homebooze-skills.eventresult"
+
+			grants [{ #type consume-actions for convo }]
+
+			quest {
+				id result-homebooze-skills-quest
+				locname "result-homebooze-skills-quest.name"
+				locdesc "result-homebooze-skills-quest.desc"
+				locicon "skill.generic-skill.icon"
+
+				goals [
+					{ #type goal-deliver-cash test atleast goal 2500 }
+				]
+
+				beforechoice "quest.generic-skill.beforechoice"
+				choices [
+					{
+						visreqs [ 
+							{ #type check-player-skills has none of [ homebooze-brick-wine ] } 
+							{ #type check-quests has none of [ homebooze-brick-wine-quest ] status active }
+						]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-skill id homebooze-brick-wine } ]
+					}
+					{
+						visreqs [ { #type check-player-skills has any of [ homebooze-brick-wine ] } ]
+						locdesc "result-homebooze-skills-quest.choice-learned"
+						grants [ { #type add-resource id brick-wine qty 400 at safehouse } ]
+					}
+					{
+						visreqs [
+							{ #type check-player-skills has none of [ homebooze-cider ] }
+							{ #type check-quests has none of [ homebooze-cider-quest ] status active }
+						]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-skill id homebooze-cider } ]
+					}
+					{
+						visreqs [ { #type check-player-skills has any of [ homebooze-cider ] } ]
+						locdesc "result-homebooze-skills-quest.choice-learned"
+						grants [ { #type add-resource id cider qty 350 at safehouse } ]
+					}
+					{
+						visreqs [
+							{ #type check-player-skills has none of [ homebooze-home-brew ] }
+							{ #type check-quests has none of [ homebooze-home-brew-quest ] status active }
+						]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-skill id homebooze-home-brew } ]
+					}
+					{
+						visreqs [ { #type check-player-skills has any of [ homebooze-home-brew ] } ]
+						locdesc "result-homebooze-skills-quest.choice-learned"
+						grants [ { #type add-resource id home-brew qty 400 at safehouse } ]
+					}
+					{
+						visreqs [
+							{ #type check-player-skills has none of [ homebooze-moonshine ] }
+							{ #type check-quests has none of [ homebooze-moonshine-quest ] status active }
+							{ #type check-current-city is none of [ cincinnati ] }
+						]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-resource id homebooze-moonshine qty 400 at safehouse } ]
+					}
+					{
+						visreqs [
+							{ #type check-player-skills has none of [ homebooze-corn-moonshine ] }
+							{ #type check-quests has none of [ homebooze-corn-moonshine-quest ] status active }
+							{ #type check-current-city is any of [ cincinnati ] }
+						]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-skill id homebooze-corn-moonshine } ]
+					}
+					{
+						visreqs [
+							{ #type check-player-skills has any of [ homebooze-moonshine homebooze-corn-moonshine ] } ]
+						locdesc "result-homebooze-skills-quest.choice-learned"
+						grants [ { #type add-resource id moonshine qty 400 at safehouse } ]
+					}
+					{
+						visreqs [ 
+							{ #type check-player-skills has any of [ moneylaundering ] } 
+							{ #type check-quests has none of [ large-drug-distribution-quest ] status active }]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-resource id teamster-permit qty 3 at safehouse } ]
+					}
+					{
+						visreqs [ 
+							{ #type check-player-skills has any of [ moneylaundering ] } 
+							{ #type check-quests has none of [ large-drug-distribution-quest ] status active }]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-resource id weapon-permit qty 3 at safehouse } ]
+					}
+					{
+						visreqs [ { #type check-player-skills has any of [ moneylaundering ] } ]
+						locdesc "result-homebooze-skills-quest.choice-learned"
+						grants [ { #type add-resource id liquor-license qty 3 at safehouse } ]
+					}
+					{
+						visreqs [ 
+							{ #type check-current-turn is moreorequalto value 78 } 
+							{ #type check-quests has none of [ large-drug-distribution-quest ] status active }]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-resource id weapon-pistol qty 5 at safehouse } ]
+					}
+					{
+						visreqs [ 
+							{ #type check-current-turn is moreorequalto value 78 } 
+							{ #type check-quests has none of [ large-drug-distribution-quest ] status active }]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-resource id weapon-colt qty 5 at safehouse } ]
+					}
+					{
+						visreqs [ 
+							{ #type check-player-skills has none of [ drug-distribution ] } { #type check-current-turn is moreorequalto value 156 } ]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-resource id weapon-winchester qty 3 at safehouse } 
+							]
+					}
+					{
+						visreqs [ { #type check-current-turn is moreorequalto value 266 } ]
+						locdesc "result-homebooze-skills-quest.choice-learned"
+						grants [ { #type add-resource id weapon-thompson qty 2 at safehouse } ]
+					}
+					{
+						visreqs [ { #type check-player-skills has any of [ drug-distribution ] } 
+							  { #type check-current-turn is moreorequalto value 156 }
+							  { #type check-quests has none of [ large-drug-distribution-quest ] status active }]
+						locdesc "result-homebooze-skills-quest.choice-learned"
+						grants [ 
+							{ #type add-resource id weapon-winchester qty 3 at safehouse } ]
+					}
+					{
+						visreqs [ 
+							{ #type check-player-skills has none of [ drug-distribution ] } 
+							  { #type check-current-turn is moreorequalto value 703 }
+							{ #type check-quests has none of [ large-drug-distribution-quest ] status active }
+						]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-resource id weapon-iver-johnson qty 5 } ]
+					}
+					{
+						visreqs [ { #type check-player-skills has any of [ drug-distribution ] } { #type check-current-turn is moreorequalto value 703 } ]
+						locdesc "result-homebooze-skills-quest.choice-learned"
+						grants [ { #type add-resource id weapon-iver-johnson qty 5 at safehouse } ]
+					}
+					{
+						visreqs [ 
+							{ #type check-player-skills has none of [ drug-distribution ] }
+							  { #type check-current-turn is moreorequalto value 703 } 
+							{ #type check-quests has none of [ large-drug-distribution-quest ] status active }
+						]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-resource id weapon-bearcat qty 7 at safehouse } ]
+					}
+					{
+						visreqs [ { #type check-player-skills has any of [ drug-distribution ] } 
+							  { #type check-current-turn is moreorequalto value 703 } 
+						]
+						locdesc "result-homebooze-skills-quest.choice-learned"
+						grants [ { #type add-resource id weapon-bearcat qty 7 at safehouse } ]
+					}
+					{
+						visreqs [ 
+							{ #type check-player-skills has none of [ drug-distribution ] } 
+							  { #type check-current-turn is moreorequalto value 703 }
+							{ #type check-quests has none of [ large-drug-distribution-quest ] status active }]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-resource id weapon-beretta qty 5 at safehouse } ]
+					}
+					{
+						visreqs [ { #type check-player-skills has any of [ drug-distribution ] } { #type check-current-turn is moreorequalto value 703 }]
+						locdesc "result-homebooze-skills-quest.choice-learned"
+						grants [ { #type add-resource id weapon-beretta qty 5 at safehouse } ]
+					}
+					{
+						visreqs [ 
+							{ #type check-player-skills has none of [ drug-distribution ] } 
+							{ #type check-current-turn is moreorequalto value 703 }
+							{ #type check-quests has none of [ large-drug-distribution-quest ] status active }]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-resource id weapon-broomhandle qty 5 at safehouse } ]
+					}
+					{
+						visreqs [ { #type check-player-skills has any of [ drug-distribution ] }
+							{ #type check-current-turn is moreorequalto value 703 }
+							 ]
+						locdesc "result-homebooze-skills-quest.choice-learned"
+						grants [ { #type add-resource id weapon-broomhandle qty 5 at safehouse } ]
+					}
+					{
+						visreqs [ 
+							{ #type check-player-skills has none of [ drug-distribution ] } 
+							  { #type check-current-turn is moreorequalto value 703 }
+							{ #type check-quests has none of [ large-drug-distribution-quest ] status active }]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-resource id weapon-mp-28 qty 2 at safehouse } ]
+					}
+					{
+						visreqs [ { #type check-player-skills has any of [ drug-distribution ] } { #type check-current-turn is moreorequalto value 703 }]
+						locdesc "result-homebooze-skills-quest.choice-learned"
+						grants [ { #type add-resource id weapon-mp-28 qty 2 at safehouse } ]
+					}
+					{
+						visreqs [
+							{ #type check-current-city is any of [ pittsburgh ] }
+							{ #type check-player-skills has none of [ homebooze-apple-jack ] }
+							{ #type check-quests has none of [ homebooze-apple-jack-quest ] status active }]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-skill id homebooze-apple-jack } ]
+					}
+					{
+						visreqs [
+							{ #type check-current-city is any of [ pittsburgh ] }
+							{ #type check-player-skills has any of [ homebooze-apple-jack ] }]
+						locdesc "result-homebooze-skills-quest.choice-learned"
+						grants [ { #type add-resource id apple-jack qty 400 at safehouse } ]
+					}
+					{
+						visreqs [ 
+							{ #type check-current-city is any of [ detroit ] } 
+							{ #type check-player-skills has none of [ homebooze-fruit-wine ] }
+							{ #type check-quests has none of [ homebooze-fruit-wine-quest ] status active }]
+						locdesc "result-homebooze-skills-quest.choice"
+						grants [ { #type add-skill id homebooze-fruit-wine } ]
+					}
+					{
+						visreqs [
+							{ #type check-current-city is any of [ detroit ] }
+							{ #type check-player-skills has any of [ homebooze-fruit-wine ] }]
+						locdesc "result-homebooze-skills-quest.choice-learned"
+						grants [ { #type add-resource id fruit-wine qty 400 at safehouse } ]
+					}
+
+				]
+				afterchoice "quest.generic-skill.afterchoice"
+				expiration {
+	        		expiresAfterDayz 56
+	        		locblurb 	"convo.expired.result-homebooze-skills-quest.finish.blurb"
+	        		locdesc 	"convo.expired.result-homebooze-skills-quest.finish.button"
+	        		locepilogue	"convo.expired.result-homebooze-skills-quest.finish.post.blurb"
+
+	        		refundPercent	{ value 0 }
+	        	}
+			}
+		}
+		{
+			#type		res-event-result-quest
+			id			result-level-two-skill-fake-wine
+			visreqs 	[
+				{ #type check-player-skills has none of [ fake-wine ] }
+				{ #type check-player-unlocked-resources has all of [ fake-wine ] }
+				{ #type check-quests has none of [ fake-wine-quest ] status active }
+				{ #type check-player-produced-total resource brick-wine is moreorequalto value 1 }
+			]
+			locroot		"resresults.result-level-two-skill"
+			loceventresult "resresults.result-level-two-skill-fake-wine.eventresult"
+
+			grants [{ #type consume-actions for convo }]
+
+			quest {
+				id result-level-two-fake-wine-quest
+				locname "resultquest.level-two-skill.name"
+				locdesc "resultquest.level-two-skill.desc"
+				locicon "quest.generic.icon"
+
+				goals [ { #type goal-deliver-goods resource brick-wine test atleast goal 20 } ]
+
+				beforechoice "resultquest.level-two-skill.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.level-two-skill.choice"
+						grants [ { #type add-skill id fake-wine } ]
+					}
+				]
+				afterchoice "quest.generic-skill.afterchoice"
+				expiration {
+	        		expiresAfterDayz 84
+	        		locblurb 	"convo.expired.result-homebooze-skills-quest.finish.blurb"
+	        		locdesc 	"convo.expired.result-homebooze-skills-quest.finish.button"
+	        		locepilogue	"convo.expired.result-homebooze-skills-quest.finish.post.blurb"
+
+	        		refundPercent	{ value 0 }
+	        	}
+			}
+		}
+		{
+			#type		res-event-result-quest
+			id			result-level-two-skill-fake-beer
+			visreqs 	[
+				{ #type check-player-skills has none of [ fake-beer ] }
+				{ #type check-player-unlocked-resources has all of [ fake-beer ] }
+				{ #type check-quests has none of [ fake-beer-quest ] status active }
+				{ #type check-player-produced-total resource home-brew is moreorequalto value 1 }
+			]
+			locroot		"resresults.result-level-two-skill"
+			loceventresult "resresults.result-level-two-skill-fake-beer.eventresult"
+
+			grants [{ #type consume-actions for convo }]
+
+			quest {
+				id result-level-two-skill-fake-beer-quest
+				locname "resultquest.level-two-skill.name"
+				locdesc "resultquest.level-two-skill.desc"
+				locicon "quest.generic.icon"
+
+				goals [ { #type goal-deliver-goods resource brick-wine test atleast goal 30 } ]
+
+				beforechoice "resultquest.level-two-skill.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.level-two-skill.choice"
+						grants [ { #type add-skill id fake-beer } ]
+					}
+				]
+				afterchoice "quest.generic-skill.afterchoice"
+				expiration {
+	        		expiresAfterDayz 56
+	        		locblurb 	"convo.expired.result-homebooze-skills-quest.finish.blurb"
+	        		locdesc 	"convo.expired.result-homebooze-skills-quest.finish.button"
+	        		locepilogue	"convo.expired.result-homebooze-skills-quest.finish.post.blurb"
+
+	        		refundPercent	{ value 0 }
+	        	}
+			}
+		}
+		{
+			#type		res-event-result-quest
+			id			result-level-two-skill-sparkling-cider
+			visreqs 	[
+				{ #type check-player-skills has none of [ sparkling-cider ] }
+				{ #type check-player-unlocked-resources has all of [ sparkling-cider ] }
+				{ #type check-quests has none of [ sparkling-cider-quest ] status active }
+				{ #type check-player-produced-total resource cider is moreorequalto value 1 }
+			]
+			locroot		"resresults.result-level-two-skill"
+			loceventresult "resresults.result-level-two-skill-sparkling-cider.eventresult"
+
+			grants [{ #type consume-actions for convo }]
+
+			quest {
+				id result-level-two-skill-sparkling-cider-quest
+				locname "resultquest.level-two-skill.name"
+				locdesc "resultquest.level-two-skill.desc"
+				locicon "quest.generic.icon"
+
+				goals [ { #type goal-deliver-goods resource cider test atleast goal 25 } ]
+
+				beforechoice "resultquest.level-two-skill.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.level-two-skill.choice"
+						grants [ { #type add-skill id sparkling-cider } ]
+					}
+				]
+				afterchoice "quest.generic-skill.afterchoice"
+				expiration {
+	        		expiresAfterDayz 70
+	        		locblurb 	"convo.expired.result-homebooze-skills-quest.finish.blurb"
+	        		locdesc 	"convo.expired.result-homebooze-skills-quest.finish.button"
+	        		locepilogue	"convo.expired.result-homebooze-skills-quest.finish.post.blurb"
+
+	        		refundPercent	{ value 0 }
+	        	}
+			}
+		}
+		{
+			#type		res-event-result-quest
+			id			result-level-two-skill-bathtub-gin
+			visreqs 	[
+				{ #type check-player-skills has none of [ bathtub-ginworks ] }
+				{ #type check-player-unlocked-resources has all of [ bathtub-gin ] }
+				{ #type check-quests has none of [ bathtub-ginworks-quest ] status active }
+				{ #type check-player-produced-total resource moonshine is moreorequalto value 1 }
+			]
+			locroot		"resresults.result-level-two-skill"
+			loceventresult "resresults.result-level-two-skill-bathtub-gin.eventresult"
+
+			grants [{ #type consume-actions for convo }]
+
+			quest {
+				id result-level-two-skill-bathtub-gin-quest
+				locname "resultquest.level-two-skill.name"
+				locdesc "resultquest.level-two-skill.desc"
+				locicon "quest.generic.icon"
+
+				goals [ { #type goal-deliver-goods resource moonshine test atleast goal 15 } ]
+
+				beforechoice "resultquest.level-two-skill.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.level-two-skill.choice"
+						grants [ { #type add-skill id sparkling-cider } ]
+					}
+				]
+				afterchoice "quest.generic-skill.afterchoice"
+				expiration {
+	        		expiresAfterDayz 70
+	        		locblurb 	"convo.expired.result-homebooze-skills-quest.finish.blurb"
+	        		locdesc 	"convo.expired.result-homebooze-skills-quest.finish.button"
+	        		locepilogue	"convo.expired.result-homebooze-skills-quest.finish.post.blurb"
+
+	        		refundPercent	{ value 0 }
+	        	}
+			}
+		}
+		{
+			#type		res-event-result-quest
+			id			result-add-fireplace
+			visreqs [
+				{ #type check-throne-type id throne-lodge }
+				{ #type check-has-trophy id fireplace expected #false }
+				{ #type check-player-territory-size is atleast value 30 }
+				{ #type check-num-specialists is atleast value 1 }
+				{ #type check-player-cash type highwater is atleast value 9999 }
+			]
+			locroot "resresults.result-add-fireplace"
+			loceventresult "resresults.result-add-fireplace.eventresult"
+
+			grants [{ #type consume-actions for convo }]
+
+			quest {
+				id result-add-fireplace-quest
+				locname "resultquest.result-add-fireplace.name"
+				locdesc "resultquest.result-add-fireplace.desc"
+				locicon "quest.generic.icon"
+
+				goals [
+					{ #type goal-deliver-goods resource lumber test atleast goal 10 }
+					{ #type goal-deliver-goods resource bricks test atleast goal 5 }
+				]
+				beforechoice "resultquest.result-add-fireplace.beforechoice"
+				choices [
+					{
+						locdesc "resultquest.result-add-fireplace.choice"
+						grants [
+							{ #type grant-trophy id fireplace locsig "throne.lodge.defaultsig"}
+						]
+					}
+				]
+				afterchoice "resultquest.result-add-fireplace.afterchoice"
+				expiration {
+					expiresAfterDayz 140
+					locblurb "convo.expired.result-add-fireplace-quest.finish.blurb"
+					locdesc "convo.expired.result-homebooze-skills-quest.finish.button"
+					locepilogue "convo.expired.result-homebooze-skills-quest.finish.post.blurb"
+
+					refundPercent { value 0 }
+				}
+			}
+		}
+		]
+	}
+	
+	}
+}

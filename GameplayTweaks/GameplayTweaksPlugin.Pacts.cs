@@ -123,6 +123,7 @@ public partial class GameplayTweaksPlugin
 		private static int _lastAiHumanRobberyTrespassDiscoveryLogDay = int.MinValue;
 		private const long HUMAN_TURN_PHASE_THRESHOLD_MS = 20;
 		private const long HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS = 8;
+		private const long HUMAN_TURN_COMPACT_PHASE_THRESHOLD_MS = 80;
 		private const int DEFERRED_ALLIANCE_PACT_GANG_OPS_INITIAL_GRACE_FRAMES = 20;
 		private const int DEFERRED_ALLIANCE_PACT_GANG_OPS_INPUT_YIELD_LIMIT = 30;
 		private const int DEFERRED_ALLIANCE_PACT_GANG_OPS_SAVE_DELAY_FRAMES = 18;
@@ -814,7 +815,8 @@ public partial class GameplayTweaksPlugin
 			{
 				long cpuMs = _deferredAlliancePactGangOpsCpuMs;
 				long wallMs = GetElapsedMilliseconds(wallStartTicks);
-				if (cpuMs < HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS && wallMs < HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS)
+				long thresholdMs = GetHumanTurnPhaseLogThreshold(HUMAN_TURN_DEFERRED_PHASE_THRESHOLD_MS);
+				if (cpuMs < thresholdMs && wallMs < thresholdMs)
 				{
 					return;
 				}
@@ -849,7 +851,7 @@ public partial class GameplayTweaksPlugin
 			try
 			{
 				long elapsedMs = GetElapsedMilliseconds(startTicks);
-				if (elapsedMs < thresholdMs)
+				if (elapsedMs < GetHumanTurnPhaseLogThreshold(thresholdMs))
 				{
 					return;
 				}
@@ -873,6 +875,20 @@ public partial class GameplayTweaksPlugin
 			}
 			catch
 			{
+			}
+		}
+
+		private static long GetHumanTurnPhaseLogThreshold(long thresholdMs)
+		{
+			try
+			{
+				return (GameplayTweaksPlugin.EnablePerformanceDiagnostics?.Value ?? false)
+					? thresholdMs
+					: Math.Max(thresholdMs, HUMAN_TURN_COMPACT_PHASE_THRESHOLD_MS);
+			}
+			catch
+			{
+				return Math.Max(thresholdMs, HUMAN_TURN_COMPACT_PHASE_THRESHOLD_MS);
 			}
 		}
 

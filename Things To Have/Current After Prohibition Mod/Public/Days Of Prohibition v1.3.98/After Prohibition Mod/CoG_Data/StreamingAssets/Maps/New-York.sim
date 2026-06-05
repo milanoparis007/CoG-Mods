@@ -1,0 +1,1958 @@
+{ maps [ { 
+	id new-york
+	citytype new-york
+
+	;; cityname "Chicago"  		;; let's use loc instead
+	;; statename "Illinois"
+	;; citydesc	"Story..."
+
+	citylockey	"city-name.new-york"
+	statelockey	"state-name.new-york"
+	citydesckey	"city-desc.new-york"
+	cityscreen	"New York Screenshot"
+	citylocicon	"city-icon.new-york"
+	citypolunitkey	"city-pol-unit.ward"
+
+	map {
+		;; logical map specification
+		mapSize        { width 600 height 500 } ;; size in world units
+		;; heatmapSpacing { width 8 height 8 }  ;; should be similar or larger than smallest block size
+		;; beadSpacing { width 1 height 1 }     ;; should be default (1, 1) unless there's a good reason :)
+
+		streetNames [ 
+			"streets.usfounders" "streets.famouspeople" "streets.usstates" "streets.uscities"
+			"streets.smalltown" "streets.trees" "streets.plants" "streets.birds" "streets.chicago" 
+			"streets.lastnames" "streets.generic" ]
+
+		nodes [
+			{
+				id Manhattan
+				nodeSpacing { width 8 height 8 }
+				forceStart { x 126 y 258 }
+				forceAngle 30
+				relativeSpeed 1
+				forceMaxSpread { width 28 height 30 }
+				allowAsIsland #true
+				initialNames [ "streets.trees" ]
+			}
+			{
+				id LowerManhattan
+				nodeSpacing { width 6 height 8 }
+				forceStart { x 66 y 90 }
+				forceAngle 35
+				relativeSpeed 1
+				forceMaxSpread { width 45 height 15 }
+				forceBridges #true
+			}
+			{
+				id Harlem
+				nodeSpacing { width 8 height 8 }
+				forceStart { x 216 y 410 }
+				forceAngle 32
+				relativeSpeed 1
+				forceMaxSpread { width 20 height 15 }
+				initialNames [ "streets.birds" ]
+			}
+			{
+				id Bronx
+				nodeSpacing { width 8 height 10 }
+				forceAngle -10
+				forceStart { x 360 y 462 }
+				relativeSpeed 1
+				forceMaxSpread { width 20 height 20 }
+				initialNames [ "streets.usstates" ]
+			}
+			{
+				id SouthBronx
+				nodeSpacing { width 10 height 8 }
+				forceAngle 10
+				forceStart { x 289 y 467 }
+				relativeSpeed 1
+				forceMaxSpread { width 15 height 15 }
+				initialNames [ "streets.usstates" ]
+			}
+			{
+				id AstoriaQueens
+				nodeSpacing { width 10 height 6 }
+				forceStart { x 276 y 266 }
+				forceAngle 32
+				relativeSpeed 1
+				forceMaxSpread { width 20 height 20 }
+				initialNames [ "streets.uscities" ]
+			}
+			{
+				id Flushing
+				nodeSpacing { width 8 height 6 }
+				forceStart { x 540 y 250 }
+				forceAngle -5
+				relativeSpeed 1
+				forceMaxSpread { width 15 height 15 }
+				initialNames [ "streets.plants" ]
+			}
+			{
+				id Queens
+				nodeSpacing { width 6 height 8 }
+				forceAngle { x 560 y 136 }
+				forceAngle 5
+				relativeSpeed 1
+				forceMaxSpread { width 25 height 25 }
+				initialNames [ "streets.generic" ]
+			}
+			{
+				id CoronaQueens
+				nodeSpacing { width 8 height 6 }
+				forceStart { x 440 y 191 }
+				forceAngle 10
+				relativeSpeed 1
+				forceMaxSpread { width 20 height 20 }
+				initialNames [ "streets.lastnames" ]
+			}
+			{
+				id Williamsburg
+				nodeSpacing { width 10 height 10 }
+				forceAngle 20
+				forceStart { x 176 y 24 }
+				forceMaxSpread { width 20 height 20 }
+				initialNames [ "streets.usfounders" ]
+				relativeSpeed 1
+			}
+			{
+				id Greenpoint
+				nodeSpacing { width 8 height 6 }
+				forceAngle 0
+				forceStart { x 246 y 158 }
+				forceMaxSpread { width 15 height 15 }
+				relativeSpeed 1
+				initialNames [ "streets.trees" ]
+			}
+			{
+				id Bushwick
+				nodeSpacing { width 6 height 8 }
+				forceAngle 10
+				forceStart { x 355 y 70 }
+				forceMaxSpread { width 20 height 20 }
+				relativeSpeed 1
+				initialNames [ "streets.smalltown" ]
+			}
+
+		]
+
+		rails [
+			{
+				id NYCEastSide
+				nodes [
+				;	{ x 45 y 171 }
+					{ x 52 y 191 }
+					{ x 63 y 218 }
+					{ x 77 y 259 }
+					{ x 96 y 306 }
+					{ x 113 y 347 }
+					{ x 134 y 383 }
+					{ x 167 y 433 }
+					{ x 185 y 479 }
+				]
+			}
+			{
+				id LIRR
+				nodes [
+					{ x 243 y 160 }
+					{ x 288 y 166 }
+					{ x 329 y 166 }
+					{ x 370 y 180 }
+					{ x 418 y 190 }
+					{ x 463 y 207 }
+					{ x 527 y 216 }
+					{ x 571 y 238 }
+					{ x 591 y 270 }
+				]
+			}
+			{
+				id randomRailBrooklyn
+				random true
+				randomRect { x 220 y 40 width 60 height 60 } 
+			}
+			{
+				id randomRailBrooklyn2
+				random true
+				randomRect { x 407 y 73 width 40 height 40 } 
+			}
+		;	{
+		;		id randomRailBronx1
+		;		random true
+		;		randomRect { x 403 y 411 width 30 height 30 } 
+		;	}
+			{
+				id randomRailBronx2
+				random true
+				randomRect { x 331 y 422 width 30 height 30 } 
+			}
+			{
+				id randomAstoria
+				random true
+				randomRect { x 274 y 248 width 15 height 15 } 
+			}
+			{
+				id random1
+				random true
+			}
+		]
+
+		districts [
+			{
+				tags [ downtown bizcenter ]
+				locname	"districts.manhattan"
+				start { x 90 y 176 } radius 50
+			}
+			{
+				tags [ bizcenter ]
+				locname	"districts.bronx"
+				start { x 340 y 468 } radius 20
+			}
+			{
+				tags [ bizcenter ]
+				locname	"districts.brooklyn"
+				start { x 237 y 42 } radius 30
+			}
+			{
+				tags [ bizcenter ]
+				locname	"districts.queens"
+				start { x 413 y 226 } radius 20
+			}
+			{
+				tags [ downtown bizcenter ]
+				locname	"districts.lower-manhattan"
+				start { x 64 y 113 } radius 45
+			}
+			{
+				tags [ bizcenter downtown ]
+				locname	"districts.downtown-brooklyn"
+				start { x 178 y 51 } radius 25
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.astoria"
+				start { x 273 y 273 } radius 22
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.harlem"
+				start { x 191 y 415 } radius 30
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.south-bronx"
+				start { x 299 y 419 } radius 18
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.flushing"
+				start { x 533 y 245 } radius 18
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.corona"
+				start { x 461 y 199 } radius 14
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.williamsburg"
+				start { x 191 y 100 } radius 20
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.greenpoint"
+				start { x 196 y 157 } radius 30
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.bushwick"
+				start { x 253 y 125 } radius 20
+			}
+			{
+				tags [ downtown bizcenter ]
+				locname	"districts.East New York"
+				start { x 382 y 76 } radius 30
+			}
+			{
+				tags [ indcenter ]
+				locname	"districts.hudson-yards"
+				start { x 124 y 364 } radius 20
+			}
+			{
+				tags [ indcenter ]
+				locname	"districts.hunts-point"
+				start { x 387 y 422 } radius 20
+			}
+			{
+				tags [ bizcenter ]
+				locname	"districts.midtown"
+				start { x 108 y 240 } radius 32
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.hells-kitchen"
+				start { x 80 y 276 } radius 20
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.chelsea"
+				start { x 57 y 231 } radius 20
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.lower-east-side"
+				start { x 125 y 105 } radius 20
+			}
+			{
+				tags [ bizcenter ]
+				locname	"districts.financial-district"
+				start { x 73 y 92 } radius 20
+			}
+			{
+				tags [ downtown bizcenter ]
+				locname	"districts.upper-east-side"
+				start { x 182 y 285 } radius 25
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.murray-hill"
+				start { x 150 y 234 } radius 20
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.east-harlem"
+				start { x 219 y 367 } radius 24
+			}
+			{
+				tags [ indcenter ]
+				locname	"districts.long-island-city"
+				start { x 238 y 234 } radius 25
+			}
+			{
+				tags [ indcenter ]
+				locname	"districts.red-hook"
+				start { x 124 y 28 } radius 20
+			}
+			{
+				tags [ bizcenter ]
+				locname	"districts.jamaica"
+				start { x 454 y 162 } radius 20
+			}
+			{
+				tags [ bizcenter ]
+				locname	"districts.west-bronx"
+				start { x 274 y 460 } radius 20
+			}
+			{
+				tags [ bizcenter ]
+				locname	"districts.east-bronx"
+				start { x 421 y 464 } radius 15
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.Ditmars Steinway"
+				start { x 317 y 303 } radius 30
+			}
+			{
+				tags [ downtown bizcenter ]
+				locname	"districts.jackson heights"
+				start { x 353 y 264 } radius 20
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.Maspeth"
+				start { x 296 y 199 } radius 15
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.Laurelton"
+				start { x 499 y 146 } radius 15
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.Richmond Hill"
+				start { x 398 y 150 } radius 15
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.Cypress Hills"
+				start { x 351 y 119 } radius 15
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.Woodhaven"
+				start { x 311 y 96 } radius 15
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.Brownsville"
+				start { x 293 y 50 } radius 15
+			}
+			{
+				tags [ downtown ]
+				locname	"districts.New Lots"
+				start { x 335 y 50 } radius 15
+			}
+		]
+	}
+
+	terrain {
+		;; terrain specification
+		chunktiles { width 40 height 40 }  ;; max world size of each chunk tile (could be less)
+		tileverts { width 1 height 1 } ;; number of vertices per tile, floats allowed to break up the grid
+		terrainscale 15
+		flattenHills #true
+
+		groundheight 0.5
+		waterheight -0.2
+		zwobble 0.01
+		; xywobble 0
+		mountainnodes [ ; mountains... Chicago.. hahaha... who do you think we are? Ubisoft?
+			{
+			 	id CentralPark1
+			 	forceStart { x 138 y 300 }
+			 	size 25
+			}
+			{
+			 	id CentralPark2
+			 	forceStart { x 154 y 331 }
+			 	size 25
+			}
+			{
+			 	id CentralPark3
+			 	forceStart { x 172 y 350 }
+			 	size 25
+			}
+			{
+			 	id CentralPark3
+			 	forceStart { x 137 y 291 }
+			 	size 25
+			}
+		]
+
+		waternodes [
+			;; Hudson River
+			{
+				id HudsonTop
+				forceStart { x 150 y 500 }
+				width 45
+				allowBridges false
+				forceFixedWidth true
+				connectingNodes [
+					HudsonRiver2
+				]
+			}
+			
+			{
+				id HudsonRiver2
+				forceStart { x 123 y 455 }
+				width 45
+				allowBridges false
+				forceFixedWidth true
+				connectingNodes [
+					HudsonRiver3
+				]
+			}
+			{
+				id HudsonRiver3
+				forceStart { x 105 y 422 }
+				width 45
+				allowBridges false
+				forceFixedWidth true
+				connectingNodes [
+					HudsonRiver4
+				]
+			}
+			{
+				id HudsonRiver4
+				forceStart { x 92 y 391 }
+				width 45
+				allowBridges false
+				forceFixedWidth true
+				connectingNodes [
+					HudsonRiver5
+				]
+			}
+			{
+				id HudsonRiver5
+				forceStart { x 78 y 364 }
+				width 45
+				allowBridges false
+				forceFixedWidth true
+				connectingNodes [
+					HudsonRiver6
+				]
+			}
+			{
+				id HudsonRiver6
+				forceStart { x 58 y 329 }
+				width 45
+				allowBridges false
+				forceFixedWidth true
+				connectingNodes [
+					HudsonRiver7
+				]
+			}
+			{
+				id HudsonRiver7
+				forceStart { x 44 y 300 }
+				width 45
+				allowBridges false
+				forceFixedWidth true
+				connectingNodes [
+					HudsonRiver8
+				]
+			}
+			{
+				id HudsonRiver8
+				forceStart { x 30 y 275 }
+				width 45
+				allowBridges false
+				forceFixedWidth true
+				connectingNodes [
+					HudsonRiver9
+				]
+			}
+			{
+				id HudsonRiver9
+				forceStart { x 16 y 243 }
+				width 48
+				allowBridges false
+				forceFixedWidth true
+				connectingNodes [
+					;; terminus
+				]
+			}
+			
+			;; harbor - west
+			{
+				id HarborWest1
+				width 20
+				deformers [
+					{ x 0 y 259 }
+					{ x 34 y 239 }
+					{ x 0 y 193 }
+					{ x 28 y 189 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id HarborWest2
+				width 20
+				deformers [
+					{ x 0 y 197 }
+					{ x 31 y 190 }
+					{ x 0 y 160 }
+					{ x 31 y 160 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id HarborWest3
+				width 20
+				deformers [
+					{ x 0 y 160 }
+					{ x 28 y 160 }
+					{ x 0 y 130 }
+					{ x 23 y 130 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id HarborWest4
+				width 20
+				deformers [
+					{ x 0 y 130 }
+					{ x 26 y 130 }
+					{ x 0 y 107 }
+					{ x 19 y 107 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id HarborWest5
+				width 20
+				deformers [
+					{ x 0 y 107 }
+					{ x 18 y 107 }
+					{ x 0 y 81 }
+					{ x 18 y 81 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id HarborWest6
+				width 20
+				deformers [
+					{ x 0 y 81 }
+					{ x 22 y 81 }
+					{ x 0 y 59 }
+					{ x 24 y 59 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id HarborBottom1
+				width 20
+				deformers [
+					{ x 0 y 59 }
+					{ x 24 y 59 }
+					{ x 0 y 8 }
+					{ x 33 y 21 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id HarborBottom2
+				width 20
+				deformers [
+					{ x 28 y 37 }
+					{ x 46 y 43 }
+					{ x 45 y 6 }
+					{ x 56 y 0 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id HarborBottom3
+				width 20
+				deformers [
+					{ x 46 y 43 }
+					{ x 56 y 57 }
+					{ x 46 y 0 }
+					{ x 72 y 10 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id HarborBottom4
+				width 20
+				deformers [
+					{ x 56 y 57 }
+					{ x 73 y 69 }
+					{ x 72 y 10 }
+					{ x 88 y 29 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id HarborBottom5
+				width 20
+				deformers [
+					{ x 73 y 69 }
+					{ x 94 y 76 }
+					{ x 88 y 29 }
+					{ x 100 y 45 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id HarborBottom6
+				width 20
+				deformers [
+					{ x 96 y 76 }
+					{ x 122 y 77 }
+					{ x 100 y 58 }
+					{ x 123 y 64 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id HarborBottom7
+				width 20
+				deformers [
+					{ x 122 y 77 }
+					{ x 154 y 84 }
+					{ x 123 y 64 }
+					{ x 153 y 67 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id HarborBottom8
+				width 20
+				deformers [
+					{ x 128 y 63 }
+					{ x 144 y 65 }
+					{ x 146 y 43 }
+					{ x 148 y 43 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id EastRiverSouth
+				width 20
+				deformers [
+					{ x 142 y 96 }
+					{ x 159 y 96 }
+					{ x 136 y 84 }
+					{ x 155 y 84 }
+				]
+				body true
+				allowBridges true
+			}
+
+			;; east river
+			{
+				id EastRiver1
+				width 20
+				deformers [
+					{ x 146 y 123 }
+					{ x 170 y 120 }
+					{ x 142 y 96 }
+					{ x 159 y 96 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id EastRiver2
+				width 20
+				 deformers [
+				 	{ x 150 y 141 }
+				 	{ x 172 y 138 }
+				 	{ x 146 y 123 }
+					{ x 170 y 120 }
+				 ]
+				 body true
+				 allowBridges true
+			}
+			{
+				id EastRiver3
+				width 20
+				deformers [
+					{ x 141 y 167 }
+					{ x 176 y 167 }
+					{ x 150 y 141 }
+				 	{ x 172 y 138 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id EastRiver4
+				width 20
+				deformers [
+					{ x 147 y 183 }
+					{ x 175 y 183 }
+					{ x 141 y 126 }
+					{ x 173 y 167 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id EastRiver5
+				width 20
+				deformers [
+					{ x 157 y 206 }
+					{ x 183 y 202 }
+					{ x 147 y 183 }
+					{ x 175 y 183 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id EastRiver6
+				width 20
+				deformers [
+					{ x 164 y 219 }
+					{ x 186 y 212 }
+					{ x 157 y 206 }
+					{ x 183 y 202 }
+				]
+				body true
+				allowBridges true
+			}
+
+			{
+				id EastRiverEastStart
+				forceStart { x 162 y 218 }
+				width 8
+				allowBridges true
+				forceFixedWidth true
+				connectingNodes [
+					EastRiverEast1
+				]
+			}
+			{
+				id EastRiverEast1
+				forceStart { x 179 y 243 }
+				width 8
+				allowBridges true
+				forceFixedWidth true
+				connectingNodes [
+					EastRiverEast2
+				]
+			}
+			{
+				id EastRiverEast2
+				forceStart { x 194 y 263 }
+				width 8
+				allowBridges true
+				forceFixedWidth true
+				connectingNodes [
+					EastRiverEast3
+				]
+			}
+			{
+				id EastRiverEast3
+				forceStart { x 207 y 284 }
+				width 8
+				allowBridges true
+				forceFixedWidth true
+				connectingNodes [
+					EastRiverEast4
+				]
+			}
+			{
+				id EastRiverEast4
+				forceStart { x 217 y 295 }
+				width 8
+				allowBridges true
+				forceFixedWidth true
+				connectingNodes [
+					;; end
+				]
+			}
+			{
+				id EastRiverWestStart
+				forceStart { x 175 y 213 }
+				width 8
+				allowBridges true
+				forceFixedWidth true
+				connectingNodes [
+					EastRiverWest1
+				]
+			}
+			{
+				id EastRiverWest1
+				forceStart { x 192 y 235 }
+				width 7
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					EastRiverWest2
+				]
+			}
+			{
+				id EastRiverWest2
+				forceStart { x 206 y 256 }
+				width 7
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					EastRiverWest3
+				]
+			}
+			{
+				id EastRiverWest3
+				forceStart { x 220 y 276 }
+				width 7
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					EastRiverWest4
+				]
+			}
+			{
+				id EastRiverWest4
+				forceStart { x 232 y 288 }
+				width 7
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					;; end
+				]
+			}
+			{
+				id EastRiver7
+				width 20
+				deformers [
+					{ x 224 y 301 }
+					{ x 244 y 290 }
+					{ x 221 y 296 }
+					{ x 240 y 284 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id EastRiver8
+				width 20
+				deformers [
+					{ x 227 y 310 }
+					{ x 239 y 305 }
+					{ x 224 y 301 }
+					{ x 240 y 294 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id EastRiver9
+				width 20
+				deformers [
+					{ x 224 y 328 }
+					{ x 247 y 313 }
+					{ x 227 y 310 }
+					{ x 239 y 305 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id EastRiver10
+				width 20
+				deformers [
+					{ x 234 y 339 }
+					{ x 270 y 319 }
+					{ x 224 y 328 }
+					{ x 258 y 307 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id HarlemRiverOut1
+				width 20
+				deformers [
+					{ x 249 y 361 }
+					{ x 255 y 358 }
+					{ x 236 y 337 }
+					{ x 241 y 355 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id HarlemRiverOut2
+				width 20
+				deformers [
+					{ x 260 y 377 }
+					{ x 264 y 377 }
+					{ x 249 y 361 }
+					{ x 263 y 358 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id HarlemRiverOut3
+				width 20
+				deformers [
+					{ x 260 y 396 }
+					{ x 269 y 395 }
+					{ x 260 y 377 }
+					{ x 264 y 377 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id HarlemRiver01
+				forceStart { x 239 y 500 }
+				forceFixedWidth true
+				width 6
+				allowBridges true
+				connectingNodes [
+					HarlemRiver02
+				]
+			}
+			{
+				id HarlemRiver02
+				forceStart { x 240 y 486 }
+				forceFixedWidth true
+				allowBridges true
+				width 6
+				connectingNodes [
+					HarlemRiver03
+				]
+			}
+			{
+				id HarlemRiver03
+				forceStart { x 249 y 470 }
+				forceFixedWidth true
+				allowBridges true
+				width 6
+				connectingNodes [
+					HarlemRiver04
+				]
+			}
+			{
+				id HarlemRiver04
+				forceStart { x 249 y 457 }
+				forceFixedWidth true
+				allowBridges true
+				width 6
+				connectingNodes [
+					HarlemRiver05
+				]
+			}
+			{
+				id HarlemRiver05
+				forceStart { x 250 y 438 }
+				forceFixedWidth true
+				allowBridges true
+				width 6
+				connectingNodes [
+					HarlemRiver06
+				]
+			}
+			{
+				id HarlemRiver06
+				forceStart { x 251 y 415 }
+				forceFixedWidth true
+				allowBridges true
+				width 6
+				connectingNodes [
+					HarlemRiver07
+				]
+			}
+			{
+				id HarlemRiver07
+				forceStart { x 258 y 406 }
+				forceFixedWidth true
+				allowBridges true
+				width 6
+				connectingNodes [
+					HarlemRiver08
+				]
+			}
+			{
+				id HarlemRiver08
+				forceStart { x 262 y 396 }
+				forceFixedWidth true
+				allowBridges true
+				width 6
+				connectingNodes [
+					HarlemRiver09
+				]
+			}
+			{
+				id HarlemRiver09
+				forceStart { x 278 y 395 }
+				forceFixedWidth true
+				allowBridges true
+				width 6
+				connectingNodes [
+					HarlemRiver10
+				]
+			}
+			{
+				id HarlemRiver10
+				forceStart { x 283 y 387 }
+				forceFixedWidth true
+				allowBridges true
+				width 6
+				connectingNodes [
+					HarlemRiver11
+				]
+			}
+			{
+				id HarlemRiver11
+				forceStart { x 292 y 381 }
+				forceFixedWidth true
+				allowBridges true
+				width 6
+				connectingNodes [
+					HarlemRiver12
+				]
+			}
+			{
+				id HarlemRiver12
+				forceStart { x 305 y 372 }
+				forceFixedWidth true
+				allowBridges false
+				width 6
+				connectingNodes [
+					;; end
+				]
+			}
+			{
+				id EastRiverOut1
+				width 20
+				deformers [
+					{ x 273 y 328 }
+					{ x 278 y 322 }
+					{ x 258 y 325 }
+					{ x 270 y 318 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id EastRiverOut2
+				width 20
+				deformers [
+					{ x 301 y 368 }
+					{ x 308 y 356 }
+					{ x 273 y 328 }
+					{ x 278 y 322 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id JamaicaBay01
+				width 20
+				deformers [
+					{ x 327 y 401 }
+					{ x 350 y 381 }
+					{ x 301 y 368 }
+					{ x 308 y 356 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay02
+				width 20
+				deformers [
+					{ x 342 y 409 }
+					{ x 367 y 381 }
+					{ x 327 y 401 }
+					{ x 357 y 376 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay03
+				width 20
+				deformers [
+					{ x 350 y 381 }
+					{ x 357 y 376 }
+					{ x 340 y 346 }
+					{ x 354 y 326 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay04
+				width 20
+				deformers [
+					{ x 342 y 382 }
+					{ x 350 y 381 }
+					{ x 308 y 356 }
+					{ x 340 y 346 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay05
+				width 20
+				deformers [
+					{ x 342 y 410 }
+					{ x 364 y 408 }
+					{ x 367 y 381 }
+					{ x 373 y 378 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay06
+				width 20
+				deformers [
+					{ x 364 y 408 }
+					{ x 375 y 387 }
+					{ x 373 y 378 }
+					{ x 382 y 374 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id JamaicaBay07
+				width 20
+				deformers [
+					{ x 375 y 387 }
+					{ x 395 y 396 }
+					{ x 382 y 374 }
+					{ x 396 y 370 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay08
+				width 20
+				deformers [
+					{ x 396 y 393 }
+					{ x 460 y 367 }
+					{ x 396 y 370 }
+					{ x 458 y 347 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay09
+				width 20
+				deformers [
+					{ x 396 y 370 }
+					{ x 458 y 347 }
+					{ x 413 y 353 }
+					{ x 446 y 339 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay10
+				width 20
+				deformers [
+					{ x 358 y 358 }
+					{ x 380 y 320 }
+					{ x 354 y 325 }
+					{ x 375 y 311 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay11
+				width 20
+				deformers [
+					{ x 359 y 323 }
+					{ x 375 y 311 }
+					{ x 364 y 298 }
+					{ x 387 y 298 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay12
+				width 20
+				deformers [
+					{ x 367 y 343 }
+					{ x 390 y 339 }
+					{ x 380 y 320 }
+					{ x 394 y 323 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id JamaicaBay13
+				width 20
+				deformers [
+					{ x 390 y 339 }
+					{ x 446 y 339 }
+					{ x 393 y 329 }
+					{ x 439 y 303 }
+				]
+				body true
+				allowBridges true
+			}
+			{
+				id JamaicaBay14
+				width 20
+				deformers [
+					{ x 412 y 353 }
+					{ x 444 y 346 }
+					{ x 410 y 339 }
+					{ x 443 y 334 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay15
+				width 20
+				deformers [
+					{ x 445 y 337 }
+					{ x 470 y 324 }
+					{ x 441 y 300 }
+					{ x 481 y 286 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay16
+				width 20
+				deformers [
+					{ x 455 y 293 }
+					{ x 481 y 286 }
+					{ x 449 y 254 }
+					{ x 469 y 249 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay17
+				width 20
+				deformers [
+					{ x 437 y 272 }
+					{ x 452 y 277 }
+					{ x 437 y 268 }
+					{ x 449 y 254 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay18
+				width 20
+				deformers [
+					{ x 471 y 276 }
+					{ x 492 y 269 }
+					{ x 469 y 250 }
+					{ x 492 y 261 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay19
+				width 20
+				deformers [
+					{ x 426 y 421 }
+					{ x 445 y 420 }
+					{ x 408 y 389 }
+					{ x 434 y 377 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay20
+				width 20
+				deformers [
+					{ x 442 y 405 }
+					{ x 538 y 406 }
+					{ x 434 y 376 }
+					{ x 534 y 379 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay21
+				width 20
+				deformers [
+					{ x 440 y 381 }
+					{ x 475 y 378 }
+					{ x 434 y 376 }
+					{ x 470 y 367 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay22
+				width 20
+				deformers [
+					{ x 475 y 378 }
+					{ x 496 y 378 }
+					{ x 474 y 373 }
+					{ x 489 y 370 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay22a
+				width 20
+				deformers [
+					{ x 498 y 377 }
+					{ x 528 y 377 }
+					{ x 506 y 352 }
+					{ x 514 y 349 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay23
+				width 20
+				deformers [
+					{ x 472 y 427 }
+					{ x 496 y 423 }
+					{ x 476 y 407 }
+					{ x 502 y 406 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay24
+				width 20
+				deformers [
+					{ x 491 y 452 }
+					{ x 494 y 451 }
+					{ x 480 y 427 }
+					{ x 496 y 423 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay25
+				width 20
+				deformers [
+					{ x 516 y 416 }
+					{ x 550 y 434 }
+					{ x 534 y 379 }
+					{ x 573 y 410 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay26
+				width 20
+				deformers [
+					{ x 550 y 434 }
+					{ x 575 y 433 }
+					{ x 564 y 378 }
+					{ x 600 y 376 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay27
+				width 20
+				deformers [
+					{ x 551 y 402 }
+					{ x 567 y 398 }
+					{ x 548 y 390 }
+					{ x 564 y 378 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay28
+				width 20
+				deformers [
+					{ x 578 y 427 }
+					{ x 600 y 403 }
+					{ x 600 y 376 }
+					{ x 600 y 368 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id JamaicaBay31
+				width 20
+				deformers [
+					{ x 561 y 500 }
+					{ x 600 y 500 }
+					{ x 598 y 451 }
+					{ x 600 y 447 }
+				]
+				body true
+				allowBridges false
+			}
+			{
+				id NewtonCreekMouth
+				forceStart { x 198 y 171 }
+				width 6
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					NewtonCreek01
+				]
+			}
+			{
+				id NewtonCreek01
+				forceStart { x 182 y 176 }
+				width 6
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					NewtonCreek02
+				]
+			}
+			{
+				id NewtonCreek02
+				forceStart { x 192 y 176 }
+				width 6
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					NewtonCreek03
+				]
+			}
+			{
+				id NewtonCreek03
+				forceStart { x 203 y 172 }
+				width 6
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					NewtonCreekSplit
+				]
+			}
+			{
+				id NewtonCreekSplit
+				forceStart { x 208 y 170 }
+				width 8
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					NewtonCreek04
+					NewtonCreek05
+				]
+			}
+			{
+				id NewtonCreek04
+				forceStart { x 218 y 175 }
+				forceFixedWidth true
+				allowBridges true
+				width 9
+				connectingNodes [
+					NewtonCreek04a
+				]
+			}
+			{
+				id NewtonCreek04a
+				forceStart { x 223 y 183 }
+				width 9
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					NewtonCreek04b
+				]
+			}
+			{
+				id NewtonCreek04b
+				forceStart { x 226 y 189 }
+				width 9
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					;; end
+				]
+			}
+			{
+				id NewtonCreek05 
+				forceStart { x 216 y 164 }
+				width 6
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					NewtonCreek06
+				]
+			}
+			{
+				id NewtonCreek06
+				forceStart { x 225 y 153 }
+				width 6
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					NewtonCreek07
+				]
+			}
+			{
+				id NewtonCreek07
+				forceStart { x 229 y 143 }
+				width 6
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					NewtonCreek08
+				]
+			}
+			{
+				id NewtonCreek08
+				forceStart { x 242 y 140 }
+				width 6
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					NewtonCreek09
+				]
+			}
+			{
+				id NewtonCreek09
+				forceStart { x 248 y 137 }
+				width 7
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					NewtonCreek10
+				]
+			}
+			{
+				id NewtonCreek10
+				forceStart { x 257 y 131 }
+				width 8
+				forceFixedWidth true
+				allowBridges true
+				connectingNodes [
+					NewtonCreek11
+				]
+			}
+			{
+				id NewtonCreek11
+				forceStart { x 262 y 124 }
+				width 8
+				forceFixedWidth true
+				allowBridges false
+				connectingNodes [
+					NewtonCreek12
+				]
+			}
+			{
+				id NewtonCreek12
+				forceStart { x 265 y 111 }
+				width 8
+				forceFixedWidth true
+				allowBridges false
+				connectingNodes [
+					;; end
+				]
+			}
+		]
+	}
+	
+	generator {
+		totalInflux 300000
+	
+		lots [
+			{ mindensity 0.4 		lot "empty-lot-42" probfail 0.2 }
+			{ mindensity 0.00001	lot "empty-lot-22" probfail 0.2 }
+			{ mindensity 0.0 		lot "empty-lot-12" }
+		]
+
+		decoNodes {
+			maxdensity	1
+			maxappeal	1
+			centers		40
+			spread 		{ default 2 lowappeal 7 }
+			lotpercent  { default 100 lowappeal 75 }
+		}
+
+		specialBuildings {
+			policeStation	{ configs [ "police-station" ] }
+			trainStation    { configs [ "passenger-station" "cargo-station" ] }
+			civicsAndOthers [
+
+				; these are everywhere
+
+				{ configs [ "worship-regular" "school-regular" ] 
+					skipEvery { from 340 to 720 } }
+
+				{ configs [ "fire-station-small" ] 
+					skipEvery { from 800 to 900 } }
+
+				{ configs [ "school-large" ] 
+					skipEvery { from 600 to 800 } }
+                { configs [ "com-medium-philly-bank" ]
+                    skipEvery { from 900 to 1300 }
+                    maxPerDistrict 1 }
+
+				{ configs [ "civic-government-medium" "civic-hospital-medium" "civic-post-office-medium" ] 
+					skipEvery { from 800 to 900 } }
+
+				; everywhere but uncommon
+
+				{ configs [ "fire-station-large" ] 
+					skipEvery { from 1000 to 2000 } }
+
+				{ configs [ "worship-large" ] 
+					skipEvery { from 1200 to 2000 } }
+
+				;; extremely uncommon oustide of downtown
+
+				{ configs [ "downtown-medium-commercial" "downtown-large-commercial" "downtown-large-commercial-new-york" ]
+					skipEvery { from 10000 to 20000 } }
+				{ configs [ "ind-union-hall" "importm-regular" "industrial-zone-large" "industrial-zone-medium" ]
+					skipEvery { from 20000 to 40000 } }
+
+				; big ones stand out too much to be sprinkled around
+				;{ configs [ "civic-government-large" "civic-hospital-large" "civic-post-office-large" "school-large" ] 
+				;	skipEvery { from 500 to 600 } }
+
+				; higher distribution in specific districts
+
+				
+                { configs [ "com-large-downtown-bank" ]
+                    districtTags [ downtown ]
+                    skipEvery { from 160 to 260 }
+                    maxPerDistrict 1 }
+                { configs [ "com-large-downtown-bank" ]
+                    districtTags [ bizcenter ]
+                    skipEvery { from 220 to 360 }
+                    maxPerDistrict 1 }
+				{ configs [ "worship-large" "civic-government-large" "civic-post-office-large" ] 
+					districtTags [ downtown ]
+					skipEvery { from 10 to 20 } }
+				{ configs [ "downtown-medium-commercial" ]
+					districtTags [ downtown ]
+					skipEvery { from 900 to 1500 } }
+				{ configs [ "downtown-medium-commercial" ]
+					districtTags [ bizcenter ]
+					skipEvery { from 900 to 1800 } }
+				{ configs [ "downtown-large-commercial" "downtown-large-commercial-new-york" ]
+					districtTags [ downtown ]
+					skipEvery { from 80 to 140 } }
+				{ configs [ "downtown-large-commercial" "downtown-large-commercial-new-york" ]
+					districtTags [ bizcenter ]
+					skipEvery { from 10 to 20 }
+					maxPerDistrict 1 }
+
+				{ configs [ "worship-large"
+							"civic-government-large" "civic-hospital-large" "civic-post-office-large" "school-large" ] 
+					districtTags [ bizcenter ]
+					skipEvery { from 4 to 8 } }
+				{ configs [ "ind-union-hall" "importm-regular" ]
+					districtTags [ indcenter ]
+					skipEvery { from 100 to 150 }
+					maxPerDistrict 5
+				}
+				{ configs [ "industrial-zone-medium" ]
+					districtTags [ indcenter ]
+					skipEvery { from 5600 to 6400 }
+				}
+				{ configs [ "industrial-zone-large" ]
+					districtTags [ indcenter ]
+					skipEvery { from 10000 to 12000 }
+					maxPerDistrict 4
+				}
+			]
+		}
+    	nodeCenterScore 1.0 
+    	otherCenterScore 0.3
+    	otherCenterCount 3	
+
+    	lowAppealThreshold 0.3
+    	midAppealThreshold 0.7
+	}
+
+	playerStart {
+    	nodesKnownAtStart 14
+    	nodesFriendlyAtStart 5
+    	mapEdgePlacementMargin 40
+    	mapEdgePlacementPenalty 0.1
+    	starterPack	NewYorkStarterPack
+
+    	resourcesUnlocked [
+    		;; mundane resources
+    		apple-juice grape-juice crocks malt rye corn-syrup
+    		barrels half-barrels steel-barrels bottles small-bottles
+
+    		;; materials
+    		bricks lumber
+
+    		;; flavor resources
+    		gasoline
+
+    		;; initial illegal resources
+    		neutral-alcohol moonshine cider home-brew brick-wine dirty-cash counterfeitcash cook cfood rfood rfoodsupplies lockpicks liquor-license cigarettes french75 cloverclub bloodsand boulevardier negroni french75mix cloverclubmix bloodsandmix boulevardiermix negronimix
+
+    		;; weapons
+    		weapon-crowbar weapon-bat weapon-knife
+
+    	]
+	}
+
+	moveinScores {
+		resSameEthnicityBoost 10
+
+		emptyLotBase { from 0 to 1 }
+
+		resInitialSeeds 5
+		resResidentialAreaBoost 1
+		resCommercialAreaBoost 0
+		resIndustrialAreaBoost -4
+		resRailOrTerminalBoost -4
+		
+		indInitialSeeds 50
+		indResidentialAreaBoost -1
+		indCommercialAreaBoost 1
+		indIndustrialAreaBoost 1
+		indRailOrTerminalBoost 0.5
+
+		comInitialSeeds 50
+		comResidentialAreaBoost 1
+		comCommercialAreaBoost 0.8
+		comIndustrialAreaBoost 0
+		comRailOrTerminalBoost 0
+
+		interestingNodeProbabilities {
+			;; this means: 10% of nodes prefer to have 3 businesses, etc
+			;; they should add up to 1.0 but if they don't it's okay
+			3  0.1
+			2  0.2
+			1  0.4
+			0  0.3
+		}
+
+		;; means that 90% of nodes are allowed to have a potential
+		;; business if the interesting count is below total count
+		potentialNodeProbability 0.9
+	}
+
+	familyGenerator {
+		initialFamiliesRatio 0.75 ; initial fams compared to real businesses
+		kidsCount [ 0 0 1 2 2 3 3 3 4 4 4 5 5 6 6 7 7 8 8 9 9 10 ]
+		marriageRatio 0.9
+		marriageAgeRange { from 18 to 30 }
+
+		childMortalityRatio 0.05
+        childMortalityAgeRange { from 0 to 2 }
+        adultMortalityAgeRange { from 50 to 80 }
+
+		traitsPerPerson { from 1 to 3 }
+		probTraitInherited 0.8
+		probTraitOther 0.2
+
+		friendsAge { from 16 to 19 }
+		friendsCount { from 2 to 5 }
+	}
+
+	seasons {
+		seasonBlendASRWidth 15
+		resGroundColor { r 164 g 193 b 94 a 255 }
+		;comGroundColor { r 139 g 173 b 55 a 255 }
+		comGroundColor { r 164 g 193 b 94 a 255 }
+		indGroundColor { r 132 g 126 b 111 a 255 }
+
+		data [
+		{	season spring
+			dateRange { from 60 to 165 }
+			
+			foliageHueShift { from 0 to 0 }
+			foliageSaturationShift -0.1
+			groundHueShift -0.04
+			groundSaturationShift -0.1
+
+			sunColor { r 255 g 253 b 249 a 255 }
+			sunIntensity 1.2
+			ambientColor { r 179 g 184 b 209 a 255 }
+			ambientIntensity 0.1
+			fogColor { r 190 g 157 b 96 a 255 }
+			fogIntensity 0.003
+
+			weather { type rain hoursOfDay { from 21 to 24 } prob 0.3 }
+		} 
+		{	season summer
+			dateRange { from 145 to 265 }
+
+			foliageHueShift { from 0 to 0.1 }
+			foliageSaturationShift 0
+			groundHueShift -0.02
+			groundSaturationShift -0.1
+			
+			sunColor { r 255 g 247 b 230 a 255 }
+			sunIntensity 1.2
+			ambientColor { r 209 g 209 b 209 a 255 }
+			ambientIntensity 0.1
+			fogColor { r 190 g 157 b 96 a 255 }
+			fogIntensity 0.005
+
+			weather { type dust hoursOfDay { from 17 to 20 } prob 0.8 }
+		}
+		{	season fall
+			dateRange { from 250 to 355 }
+
+			foliageHueShift { from -0.14 to -0.04 }
+			foliageSaturationShift 0.1
+			groundHueShift -0.1
+			groundSaturationShift -0.2
+			
+			sunColor { r 255 g 244 b 220 a 255 }
+			sunIntensity 1.2
+			ambientColor { r 204 g 170 b 155 a 255 }
+			ambientIntensity 0.1
+			fogColor { r 212 g 164 b 47 a 255 }
+			fogIntensity 0.005
+
+			weather { type rain hoursOfDay { from 21 to 24 } prob 0.3 }
+		}
+		{	season winter
+			dateRange { from 340 to 75 }
+
+			foliageHueShift { from -0.14 to -0.04 } ;; keep fall colors
+			foliageSaturationShift 0.0
+			groundHueShift -0.1
+			groundSaturationShift -0.7
+			
+			sunColor { r 221 g 221 b 235 a 255 }
+			sunIntensity 0.9
+			ambientColor { r 128 g 144 b 196 a 255 }
+			ambientIntensity 0
+			fogColor { r 190 g 157 b 96 a 255 }
+			fogIntensity 0.007
+
+			weather { type snow hoursOfDay { from 6 to 21 } prob 0.5 }
+		}
+		]
+	}
+
+	ethnicMakeup { 
+		nationalities {
+			am 34
+			ru 10
+			af 7
+			la 2
+			as 2
+			it 10
+			ir 10
+			de 5
+			pl 5
+			at 4
+			en 2
+			fr 2
+			ro 2
+			se 2
+			ca 1
+			cz 1
+			gr 1
+			nl 1
+			no 1
+			sc 1
+		}
+		skin {
+			am { names [ light ] proportions [ 100 ] }
+			fr { names [ light dark ] proportions [ 95 5 ] }
+			it { names [ light medium ] proportions [ 80 20 ] }
+			af { names [ dark ] proportions [ 100 ] }
+			la { names [ medium ] proportions [ 100 ] }
+			as { names [ light medium ] proportions [ 80 20 ] }
+			others { names [ light ] proportions [ 100 ] }
+		}
+	}
+
+	groups [
+		{ type AgentPlayer count 16 }
+		{ type CopPlayer count 15 }
+		{ type GangPlayer count 16 }
+ 		{ type GoonPlayer count 10 }
+	]
+
+	newspaperExtras {
+		;; these are loc strings unique to this city
+		subheadsCityGeneral [ newspaper-chicago ]
+		subheadsCityDated [ newspaper-dated-chicago ]
+		subheadsCitySequences [ newspaper-seq-chicago-barrel newspaper-seq-chicago-whiskey ]
+	}
+
+} ] }

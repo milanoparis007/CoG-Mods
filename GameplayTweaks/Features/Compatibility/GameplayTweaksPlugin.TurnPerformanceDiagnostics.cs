@@ -53,6 +53,11 @@ namespace GameplayTweaks
 		private const long LargeSavePostBusinessSimulationTailBudgetMs = 55;
 		private const long InteractiveTurnFrameLogThresholdMs = 25;
 		private const long TurnHandlerDetailThresholdMs = 8;
+		private const long CompactInteractiveTurnFrameLogThresholdMs = 120;
+		private const long CompactTurnHandlerDetailThresholdMs = 80;
+		private const long CompactSlowStageThresholdMs = 80;
+		private const long CompactCacheMissLogThresholdMs = 40;
+		private const long CompactSystemMaintenanceTotalLogThresholdMs = 750;
 		private const long CommandQueueDetailThresholdMs = 5;
 		private const long CommandQueueStepDetailThresholdMs = 8;
 		private const long CommandExecutorDetailThresholdMs = 25;
@@ -117,6 +122,7 @@ namespace GameplayTweaks
 		private const int TerritoryModulePresenceCacheFrames = 120;
 		private const int CanBuySellAvailabilityCacheFrames = 30;
 		private const int CanBuySellLockedLogEvery = 2048;
+		private const int CanBuySellForcedClosedLogIntervalDays = 28;
 		private const int CanBuySellLockedKeyLimit = 512;
 		private const int LargeSaveTotalPlayersThreshold = 120;
 		private const int LargeSaveBusinessCountThreshold = 10000;
@@ -124,6 +130,115 @@ namespace GameplayTweaks
 		private static readonly Label TagPlayerLegalBiz = (Label)"tag-player-legal-biz";
 		private static readonly Label TagLegalLiquor = (Label)"tag-legal-liquor";
 		private const BindingFlags InstanceMethodFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+		private static bool IsPerformanceDiagnosticsEnabled()
+		{
+			try
+			{
+				return GameplayTweaksPlugin.EnablePerformanceDiagnostics?.Value ?? false;
+			}
+			catch
+			{
+				return false;
+			}
+		}
+
+		private static long GetInteractiveTurnFrameLogThresholdMs()
+		{
+			return IsPerformanceDiagnosticsEnabled()
+				? InteractiveTurnFrameLogThresholdMs
+				: CompactInteractiveTurnFrameLogThresholdMs;
+		}
+
+		private static long GetTurnHandlerDetailLogThresholdMs()
+		{
+			return IsPerformanceDiagnosticsEnabled()
+				? TurnHandlerDetailThresholdMs
+				: CompactTurnHandlerDetailThresholdMs;
+		}
+
+		private static long GetEffectiveStageLogThresholdMs(long thresholdMs, bool isCityGen)
+		{
+			if (IsPerformanceDiagnosticsEnabled() || isCityGen)
+			{
+				return thresholdMs;
+			}
+
+			return Math.Max(thresholdMs, CompactSlowStageThresholdMs);
+		}
+
+		private static long GetCacheMissLogThresholdMs()
+		{
+			return IsPerformanceDiagnosticsEnabled()
+				? PlayerAIStartDetailThresholdMs
+				: CompactCacheMissLogThresholdMs;
+		}
+
+		private static long GetCommandQueueStepLogThresholdMs()
+		{
+			return IsPerformanceDiagnosticsEnabled()
+				? CommandQueueStepDetailThresholdMs
+				: CompactTurnHandlerDetailThresholdMs;
+		}
+
+		private static long GetCommandQueueLogThresholdMs()
+		{
+			return IsPerformanceDiagnosticsEnabled()
+				? CommandQueueDetailThresholdMs
+				: CompactTurnHandlerDetailThresholdMs;
+		}
+
+		private static long GetCommandExecutorDetailLogThresholdMs()
+		{
+			return IsPerformanceDiagnosticsEnabled()
+				? CommandExecutorDetailThresholdMs
+				: CompactTurnHandlerDetailThresholdMs;
+		}
+
+		private static long GetAiDetailLogThresholdMs()
+		{
+			return IsPerformanceDiagnosticsEnabled()
+				? PlayerAIAssignRequestsDetailThresholdMs
+				: CompactTurnHandlerDetailThresholdMs;
+		}
+
+		private static long GetAiAggregateLogThresholdMs()
+		{
+			return IsPerformanceDiagnosticsEnabled()
+				? PlayerAIAssignRequestsAggregateThresholdMs
+				: CompactTurnHandlerDetailThresholdMs;
+		}
+
+		private static long GetHudInputLogThresholdMs()
+		{
+			return IsPerformanceDiagnosticsEnabled()
+				? HudInputDetailThresholdMs
+				: CompactTurnHandlerDetailThresholdMs;
+		}
+
+		private static bool ShouldLogSystemMaintenanceTotal(long elapsedMs)
+		{
+			return elapsedMs >= (IsPerformanceDiagnosticsEnabled()
+				? InteractiveTurnFrameLogThresholdMs
+				: CompactSystemMaintenanceTotalLogThresholdMs);
+		}
+
+		private static bool ShouldLogDirectPerformanceDetail(long elapsedMs)
+		{
+			return elapsedMs >= CompactTurnHandlerDetailThresholdMs || IsPerformanceDiagnosticsEnabled();
+		}
+
+		private static bool ShouldLogPerformanceSample()
+		{
+			return IsPerformanceDiagnosticsEnabled();
+		}
+
+		private static bool ShouldLogPerformanceSlice(bool completed, long elapsedMs)
+		{
+			return elapsedMs >= GetInteractiveTurnFrameLogThresholdMs()
+				|| (!completed && IsPerformanceDiagnosticsEnabled());
+		}
+
 		private static readonly Dictionary<MethodBase, long> ThresholdsByMethod = new Dictionary<MethodBase, long>();
 		private static readonly HashSet<MethodBase> StartupStageMethods = new HashSet<MethodBase>();
 		private static readonly HashSet<string> FailedTimedPatchTargets = new HashSet<string>(StringComparer.Ordinal);
@@ -153,7 +268,7 @@ namespace GameplayTweaks
 		private static int _canBuySellAvailabilityCacheMisses;
 		private static int _canBuySellAvailabilityLockedBlocks;
 		private static readonly Dictionary<string, int> CanBuySellLockedInvalidationTurnByKey = new Dictionary<string, int>();
-		private static readonly Dictionary<string, int> CanBuySellLockedBlockLogTurnByKey = new Dictionary<string, int>();
+		private static readonly Dictionary<string, int> CanBuySellLockedBlockLogDayByKey = new Dictionary<string, int>();
 		private static readonly Dictionary<ResidenceTracker, float> PendingResidenceImmigrationDays = new Dictionary<ResidenceTracker, float>();
 		private static readonly Dictionary<HeatmapManager, PendingHeatmapUpdateWork> PendingHeatmapUpdates = new Dictionary<HeatmapManager, PendingHeatmapUpdateWork>();
 		private static readonly Queue<DeferredSocialInferenceWork> PendingSocialInferences = new Queue<DeferredSocialInferenceWork>();
@@ -1550,7 +1665,10 @@ namespace GameplayTweaks
 				CommandExecutorRemoveDeprecatedTuplesMethod.Invoke(__instance, null);
 
 				long elapsedMs = GetElapsedMilliseconds(startTicks);
-				if (budgetDeferred || elapsedMs >= CommandExecutorDetailThresholdMs)
+				long limiterLogThresholdMs = IsPerformanceDiagnosticsEnabled()
+					? CommandExecutorDetailThresholdMs
+					: CompactTurnHandlerDetailThresholdMs;
+				if ((budgetDeferred && IsPerformanceDiagnosticsEnabled()) || elapsedMs >= limiterLogThresholdMs)
 				{
 					Debug.Log(
 						"[PERF][CommandExecutorLimiter] ms=" + elapsedMs +
@@ -1777,7 +1895,7 @@ namespace GameplayTweaks
 				}
 			}
 
-			if (elapsedMs < CommandQueueStepDetailThresholdMs)
+			if (elapsedMs < GetCommandQueueStepLogThresholdMs())
 			{
 				return;
 			}
@@ -1840,7 +1958,7 @@ namespace GameplayTweaks
 				}
 
 				long elapsedMs = GetElapsedMilliseconds(__state.StartTicks);
-				if (elapsedMs < CommandExecutorDetailThresholdMs)
+				if (elapsedMs < GetCommandExecutorDetailLogThresholdMs())
 				{
 					return;
 				}
@@ -1950,7 +2068,8 @@ namespace GameplayTweaks
 					}
 				}
 
-				if (elapsedMs < CommandQueueDetailThresholdMs)
+				if (elapsedMs < GetCommandQueueLogThresholdMs()
+					&& __state.MaxStepMs < GetCommandQueueStepLogThresholdMs())
 				{
 					return;
 				}
@@ -2017,10 +2136,12 @@ namespace GameplayTweaks
 				}
 
 				long elapsedMs = GetElapsedMilliseconds(__state.StartTicks);
-				if (elapsedMs < PlayerAIAssignRequestsAggregateThresholdMs
-					&& __state.MaxDispatchMs < PlayerAIAssignRequestsDetailThresholdMs
-					&& __state.MaxCompletionMs < PlayerAIAssignRequestsDetailThresholdMs
-					&& __state.MaxLogRequestMs < PlayerAIAssignRequestsDetailThresholdMs)
+				long aggregateThresholdMs = GetAiAggregateLogThresholdMs();
+				long detailThresholdMs = GetAiDetailLogThresholdMs();
+				if (elapsedMs < aggregateThresholdMs
+					&& __state.MaxDispatchMs < detailThresholdMs
+					&& __state.MaxCompletionMs < detailThresholdMs
+					&& __state.MaxLogRequestMs < detailThresholdMs)
 				{
 					return;
 				}
@@ -2135,7 +2256,7 @@ namespace GameplayTweaks
 					}
 				}
 
-				if (elapsedMs < PlayerAIAssignRequestsDetailThresholdMs)
+				if (elapsedMs < GetAiDetailLogThresholdMs())
 				{
 					return;
 				}
@@ -2211,7 +2332,7 @@ namespace GameplayTweaks
 					aggregate.MaxCompletionAssignedTo = __state.AssignedTo;
 				}
 
-				if (elapsedMs < PlayerAIAssignRequestsDetailThresholdMs)
+				if (elapsedMs < GetAiDetailLogThresholdMs())
 				{
 					return;
 				}
@@ -2275,7 +2396,7 @@ namespace GameplayTweaks
 					aggregate.MaxLogRequestAssignedTo = __state.AssignedTo;
 				}
 
-				if (elapsedMs < PlayerAIAssignRequestsDetailThresholdMs)
+				if (elapsedMs < GetAiDetailLogThresholdMs())
 				{
 					return;
 				}
@@ -2337,7 +2458,7 @@ namespace GameplayTweaks
 					}
 				}
 
-				if (elapsedMs < PlayerAIAssignRequestsDetailThresholdMs)
+				if (elapsedMs < GetAiDetailLogThresholdMs())
 				{
 					return;
 				}
@@ -3153,9 +3274,10 @@ namespace GameplayTweaks
 				_lastSuppressedSetupPresenceKey = presenceKey;
 				_suppressedSetupPresenceUpdates++;
 
-				if (_suppressedSetupPresenceUpdates == 1
-					|| !string.Equals(previousKey, presenceKey, StringComparison.Ordinal)
-					|| _suppressedSetupPresenceUpdates % 25 == 0)
+				if (IsPerformanceDiagnosticsEnabled()
+					&& (_suppressedSetupPresenceUpdates == 1
+						|| !string.Equals(previousKey, presenceKey, StringComparison.Ordinal)
+						|| _suppressedSetupPresenceUpdates % 25 == 0))
 				{
 					Debug.Log("[PERF][SetupPresenceSkip] suppressed=" + _suppressedSetupPresenceUpdates + " changed=" + !string.Equals(previousKey, presenceKey, StringComparison.Ordinal) + " day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " totalPlayers=" + GetTotalPlayersForLog());
 				}
@@ -3195,7 +3317,10 @@ namespace GameplayTweaks
 				if (pendingDays + 0.001f < targetDays)
 				{
 					PendingResidenceImmigrationDays[__instance] = pendingDays;
-					Debug.Log("[PERF][ResidenceImmigration] deferred pendingDays=" + pendingDays.ToString("0.###") + " targetDays=" + targetDays.ToString("0.###") + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
+					if (IsPerformanceDiagnosticsEnabled())
+					{
+						Debug.Log("[PERF][ResidenceImmigration] deferred pendingDays=" + pendingDays.ToString("0.###") + " targetDays=" + targetDays.ToString("0.###") + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
+					}
 					return false;
 				}
 
@@ -3216,7 +3341,13 @@ namespace GameplayTweaks
 				__instance.data.population += immigrants;
 				PendingResidenceImmigrationDays[__instance] = 0f;
 				long elapsedMs = GetElapsedMilliseconds(startTicks);
-				Debug.Log("[PERF][ResidenceImmigration] batched ms=" + elapsedMs + " pendingDays=" + pendingDays.ToString("0.###") + " targetImmigrants=" + targetImmigrants + " immigrants=" + immigrants + " cacheMs=" + cacheMs + " cacheResetMs=" + cacheResetMs + " cacheLotsMs=" + cacheLotsMs + " cacheEthMs=" + cacheEthMs + " cacheEthCount=" + cacheEthCount + " cacheMaxEthMs=" + cacheMaxEthMs + " countMs=" + countMs + " helperMs=" + helperMs + " resetMs=" + resetMs + " population=" + __instance.data.population + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
+				if (ShouldLogDirectPerformanceDetail(elapsedMs)
+					|| cacheMs >= CompactTurnHandlerDetailThresholdMs
+					|| helperMs >= CompactTurnHandlerDetailThresholdMs
+					|| resetMs >= CompactTurnHandlerDetailThresholdMs)
+				{
+					Debug.Log("[PERF][ResidenceImmigration] batched ms=" + elapsedMs + " pendingDays=" + pendingDays.ToString("0.###") + " targetImmigrants=" + targetImmigrants + " immigrants=" + immigrants + " cacheMs=" + cacheMs + " cacheResetMs=" + cacheResetMs + " cacheLotsMs=" + cacheLotsMs + " cacheEthMs=" + cacheEthMs + " cacheEthCount=" + cacheEthCount + " cacheMaxEthMs=" + cacheMaxEthMs + " countMs=" + countMs + " helperMs=" + helperMs + " resetMs=" + resetMs + " population=" + __instance.data.population + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
+				}
 				return false;
 			}
 			catch (Exception ex)
@@ -3471,10 +3602,17 @@ namespace GameplayTweaks
 					HeatmapManagerTempField.SetValue(__instance, work.CurrentMaps);
 					PendingHeatmapUpdates.Remove(__instance);
 					long wallMs = GetElapsedMilliseconds(work.StartedTicks);
-					Debug.Log("[PERF][HeatmapUpdateSlice] phase=total ms=" + work.SliceCpuMs + " wallMs=" + wallMs + " slices=" + work.SliceCount + " entries=" + work.Entries.Count + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
+					if (ShouldLogDirectPerformanceDetail(work.SliceCpuMs)
+						|| wallMs >= CompactTurnHandlerDetailThresholdMs)
+					{
+						Debug.Log("[PERF][HeatmapUpdateSlice] phase=total ms=" + work.SliceCpuMs + " wallMs=" + wallMs + " slices=" + work.SliceCount + " entries=" + work.Entries.Count + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
+					}
 				}
 
-				Debug.Log("[PERF][HeatmapUpdateSlice] ms=" + elapsedMs + " entriesUpdated=" + entriesUpdated + " nextEntry=" + work.NextIndex + " totalEntries=" + work.Entries.Count + " completed=" + completed + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
+				if (ShouldLogDirectPerformanceDetail(elapsedMs))
+				{
+					Debug.Log("[PERF][HeatmapUpdateSlice] ms=" + elapsedMs + " entriesUpdated=" + entriesUpdated + " nextEntry=" + work.NextIndex + " totalEntries=" + work.Entries.Count + " completed=" + completed + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
+				}
 				return false;
 			}
 			catch (Exception ex)
@@ -3829,7 +3967,7 @@ namespace GameplayTweaks
 					{
 						__instance.events.EnqueueOnce(SessionEventType.SystemTurnStarted);
 					}
-					if (!completed || pendingElapsedMs >= InteractiveTurnFrameLogThresholdMs)
+					if (ShouldLogPerformanceSlice(completed, pendingElapsedMs))
 					{
 						Debug.Log("[PERF][TurnFrame] phase=system-turn-slice ms=" + pendingElapsedMs + " handlersRun=" + handlersRun + " nextHandler=" + nextSystemHandler + " totalHandlers=" + totalSystemHandlers + " completed=" + completed + " day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " totalPlayers=" + GetTotalPlayersForLog());
 					}
@@ -3889,7 +4027,7 @@ namespace GameplayTweaks
 				}
 
 				long elapsedMs = GetElapsedMilliseconds(startTicks);
-				if (elapsedMs >= InteractiveTurnFrameLogThresholdMs)
+				if (elapsedMs >= GetInteractiveTurnFrameLogThresholdMs())
 				{
 					PlayerID endPlayer = __instance.clock.State.pid;
 					Debug.Log("[PERF][TurnFrame] ms=" + elapsedMs + " advances=" + advances + " systemTurn=" + ranSystemTurn + " startPid=" + startPlayer.id + " endPid=" + endPlayer.id + " day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " totalPlayers=" + GetTotalPlayersForLog());
@@ -3969,7 +4107,9 @@ namespace GameplayTweaks
 				players.Human?.ai?.MarkPlayerTurnAsDone();
 				long markMs = GetElapsedMilliseconds(markTicks);
 
-				if (!_loggedFastNextTurnSelectionClearSkipped && context.selection?.HasActive == true)
+				if (!_loggedFastNextTurnSelectionClearSkipped
+					&& context.selection?.HasActive == true
+					&& IsPerformanceDiagnosticsEnabled())
 				{
 					_loggedFastNextTurnSelectionClearSkipped = true;
 					Debug.Log("[PERF][HudInputDetail] method=HUDBar.OnNextTurnClickFast selectionClear=skipped reason=avoid-click-refresh-cascade day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " pid=" + GetPlayerForLog() + " totalPlayers=" + GetTotalPlayersForLog());
@@ -3979,7 +4119,7 @@ namespace GameplayTweaks
 				TryDisableNextTurnButtonCheap(__instance);
 				long buttonMs = GetElapsedMilliseconds(buttonTicks);
 				long elapsedMs = GetElapsedMilliseconds(__state);
-				if (elapsedMs >= HudInputDetailThresholdMs)
+				if (elapsedMs >= GetHudInputLogThresholdMs())
 				{
 					Debug.Log("[PERF][HudInputDetail] method=HUDBar.OnNextTurnClickFast ms=" + elapsedMs + " audioMs=" + audioMs + " markTurnDoneMs=" + markMs + " buttonMs=" + buttonMs + " selectionClear=skipped frame=" + Time.frameCount + " day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " pid=" + GetPlayerForLog() + " totalPlayers=" + GetTotalPlayersForLog());
 				}
@@ -3996,7 +4136,7 @@ namespace GameplayTweaks
 			try
 			{
 				long elapsedMs = GetElapsedMilliseconds(__state);
-				if (elapsedMs < HudInputDetailThresholdMs)
+				if (elapsedMs < GetHudInputLogThresholdMs())
 				{
 					return;
 				}
@@ -4060,7 +4200,7 @@ namespace GameplayTweaks
 				_cachedHudCornerFrame = frame;
 
 				long elapsedMs = GetElapsedMilliseconds(startTicks);
-				if (elapsedMs >= HudInputDetailThresholdMs)
+				if (elapsedMs >= GetHudInputLogThresholdMs())
 				{
 					Debug.Log("[PERF][HudCornersCached] ms=" + elapsedMs + " corners=" + cornerCount + " frame=" + frame + " day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " pid=" + GetPlayerForLog() + " totalPlayers=" + GetTotalPlayersForLog());
 				}
@@ -4097,7 +4237,7 @@ namespace GameplayTweaks
 				}
 
 				long elapsedMs = GetElapsedMilliseconds(__state.StartTicks);
-				if (elapsedMs < HudInputDetailThresholdMs)
+				if (elapsedMs < GetHudInputLogThresholdMs())
 				{
 					return;
 				}
@@ -4325,10 +4465,13 @@ namespace GameplayTweaks
 					out int handlersRun,
 					out int nextSystemHandler,
 					out int totalSystemHandlers);
+				long elapsedMs = GetElapsedMilliseconds(frameStartTicks);
+				if (ShouldLogPerformanceSlice(completed, elapsedMs))
+				{
+					Debug.Log("[PERF][TurnFrame] phase=system-turn-slice ms=" + elapsedMs + " handlersRun=" + handlersRun + " nextHandler=" + nextSystemHandler + " totalHandlers=" + totalSystemHandlers + " completed=" + completed + " day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " totalPlayers=" + GetTotalPlayersForLog());
+				}
 				if (!completed)
 				{
-					long elapsedMs = GetElapsedMilliseconds(frameStartTicks);
-					Debug.Log("[PERF][TurnFrame] phase=system-turn-slice ms=" + elapsedMs + " handlersRun=" + handlersRun + " nextHandler=" + nextSystemHandler + " totalHandlers=" + totalSystemHandlers + " completed=False day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " totalPlayers=" + GetTotalPlayersForLog());
 					return true;
 				}
 			}
@@ -4411,7 +4554,7 @@ namespace GameplayTweaks
 						out int nextSimulationHandler,
 						out int totalSimulationHandlers);
 					long simulationSliceMs = GetElapsedMilliseconds(simulationSliceTicks);
-					if (!simulationCompleted || simulationSliceMs >= InteractiveTurnFrameLogThresholdMs)
+					if (ShouldLogPerformanceSlice(simulationCompleted, simulationSliceMs))
 					{
 						Debug.Log("[PERF][SimulationManagerSlice] ms=" + simulationSliceMs + " submanagersRun=" + simulationHandlersRun + " nextSubmanager=" + nextSimulationHandler + " totalSubmanagers=" + totalSimulationHandlers + " completed=" + simulationCompleted + " day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " totalPlayers=" + GetTotalPlayersForLog());
 					}
@@ -4470,7 +4613,7 @@ namespace GameplayTweaks
 			}
 
 			long totalMs = GetElapsedMilliseconds(work.StartedTicks);
-			if (totalMs >= InteractiveTurnFrameLogThresholdMs)
+			if (ShouldLogSystemMaintenanceTotal(totalMs))
 			{
 				Debug.Log("[PERF][TurnFrame] phase=system-turn-total ms=" + totalMs + " day=" + work.Day + " turn=" + work.Turn + " handlers=" + handlers.Count);
 			}
@@ -4576,7 +4719,7 @@ namespace GameplayTweaks
 						out int nextBusinessPhase,
 						out int totalBusinessPhases);
 					long businessTrackerMs = GetElapsedMilliseconds(businessTrackerTicks);
-					if (!businessTrackerCompleted || businessTrackerMs >= InteractiveTurnFrameLogThresholdMs)
+					if (ShouldLogPerformanceSlice(businessTrackerCompleted, businessTrackerMs))
 					{
 						Debug.Log("[PERF][BusinessTrackerSlice] ms=" + businessTrackerMs + " phase=" + businessPhase + " nextPhase=" + nextBusinessPhase + " totalPhases=" + totalBusinessPhases + " completed=" + businessTrackerCompleted + " day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " totalPlayers=" + GetTotalPlayersForLog());
 					}
@@ -4649,7 +4792,7 @@ namespace GameplayTweaks
 			}
 
 			long totalMs = GetElapsedMilliseconds(work.SimulationStartedTicks);
-			if (totalMs >= InteractiveTurnFrameLogThresholdMs)
+			if (ShouldLogSystemMaintenanceTotal(totalMs))
 			{
 				Debug.Log("[PERF][SimulationManagerSlice] phase=total ms=" + totalMs + " sliceCpuMs=" + work.SimulationSliceCpuMs + " maxResumeGapMs=" + work.SimulationMaxResumeGapMs + " submanagers=" + submanagers.Count + " profile=" + FormatSimulationSubmanagerProfile(work) + " day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " totalPlayers=" + GetTotalPlayersForLog());
 			}
@@ -4860,7 +5003,11 @@ namespace GameplayTweaks
 					if (!businessModulesCompleted)
 					{
 						nextPhase = businessWork.NextPhaseIndex;
-						Debug.Log("[PERF][BusinessUpdateModulesSlice] ms=" + GetElapsedMilliseconds(phaseTicks) + " updated=" + modulesUpdated + " nextBusiness=" + nextBusiness + " totalBusinesses=" + totalBusinesses + " stopReason=" + businessStopReason + " completed=False day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " totalPlayers=" + GetTotalPlayersForLog());
+						long elapsedMs = GetElapsedMilliseconds(phaseTicks);
+						if (ShouldLogPerformanceSlice(false, elapsedMs))
+						{
+							Debug.Log("[PERF][BusinessUpdateModulesSlice] ms=" + elapsedMs + " updated=" + modulesUpdated + " nextBusiness=" + nextBusiness + " totalBusinesses=" + totalBusinesses + " stopReason=" + businessStopReason + " completed=False day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " totalPlayers=" + GetTotalPlayersForLog());
+						}
 						return false;
 					}
 				}
@@ -4877,7 +5024,11 @@ namespace GameplayTweaks
 					if (!relationshipRespectCompleted)
 					{
 						nextPhase = businessWork.NextPhaseIndex;
-						Debug.Log("[PERF][RelationshipRespectSlice] ms=" + GetElapsedMilliseconds(phaseTicks) + " playersUpdated=" + playersUpdated + " nextPlayer=" + nextPlayer + " totalPlayers=" + totalPlayers + " stopReason=" + relationshipStopReason + " completed=False day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog());
+						long elapsedMs = GetElapsedMilliseconds(phaseTicks);
+						if (ShouldLogPerformanceSlice(false, elapsedMs))
+						{
+							Debug.Log("[PERF][RelationshipRespectSlice] ms=" + elapsedMs + " playersUpdated=" + playersUpdated + " nextPlayer=" + nextPlayer + " totalPlayers=" + totalPlayers + " stopReason=" + relationshipStopReason + " completed=False day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog());
+						}
 						return false;
 					}
 				}
@@ -4910,7 +5061,7 @@ namespace GameplayTweaks
 
 			EndBusinessUpdateScopeIfNeeded(businessWork);
 			long totalMs = GetElapsedMilliseconds(businessWork.StartedTicks);
-			if (totalMs >= InteractiveTurnFrameLogThresholdMs)
+			if (ShouldLogSystemMaintenanceTotal(totalMs))
 			{
 				Debug.Log("[PERF][BusinessTrackerSlice] phase=total ms=" + totalMs + " phases=" + totalPhases + " businessModulesWallMs=" + businessWork.BusinessModulesWallMs + " businessModulesSliceCpuMs=" + businessWork.BusinessModulesSliceCpuMs + " businessModulesSlices=" + businessWork.BusinessModulesSlices + " relationshipRespectWallMs=" + businessWork.RelationshipRespectWallMs + " relationshipRespectSliceCpuMs=" + businessWork.RelationshipRespectSliceCpuMs + " relationshipRespectSlices=" + businessWork.RelationshipRespectSlices + " day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " totalPlayers=" + GetTotalPlayersForLog());
 			}
@@ -5926,7 +6077,7 @@ namespace GameplayTweaks
 				businessWork.BusinessModulesSlices = updateWork.SliceCount;
 			}
 
-			if (totalMs >= InteractiveTurnFrameLogThresholdMs)
+			if (ShouldLogSystemMaintenanceTotal(totalMs))
 			{
 				Debug.Log("[PERF][BusinessUpdateModulesSlice] phase=total ms=" + totalMs + " sliceCpuMs=" + updateWork.SliceCpuMs + " slices=" + updateWork.SliceCount + " businesses=" + (updateWork.Businesses?.Count ?? 0) + " active=" + updateWork.ActiveModuleUpdates + " deferredCohort=" + updateWork.CohortModuleUpdatesDeferred + " skippedNoop=" + updateWork.NoopModuleUpdatesSkipped + " profile=" + FormatBusinessModuleFamilyProfile(updateWork) + " day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " totalPlayers=" + GetTotalPlayersForLog());
 			}
@@ -6149,7 +6300,7 @@ namespace GameplayTweaks
 				businessWork.RelationshipRespectSlices = updateWork.SliceCount;
 			}
 
-			if (totalMs >= InteractiveTurnFrameLogThresholdMs)
+			if (ShouldLogSystemMaintenanceTotal(totalMs))
 			{
 				Debug.Log("[PERF][RelationshipRespectSlice] phase=total ms=" + totalMs + " sliceCpuMs=" + updateWork.SliceCpuMs + " slices=" + updateWork.SliceCount + " players=" + (updateWork.Players?.Count ?? 0) + " day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " totalPlayers=" + GetTotalPlayersForLog());
 			}
@@ -6242,7 +6393,7 @@ namespace GameplayTweaks
 		private static void LogBusinessTrackerPhase(string phase, long startTicks)
 		{
 			long elapsedMs = GetElapsedMilliseconds(startTicks);
-			if (elapsedMs >= TurnHandlerDetailThresholdMs)
+			if (elapsedMs >= GetTurnHandlerDetailLogThresholdMs())
 			{
 				Debug.Log("[PERF][BusinessTrackerPhase] phase=" + phase + " ms=" + elapsedMs + " day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " totalPlayers=" + GetTotalPlayersForLog());
 			}
@@ -6269,7 +6420,7 @@ namespace GameplayTweaks
 			try
 			{
 				long elapsedMs = GetElapsedMilliseconds(startTicks);
-				if (elapsedMs < TurnHandlerDetailThresholdMs)
+				if (elapsedMs < GetTurnHandlerDetailLogThresholdMs())
 				{
 					return;
 				}
@@ -7410,7 +7561,7 @@ namespace GameplayTweaks
 				};
 
 				long elapsedMs = GetElapsedMilliseconds(__state.StartTicks);
-				if (elapsedMs >= PlayerAIStartDetailThresholdMs)
+				if (elapsedMs >= GetCacheMissLogThresholdMs())
 				{
 					Debug.Log("[PERF][SkillChoiceCache] miss ms=" + elapsedMs + " count=" + __result.Count + " cacheSize=" + DistinctSkillChoiceCache.Count + " optimized=" + __state.OptimizedScan + " taggedSkipped=" + __state.TaggedSkillsSkipped + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
 				}
@@ -7682,11 +7833,12 @@ namespace GameplayTweaks
 					bool forcedClosed = restrictions.IsForcedClosed;
 					string lockedKey = forcedClosed ? BuildCanBuySellLockedKey(visit, restrictions) : null;
 					int turn = forcedClosed ? GetTurnForLog() : 0;
+					int day = forcedClosed ? GetDayForLog() : 0;
 					if (forcedClosed && ShouldRunLockedCanBuySellOncePerTurn(CanBuySellLockedInvalidationTurnByKey, lockedKey, turn))
 					{
 						InvalidateCanBuySellAvailabilityCache(visit.building, visit.pid, "trade-locked-prefix");
 					}
-					if ((forcedClosed && ShouldRunLockedCanBuySellOncePerTurn(CanBuySellLockedBlockLogTurnByKey, lockedKey, turn))
+					if ((forcedClosed && ShouldRunLockedCanBuySellEveryDays(CanBuySellLockedBlockLogDayByKey, lockedKey, day, CanBuySellForcedClosedLogIntervalDays))
 						|| _canBuySellAvailabilityLockedBlocks == 1
 						|| _canBuySellAvailabilityLockedBlocks % CanBuySellLockedLogEvery == 0)
 					{
@@ -7711,7 +7863,8 @@ namespace GameplayTweaks
 				{
 					__result = EvaluateCanBuySell(__instance.playercan, cached.CanBuy, cached.CanSell);
 					_canBuySellAvailabilityCacheHits++;
-					if (_canBuySellAvailabilityCacheHits == 1 || _canBuySellAvailabilityCacheHits % 128 == 0)
+					if (ShouldLogPerformanceSample()
+						&& (_canBuySellAvailabilityCacheHits == 1 || _canBuySellAvailabilityCacheHits % 128 == 0))
 					{
 						Debug.Log("[PERF][CanBuySellCache] hit playercan=" + __instance.playercan + " result=" + __result + " ageFrames=" + (frame - cached.Frame) + " hits=" + _canBuySellAvailabilityCacheHits + " cacheSize=" + CanBuySellAvailabilityCache.Count + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
 					}
@@ -7730,7 +7883,7 @@ namespace GameplayTweaks
 
 				__result = EvaluateCanBuySell(__instance.playercan, canBuy, canSell);
 				long elapsedMs = GetElapsedMilliseconds(startTicks);
-				if (elapsedMs >= PlayerAIStartDetailThresholdMs)
+				if (elapsedMs >= GetCacheMissLogThresholdMs())
 				{
 					_canBuySellAvailabilityCacheMisses++;
 					Debug.Log("[PERF][CanBuySellCache] miss ms=" + elapsedMs + " playercan=" + __instance.playercan + " result=" + __result + " canBuy=" + canBuy + " canSell=" + canSell + " misses=" + _canBuySellAvailabilityCacheMisses + " cacheSize=" + CanBuySellAvailabilityCache.Count + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
@@ -7765,6 +7918,34 @@ namespace GameplayTweaks
 			catch
 			{
 				return null;
+			}
+		}
+
+		private static bool ShouldRunLockedCanBuySellEveryDays(Dictionary<string, int> tracker, string key, int day, int intervalDays)
+		{
+			try
+			{
+				if (tracker == null || string.IsNullOrEmpty(key))
+				{
+					return true;
+				}
+
+				if (tracker.TryGetValue(key, out int lastDay) && day - lastDay < intervalDays)
+				{
+					return false;
+				}
+
+				if (tracker.Count > CanBuySellLockedKeyLimit)
+				{
+					tracker.Clear();
+				}
+
+				tracker[key] = day;
+				return true;
+			}
+			catch
+			{
+				return true;
 			}
 		}
 
@@ -8006,7 +8187,8 @@ namespace GameplayTweaks
 				__result = cached.Result;
 				__state.CacheHit = true;
 				_moduleInTerritoryCacheHits++;
-				if (_moduleInTerritoryCacheHits == 1 || _moduleInTerritoryCacheHits % 4096 == 0)
+				if (ShouldLogPerformanceSample()
+					&& (_moduleInTerritoryCacheHits == 1 || _moduleInTerritoryCacheHits % 4096 == 0))
 				{
 					Debug.Log("[PERF][ModuleTerritoryCache] hit module=" + moduleId + " result=" + cached.Result + " ageFrames=" + (Time.frameCount - cached.Frame) + " hits=" + _moduleInTerritoryCacheHits + " cacheSize=" + ModuleInTerritoryCache.Count + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
 				}
@@ -8048,7 +8230,8 @@ namespace GameplayTweaks
 
 					TerritoryModulePresenceCache[key] = cached;
 					_territoryModulePresenceBuilds++;
-					if (_territoryModulePresenceBuilds == 1 || _territoryModulePresenceBuilds % 16 == 0)
+					if (ShouldLogPerformanceSample()
+						&& (_territoryModulePresenceBuilds == 1 || _territoryModulePresenceBuilds % 16 == 0))
 					{
 						Debug.Log("[PERF][TerritoryModulePresence] built=" + _territoryModulePresenceBuilds + " scope=" + check.scope + " modules=" + cached.Modules.Count + " controlled=" + controlledCount + " ownedNodes=" + ownedNodeCount + " frame=" + frame + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
 					}
@@ -8056,7 +8239,8 @@ namespace GameplayTweaks
 				else
 				{
 					_territoryModulePresenceHits++;
-					if (_territoryModulePresenceHits == 1 || _territoryModulePresenceHits % 1024 == 0)
+					if (ShouldLogPerformanceSample()
+						&& (_territoryModulePresenceHits == 1 || _territoryModulePresenceHits % 1024 == 0))
 					{
 						Debug.Log("[PERF][TerritoryModulePresence] hit=" + _territoryModulePresenceHits + " scope=" + check.scope + " modules=" + cached.Modules.Count + " ageFrames=" + (frame - cached.Frame) + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
 					}
@@ -8199,7 +8383,7 @@ namespace GameplayTweaks
 				};
 
 				long elapsedMs = GetElapsedMilliseconds(__state.StartTicks);
-				if (elapsedMs >= PlayerAIStartDetailThresholdMs)
+				if (elapsedMs >= GetCacheMissLogThresholdMs())
 				{
 					Debug.Log("[PERF][ModuleTerritoryCache] miss ms=" + elapsedMs + " module=" + moduleId + " result=" + __result + " cacheSize=" + ModuleInTerritoryCache.Count + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
 				}
@@ -8387,7 +8571,8 @@ namespace GameplayTweaks
 			{
 				_flushingDeferredSocialInferences = false;
 				long elapsedMs = GetElapsedMilliseconds(startTicks);
-				if (elapsedMs >= PlayerAIStartDetailThresholdMs || PendingSocialInferences.Count > 0)
+				if (elapsedMs >= GetCacheMissLogThresholdMs()
+					|| (PendingSocialInferences.Count > 0 && IsPerformanceDiagnosticsEnabled()))
 				{
 					Debug.Log("[PERF][SocialInferenceDeferred] flushed ms=" + elapsedMs + " waitFrames=" + (Time.frameCount - next.QueuedFrame) + " outcome=" + outcome + " remaining=" + PendingSocialInferences.Count + " source=" + source + " socialAction=" + next.SocialAction + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
 				}
@@ -8528,7 +8713,8 @@ namespace GameplayTweaks
 				}
 
 				_skippedNonHumanSocialQuestFlushes++;
-				if (_skippedNonHumanSocialQuestFlushes == 1 || _skippedNonHumanSocialQuestFlushes % 25 == 0)
+				if (IsPerformanceDiagnosticsEnabled()
+					&& (_skippedNonHumanSocialQuestFlushes == 1 || _skippedNonHumanSocialQuestFlushes % 25 == 0))
 				{
 					Debug.Log("[PERF][SocialQuestFlushSkip] skipped=" + _skippedNonHumanSocialQuestFlushes + " reason=non-human-social-action actorPid=" + actorPid + " targetPid=" + targetPid + " day=" + GetDayForLog() + " year=" + GetYearForLog() + " turn=" + GetTurnForLog() + " totalPlayers=" + GetTotalPlayersForLog());
 				}
@@ -8682,7 +8868,8 @@ namespace GameplayTweaks
 
 				__result = existing;
 				_pickRefreshLimiterSkipped++;
-				if (_pickRefreshLimiterSkipped == 1 || _pickRefreshLimiterSkipped % 256 == 0)
+				if (IsPerformanceDiagnosticsEnabled()
+					&& (_pickRefreshLimiterSkipped == 1 || _pickRefreshLimiterSkipped % 256 == 0))
 				{
 					Debug.Log("[PERF][PickRefreshLimiter] skipped=" + _pickRefreshLimiterSkipped + " type=" + __instance.type + " eid=" + t.eid.id + " frame=" + frame + " perFrameLimit=" + ExistingPickRefreshesPerFrame + " deferred=" + PendingExistingPickRefreshes.Count + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
 				}
@@ -8783,7 +8970,9 @@ namespace GameplayTweaks
 			}
 
 			long elapsedMs = GetElapsedMilliseconds(startTicks);
-			if (elapsedMs >= TakeoverDetailThresholdMs || PendingExistingPickRefreshes.Count == 0)
+			if (elapsedMs >= GetHudInputLogThresholdMs()
+				|| invalid > 0
+				|| (PendingExistingPickRefreshes.Count == 0 && IsPerformanceDiagnosticsEnabled()))
 			{
 				Debug.Log("[PERF][PickRefreshLimiter] deferred-flush flushed=" + flushed + " invalid=" + invalid + " remaining=" + PendingExistingPickRefreshes.Count + " source=" + source + " ms=" + elapsedMs + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
 			}
@@ -8798,7 +8987,10 @@ namespace GameplayTweaks
 				{
 					_pickRefreshLimiterBypassUntilFrame = untilFrame;
 					_pickRefreshLimiterBypassReason = reason ?? string.Empty;
-					Debug.Log("[PERF][PickRefreshLimiter] bypass untilFrame=" + _pickRefreshLimiterBypassUntilFrame + " reason=" + _pickRefreshLimiterBypassReason + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
+					if (IsPerformanceDiagnosticsEnabled())
+					{
+						Debug.Log("[PERF][PickRefreshLimiter] bypass untilFrame=" + _pickRefreshLimiterBypassUntilFrame + " reason=" + _pickRefreshLimiterBypassReason + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
+					}
 				}
 			}
 			catch
@@ -9213,7 +9405,8 @@ namespace GameplayTweaks
 				}
 
 				long elapsedMs = GetElapsedMilliseconds(__state);
-				if (elapsedMs < TakeoverDetailThresholdMs && ev.type != SessionEventType.PlayerBuildingTakeoverImmediate)
+				long thresholdMs = GetHudInputLogThresholdMs();
+				if (elapsedMs < thresholdMs)
 				{
 					return;
 				}
@@ -9250,6 +9443,7 @@ namespace GameplayTweaks
 						? Math.Max(CityGenSlowStageThresholdMs, configuredThresholdMs)
 						: configuredThresholdMs;
 				}
+				thresholdMs = GetEffectiveStageLogThresholdMs(thresholdMs, isCityGen);
 
 				if (elapsedMs < thresholdMs)
 				{
@@ -9770,7 +9964,17 @@ namespace GameplayTweaks
 
 		private static void LogRelationshipAverageCacheSummary()
 		{
-			if (_relationshipAverageCacheHits <= 0)
+			bool performanceDiagnosticsEnabled;
+			try
+			{
+				performanceDiagnosticsEnabled = GameplayTweaksPlugin.EnablePerformanceDiagnostics?.Value ?? false;
+			}
+			catch
+			{
+				performanceDiagnosticsEnabled = false;
+			}
+
+			if (_relationshipAverageCacheHits <= 0 || !performanceDiagnosticsEnabled)
 			{
 				return;
 			}

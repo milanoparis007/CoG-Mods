@@ -1,13 +1,23 @@
 # Current After Prohibition Mod Changelog
 
-## 2026-06-05 Dev Snapshot - Robbery Project Logging Cleanup Required
+## 2026-06-05 Public Robbery And Log Cleanup Release
 
-This GitHub snapshot is a development build, not the cleaned public release. It intentionally keeps heavy verification logging active for the robbery/front-pressure project so the next live test pass can prove prompt timing, deferred robbery resolution, important-business closure, quick retaliation, and AI pressure routing.
+This is the cleaned public release pass for the robbery/front-pressure project. The temporary development logging has been gated behind diagnostics toggles while compact first-report breadcrumbs remain available in normal logs.
 
-- Staged GameplayTweaks Phase 8ET, which collapses deferred AI-human robbery responses to one pending response per robber outfit against the player.
-- Kept same-turn replacement diagnostics for `pair-already-queued` and `pair-queued-replaced` so duplicate prompt cleanup can be confirmed from live logs.
-- Important-business pressure and front-pressure route diagnostics are still intentionally verbose.
-- Public-release cleanup still needs to remove or gate the remaining verification spam, refresh public-facing package notes, and publish a cleaned public build after the next validation pass.
+- Added AI-human robbery/extortion pressure for exposed, weak, or locally pressured human crews.
+- Robbery prompts now resolve at the start of the next human turn, with same-outfit same-turn contacts collapsed to one pending response.
+- Added the boss crew relations robbery response toggle: `Robbery: Prompt` shows the manual prompt, while `Robbery: Auto Evade` suppresses the prompt and lets crews use the standing order.
+- Refusal and evasion outcomes can now lead to payment, important-business pressure, or rare coordinated attack warnings depending on outfit personality, strength, territory pressure, and local aggression.
+- Robbery pair cooldowns now use a six-month window so the same robber outfit cannot immediately spam the same human target after a resolved attempt.
+- Important-business closures now target valid visible shops and forced-closed shops block buy/sell interactions.
+- AI pressure still keeps normal expansion and war logic; robbery is an added pressure route, not the only front/business pressure source.
+- Grouped combat popups now expose clearer controls for `Attack Type`, `On-Foot Crew`, `Range`, and `Targets`, and vehicle targets can include confirmed passengers.
+- Cop-killing cleanup now suppresses no-op residual-aggro logs while keeping real cop-war cleanup evidence.
+- Default logs now suppress routine verification spam, low-ms performance traces, economy batch progress, individual stock-refresh detail, and repeated Dirty Cash correction detail.
+- First bug reports should still include useful compact breadcrumbs for robbery, front/business pressure, combat, route authority, forced shop locks, and true anomalies.
+- Detailed traces are opt-in through `Diagnostics.EnableVerboseVerificationLogs`, `Diagnostics.EnablePerformanceDiagnostics`, area-specific GameplayTweaks diagnostics, and `AfterProhibitionEconomy` runtime diagnostics.
+- Latest live validation with `AfterProhibitionEconomy.dll` timestamp `2026-06-05 12:16:27` showed `0` `purchase-stock-refreshed`, `0` `purchase-stock-refresh-progress`, `0` `empty-business-module-repair-progress`, and `0` `player-legal-business-consumer-runtime` routine lines in default logs.
+- Release package DLL signals: `GameplayTweaks.dll` `2026-06-05 11:16:42` size `2526208`; `AfterProhibitionEconomy.dll` `2026-06-05 12:16:27` size `122880`; `CopKilling.dll` `2026-06-05 11:17:00` size `139776`.
 
 This public build continues from the older Beta/Stable public packages and the Old Beta StreamingAssets baseline. It is a work-in-progress release for people who want to play the expanding After Prohibition systems while they are still being tuned. Expect this to be a journey over the next few months: crew life, pacts, gang wars, route automation, heat, family, and business ownership are all active systems now, and the next passes will keep tightening balance, UI clarity, and edge-case behavior.
 

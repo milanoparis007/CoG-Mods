@@ -1,0 +1,1012 @@
+{ modelimport {
+	loddefs {
+		lod-building    { lod1 100 lod2 200 lod3 400 cull 700 }
+		lod-bldgdecos   { lod1 100 lod2 150 lod3 200 cull 300 }
+		lod-streetdecos { lod1 100 lod2 150 lod3 200 cull 300 }
+		lod-trees       { lod1 100 lod2 150 lod3 300 cull 400 }
+	}
+
+	modelconfigs [
+	;; test buildings
+		{ model "test_fourflat1_core_var1" lod lod-building }
+		{ model "test_fourflat1_core_var2" lod lod-building }
+		{ model "test_fourflat1_front_var1" lod lod-building }
+		{ model "test_fourflat1_front_var2" lod lod-building }
+		{ model "test_fourflat1_back_var1" lod lod-building }
+		{ model "test_fourflat1_back_var2" lod lod-building }
+
+		{ model "largetree_withlod" lod lod-trees }
+
+		;; unknown bulidings
+
+		{ model "Bldg_UndiscoveredL1_Back_A" lod lod-building }
+		{ model "Bldg_UndiscoveredL1_Back_B" lod lod-building }
+		{ model "Bldg_UndiscoveredL1_Front_A" lod lod-building }
+		{ model "Bldg_UndiscoveredL1_Front_B" lod lod-building }
+		{ model "Bldg_UndiscoveredL1_Core_B" lod lod-building }
+		{ model "Bldg_UndiscoveredL1_Core_A" lod lod-building }
+
+		{ model "Bldg_UndiscoveredM1_Back_A" lod lod-building }
+		{ model "Bldg_UndiscoveredM1_Back_B" lod lod-building }
+		{ model "Bldg_UndiscoveredM1_Front_A" lod lod-building }
+		{ model "Bldg_UndiscoveredM1_Front_B" lod lod-building }
+		{ model "Bldg_UndiscoveredM1_Core_A" lod lod-building }
+		{ model "Bldg_UndiscoveredM1_Core_B" lod lod-building }
+
+		{ model "Bldg_UndiscoveredM2_Back_A" lod lod-building }
+		{ model "Bldg_UndiscoveredM2_Back_B" lod lod-building }
+		{ model "Bldg_UndiscoveredM2_Front_A" lod lod-building }
+		{ model "Bldg_UndiscoveredM2_Front_B" lod lod-building }
+		{ model "Bldg_UndiscoveredM2_Core_A" lod lod-building }
+		{ model "Bldg_UndiscoveredM2_Core_B" lod lod-building }
+
+		{ model "Bldg_UndiscoveredS1_Back_A" lod lod-building }
+		{ model "Bldg_UndiscoveredS1_Back_B" lod lod-building }
+		{ model "Bldg_UndiscoveredS1_Front_A" lod lod-building }
+		{ model "Bldg_UndiscoveredS1_Front_B" lod lod-building }
+		{ model "Bldg_UndiscoveredS1_Core_A" lod lod-building }
+		{ model "Bldg_UndiscoveredS1_Core_B" lod lod-building }
+
+		{ model "Bldg_UndiscoveredS2_Back_A" lod lod-building }
+		{ model "Bldg_UndiscoveredS2_Back_B" lod lod-building }
+		{ model "Bldg_UndiscoveredS2_Front_A" lod lod-building }
+		{ model "Bldg_UndiscoveredS2_Front_B" lod lod-building }
+		{ model "Bldg_UndiscoveredS2_Core_A" lod lod-building }
+		{ model "Bldg_UndiscoveredS2_Core_B" lod lod-building }
+
+		{ model "Bldg_UndiscoveredS3_Back_A" lod lod-building }
+		{ model "Bldg_UndiscoveredS3_Back_B" lod lod-building }
+		{ model "Bldg_UndiscoveredS3_Front_A" lod lod-building }
+		{ model "Bldg_UndiscoveredS3_Front_B" lod lod-building }
+		{ model "Bldg_UndiscoveredS3_Core_A" lod lod-building }
+		{ model "Bldg_UndiscoveredS3_Core_B" lod lod-building }
+
+		{ model "Bldg_UndiscoveredS4_Back_A" lod lod-building }
+		{ model "Bldg_UndiscoveredS4_Back_B" lod lod-building }
+		{ model "Bldg_UndiscoveredS4_Front_A" lod lod-building }
+		{ model "Bldg_UndiscoveredS4_Front_B" lod lod-building }
+		{ model "Bldg_UndiscoveredS4_Core_A" lod lod-building }
+		{ model "Bldg_UndiscoveredS4_Core_B" lod lod-building }
+
+		{ model "Bldg_UndiscoveredXL_Core_A" lod lod-building }
+		{ model "Bldg_UndiscoveredXL_Core_B" lod lod-building }
+		{ model "Bldg_UndiscoveredXL_Core_C" lod lod-building }
+		{ model "Bldg_UndiscoveredXL_Front_A" lod lod-building }
+		{ model "Bldg_UndiscoveredXL_Front_B" lod lod-building }
+		{ model "Bldg_UndiscoveredXL_Front_C" lod lod-building }
+		{ model "Bldg_UndiscoveredXL_Back_A" lod lod-building }
+		{ model "Bldg_UndiscoveredXL_Back_B" lod lod-building }
+		{ model "Bldg_UndiscoveredXL_Back_C" lod lod-building }
+
+		;; RESIDENTIAL BUILDINGS
+		;; res low buildings
+
+		{ model "Bldg_Cottage1_Back_A" lod lod-building }
+		{ model "Bldg_Cottage1_Back_B" lod lod-building }
+		{ model "Bldg_Cottage1_Core_A" lod lod-building }
+		{ model "Bldg_Cottage1_Core_B" lod lod-building }
+		{ model "Bldg_Cottage1_Front_A" lod lod-building }
+		{ model "Bldg_Cottage1_Front_B" lod lod-building }
+		{ model "Bldg_Cottage1_Front_C" lod lod-building }
+
+		{ model "Bldg_TenementS1_Back_A" lod lod-building }
+		{ model "Bldg_TenementS1_Back_B" lod lod-building }
+		{ model "Bldg_TenementS1_Core_A" lod lod-building }
+		{ model "Bldg_TenementS1_Core_B" lod lod-building }
+		{ model "Bldg_TenementS1_Front_A" lod lod-building }
+		{ model "Bldg_TenementS1_Front_B" lod lod-building }
+		{ model "Bldg_TenementS1_Front_C" lod lod-building }
+
+		{ model "Bldg_TenementM1_Back_A" lod lod-building }
+		{ model "Bldg_TenementM1_Back_B" lod lod-building }
+		{ model "Bldg_TenementM1_Back_C" lod lod-building }
+		{ model "Bldg_TenementM1_Core_A" lod lod-building }
+		{ model "Bldg_TenementM1_Core_B" lod lod-building }
+		{ model "Bldg_TenementM1_Core_C" lod lod-building }
+		{ model "Bldg_TenementM1_Front_A" lod lod-building }
+		{ model "Bldg_TenementM1_Front_B" lod lod-building }
+		{ model "Bldg_TenementM1_Front_C" lod lod-building }
+		{ model "Bldg_TenementM1_Front_D" lod lod-building }
+
+		{ model "Bldg_TenementL1_Back_A" lod lod-building }
+		{ model "Bldg_TenementL1_Back_B" lod lod-building }
+		{ model "Bldg_TenementL1_Core_A" lod lod-building }
+		{ model "Bldg_TenementL1_Core_B" lod lod-building }
+		{ model "Bldg_TenementL1_Front_A" lod lod-building }
+		{ model "Bldg_TenementL1_Front_B" lod lod-building }
+		{ model "Bldg_TenementL1_Front_C" lod lod-building }
+
+		;; res med buildings
+		{ model "Bldg_Bungalow1_Front_A" lod lod-building }
+		{ model "Bldg_Bungalow1_Front_B" lod lod-building }
+		{ model "Bldg_Bungalow1_Front_C" lod lod-building }
+		{ model "Bldg_Bungalow1_Core_A" lod lod-building }
+		{ model "Bldg_Bungalow1_Core_B" lod lod-building }
+		{ model "Bldg_Bungalow1_Core_C" lod lod-building }
+		{ model "Bldg_Bungalow1_Back_A" lod lod-building }
+		{ model "Bldg_Bungalow1_Back_B" lod lod-building }
+		{ model "Bldg_Bungalow1_Back_C" lod lod-building }
+
+		{ model "Bldg_TwoFlat1_Front_A" lod lod-building }
+		{ model "Bldg_TwoFlat1_Front_B" lod lod-building }
+		{ model "Bldg_TwoFlat1_Front_C" lod lod-building }
+		{ model "Bldg_TwoFlat1_Core_A" lod lod-building }
+		{ model "Bldg_TwoFlat1_Core_B" lod lod-building }
+		{ model "Bldg_TwoFlat1_Core_C" lod lod-building }
+		{ model "Bldg_TwoFlat1_Back_A" lod lod-building }
+		{ model "Bldg_TwoFlat1_Back_B" lod lod-building }
+		{ model "Bldg_TwoFlat1_Back_C" lod lod-building }
+
+		{ model "Bldg_ThreeFlat1_Front_A" lod lod-building }
+		{ model "Bldg_ThreeFlat1_Front_B" lod lod-building }
+		{ model "Bldg_ThreeFlat1_Front_C" lod lod-building }
+		{ model "Bldg_ThreeFlat1_Core_A" lod lod-building }
+		{ model "Bldg_ThreeFlat1_Core_B" lod lod-building }
+		{ model "Bldg_ThreeFlat1_Core_C" lod lod-building }
+		{ model "Bldg_ThreeFlat1_Back_A" lod lod-building }
+		{ model "Bldg_ThreeFlat1_Back_B" lod lod-building }
+		{ model "Bldg_ThreeFlat1_Back_C" lod lod-building }
+
+		{ model "Bldg_SixFlat1_Front_A" lod lod-building }
+		{ model "Bldg_SixFlat1_Front_B" lod lod-building }
+		{ model "Bldg_SixFlat1_Front_C" lod lod-building }
+		{ model "Bldg_SixFlat1_Front_D" lod lod-building }
+		{ model "Bldg_SixFlat1_Front_E" lod lod-building }
+		{ model "Bldg_SixFlat1_Core_A" lod lod-building }
+		{ model "Bldg_SixFlat1_Core_B" lod lod-building }
+		{ model "Bldg_SixFlat1_Core_C" lod lod-building }
+		{ model "Bldg_SixFlat1_Back_A" lod lod-building }
+		{ model "Bldg_SixFlat1_Back_B" lod lod-building }
+		{ model "Bldg_SixFlat1_Back_C" lod lod-building }
+
+		{ model "Bldg_AptComplex1_Front_A" lod lod-building }
+		{ model "Bldg_AptComplex1_Front_B" lod lod-building }
+		{ model "Bldg_AptComplex1_Front_C" lod lod-building }
+		{ model "Bldg_AptComplex1_Core_A" lod lod-building }
+		{ model "Bldg_AptComplex1_Core_B" lod lod-building }
+		{ model "Bldg_AptComplex1_Core_C" lod lod-building }
+		{ model "Bldg_AptComplex1_Back_A" lod lod-building }
+		{ model "Bldg_AptComplex1_Back_B" lod lod-building }
+		{ model "Bldg_AptComplex1_Back_C" lod lod-building }
+
+		;; res high buildings
+		{ model "Bldg_FourFlat1_Front_A" lod lod-building }
+		{ model "Bldg_FourFlat1_Front_B" lod lod-building }
+		{ model "Bldg_FourFlat1_Front_C" lod lod-building }
+		{ model "Bldg_FourFlat1_Core_A" lod lod-building }
+		{ model "Bldg_FourFlat1_Core_B" lod lod-building }
+		{ model "Bldg_FourFlat1_Core_C" lod lod-building }
+		{ model "Bldg_FourFlat1_Back_A" lod lod-building }
+		{ model "Bldg_FourFlat1_Back_B" lod lod-building }
+		{ model "Bldg_FourFlat1_Back_C" lod lod-building }
+
+		{ model "Bldg_Graystone1_Front_A" lod lod-building }
+		{ model "Bldg_Graystone1_Front_B" lod lod-building }
+		{ model "Bldg_Graystone1_Front_C" lod lod-building }
+		{ model "Bldg_Graystone1_Core_A" lod lod-building }
+		{ model "Bldg_Graystone1_Core_B" lod lod-building }
+		{ model "Bldg_Graystone1_Core_C" lod lod-building }
+		{ model "Bldg_Graystone1_Back_A" lod lod-building }
+		{ model "Bldg_Graystone1_Back_B" lod lod-building }
+		{ model "Bldg_Graystone1_Back_C" lod lod-building }
+
+		{ model "Bldg_DoubleFour1_Front_A" lod lod-building }
+		{ model "Bldg_DoubleFour1_Front_B" lod lod-building }
+		{ model "Bldg_DoubleFour1_Front_C" lod lod-building }
+		{ model "Bldg_DoubleFour1_Front_D" lod lod-building }
+		{ model "Bldg_DoubleFour1_Core_A" lod lod-building }
+		{ model "Bldg_DoubleFour1_Core_B" lod lod-building }
+		{ model "Bldg_DoubleFour1_Core_C" lod lod-building }
+		{ model "Bldg_DoubleFour1_Back_A" lod lod-building }
+		{ model "Bldg_DoubleFour1_Back_B" lod lod-building }
+		{ model "Bldg_DoubleFour1_Back_C" lod lod-building }
+
+		{ model "Bldg_Courtyard1_Front_A" lod lod-building }
+		{ model "Bldg_Courtyard1_Front_B" lod lod-building }
+		{ model "Bldg_Courtyard1_Core_A" lod lod-building }
+		{ model "Bldg_Courtyard1_Core_B" lod lod-building }
+		{ model "Bldg_Courtyard1_Back_A" lod lod-building }
+		{ model "Bldg_Courtyard1_Back_B" lod lod-building }
+
+
+		;; residential props
+		;; low
+		{ model "Bldg_Cottage1_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_Cottage1_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_Cottage1_Props_C" lod lod-bldgdecos }
+
+		{ model "Bldg_TenementS1_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_TenementS1_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_TenementS1_Props_C" lod lod-bldgdecos }
+
+		{ model "Bldg_TenementM1_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_TenementM1_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_TenementM1_Props_C" lod lod-bldgdecos }
+		{ model "Bldg_TenementM1_Props_D" lod lod-bldgdecos }
+
+		{ model "Bldg_TenementL1_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_TenementL1_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_TenementL1_Props_C" lod lod-bldgdecos }
+
+		;; med
+		{ model "Bldg_Bungalow1_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_Bungalow1_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_Bungalow1_Props_C" lod lod-bldgdecos }
+
+		{ model "Bldg_TwoFlat1_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_TwoFlat1_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_TwoFlat1_Props_C" lod lod-bldgdecos }
+
+		{ model "Bldg_ThreeFlat1_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_ThreeFlat1_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_ThreeFlat1_Props_C" lod lod-bldgdecos }
+
+		{ model "Bldg_SixFlat1_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_SixFlat1_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_SixFlat1_Props_C" lod lod-bldgdecos }
+		{ model "Bldg_SixFlat1_Props_D" lod lod-bldgdecos }
+		{ model "Bldg_SixFlat1_Props_E" lod lod-bldgdecos }
+
+		{ model "Bldg_AptComplex1_Prop_A" lod lod-bldgdecos }
+		{ model "Bldg_AptComplex1_Prop_B" lod lod-bldgdecos }
+		{ model "Bldg_AptComplex1_Prop_C" lod lod-bldgdecos }
+
+		;; hi
+		{ model "Bldg_FourFlat1_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_FourFlat1_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_FourFlat1_Props_C" lod lod-bldgdecos }
+
+		{ model "Bldg_Graystone1_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_Graystone1_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_Graystone1_Props_C" lod lod-bldgdecos }
+
+		{ model "Bldg_DoubleFour1_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_DoubleFour1_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_DoubleFour1_Props_C" lod lod-bldgdecos }
+		{ model "Bldg_DoubleFour1_Props_D" lod lod-bldgdecos }
+
+		{ model "Bldg_Courtyard1_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_Courtyard1_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_Courtyard1_Props_C" lod lod-bldgdecos }
+
+
+		;; COMMERCIAL BUILDINGS		
+		;; non-continious commercial buildings
+		;; small
+		{ model "Bldg_BusinessfrontS1_Back_A" lod lod-building }
+		{ model "Bldg_BusinessfrontS1_Back_B" lod lod-building }
+		{ model "Bldg_BusinessfrontS2_Back_A" lod lod-building }
+		{ model "Bldg_BusinessfrontS2_Back_B" lod lod-building }
+
+		{ model "Bldg_BusinessfrontS1_Core_A" lod lod-building }
+		{ model "Bldg_BusinessfrontS1_Core_B" lod lod-building }
+		{ model "Bldg_BusinessfrontS2_Core_A" lod lod-building }
+		{ model "Bldg_BusinessfrontS2_Core_B" lod lod-building }
+
+		{ model "Bldg_BusinessfrontS1_Front_A" lod lod-building }
+		{ model "Bldg_BusinessfrontS1_Front_B" lod lod-building }
+		{ model "Bldg_BusinessfrontS1_Front_C" lod lod-building }
+		{ model "Bldg_BusinessfrontS2_Front_A" lod lod-building }
+		{ model "Bldg_BusinessfrontS2_Front_B" lod lod-building }
+		{ model "Bldg_BusinessfrontS2_Front_C" lod lod-building }
+
+		;; medium
+		;; car dealers
+		{ model "Bldg_DealershipS_Core_A" lod lod-building }
+		{ model "Bldg_DealershipS_Core_B" lod lod-building }
+		{ model "Bldg_DealershipS_Core_C" lod lod-building }
+		{ model "Bldg_DealershipS_Front_A" lod lod-building }
+		{ model "Bldg_DealershipS_Front_B" lod lod-building }
+		{ model "Bldg_DealershipS_Front_C" lod lod-building }
+		{ model "Bldg_DealershipS_Back_A" lod lod-building }
+		{ model "Bldg_DealershipS_Back_B" lod lod-building }
+		{ model "Bldg_DealershipS_Back_C" lod lod-building }
+
+		;; gas stations
+		{ model "Bldg_GasStation_Front_A" lod lod-building }
+		{ model "Bldg_GasStation_Front_B" lod lod-building }
+		{ model "Bldg_GasStation_Front_C" lod lod-building }
+		{ model "Bldg_GasStation_Back_A" lod lod-building }
+		{ model "Bldg_GasStation_Back_B" lod lod-building }
+		{ model "Bldg_GasStation_Back_C" lod lod-building }
+
+		;; medium one-story commercial
+		{ model "Bldg_BusinessfrontM1_Core_A" lod lod-building }
+		{ model "Bldg_BusinessfrontM1_Core_B" lod lod-building }
+		{ model "Bldg_BusinessfrontM1_Core_C" lod lod-building }
+		{ model "Bldg_BusinessfrontM1_Front_A" lod lod-building }
+		{ model "Bldg_BusinessfrontM1_Front_B" lod lod-building }
+		{ model "Bldg_BusinessfrontM1_Front_C" lod lod-building }
+		{ model "Bldg_BusinessfrontM1_Back_A" lod lod-building }
+		{ model "Bldg_BusinessfrontM1_Back_B" lod lod-building }
+		{ model "Bldg_BusinessfrontM1_Back_C" lod lod-building }
+
+		;; medium two-story commercial
+		{ model "Bldg_BusinessfrontM2_Core_A" lod lod-building }
+		{ model "Bldg_BusinessfrontM2_Core_B" lod lod-building }
+		{ model "Bldg_BusinessfrontM2_Core_C" lod lod-building }
+		;; regular business fronts
+		{ model "Bldg_BusinessfrontM2_Front_A" lod lod-building }
+		{ model "Bldg_BusinessfrontM2_Front_B" lod lod-building }
+		{ model "Bldg_BusinessfrontM2_Front_C" lod lod-building }
+		;; theater fronts
+		{ model "Bldg_BusinessfrontM2Theater_Front_A" lod lod-building }
+		{ model "Bldg_BusinessfrontM2Theater_Front_B" lod lod-building }
+		;; all 2 story backs
+		{ model "Bldg_BusinessfrontM2_Back_A" lod lod-building }
+		{ model "Bldg_BusinessfrontM2_Back_B" lod lod-building }
+		{ model "Bldg_BusinessfrontM2_Back_C" lod lod-building }
+
+		;; large 
+		;; commercial buildings/hotels/theaters
+		{ model "Bldg_BusinessfrontL_Core_A" lod lod-building }
+		{ model "Bldg_BusinessfrontL_Core_B" lod lod-building }
+		{ model "Bldg_BusinessfrontL_Core_C" lod lod-building }
+		{ model "Bldg_BusinessfrontL_Back_A" lod lod-building }
+		{ model "Bldg_BusinessfrontL_Back_B" lod lod-building }
+		{ model "Bldg_BusinessfrontL_Back_C" lod lod-building }
+		;; hotel fronts
+		{ model "Bldg_BusinessfrontLHotel_Front_A" lod lod-building }
+		{ model "Bldg_BusinessfrontLHotel_Front_B" lod lod-building }
+		;; theater fronts
+		{ model "Bldg_BusinessfrontLTheaterLux_Front_A" lod lod-building }
+		{ model "Bldg_BusinessfrontLTheaterLux_Front_B" lod lod-building }
+
+		;; dealerships
+		{ model "Bldg_DealershipL_Core_A" lod lod-building }
+		{ model "Bldg_DealershipL_Core_B" lod lod-building }
+		{ model "Bldg_DealershipL_Front_A" lod lod-building }
+		{ model "Bldg_DealershipL_Front_B" lod lod-building }
+		{ model "Bldg_DealershipL_Back_A" lod lod-building }
+		{ model "Bldg_DealershipL_Back_B" lod lod-building }
+
+		;; continious commercial buildings
+		;; small
+		{ model "Bldg_BusinessfrontCont1_Core_A" lod lod-building }
+		{ model "Bldg_BusinessfrontCont1_Core_B" lod lod-building }
+		{ model "Bldg_BusinessfrontCont1_Front_A" lod lod-building }
+		{ model "Bldg_BusinessfrontCont1_Front_B" lod lod-building }
+		{ model "Bldg_BusinessfrontCont1_Front_C" lod lod-building }
+		{ model "Bldg_BusinessfrontCont1_Back_A" lod lod-building }
+		{ model "Bldg_BusinessfrontCont1_Back_B" lod lod-building }
+
+		;; medium
+		{ model "Bldg_BusinessfrontCont2_Core_A" lod lod-building }
+		{ model "Bldg_BusinessfrontCont2_Core_B" lod lod-building }
+		{ model "Bldg_BusinessfrontCont2_Front_A" lod lod-building }
+		{ model "Bldg_BusinessfrontCont2_Front_B" lod lod-building }
+		{ model "Bldg_BusinessfrontCont2_Front_C" lod lod-building }
+		{ model "Bldg_BusinessfrontCont2_Back_A" lod lod-building } 
+		{ model "Bldg_BusinessfrontCont2_Back_B" lod lod-building }
+
+		;; DOWNTOWN
+		;; regular
+		{ model "Bldg_DowntownComm_Core_A" lod lod-building }
+		{ model "Bldg_DowntownComm_Core_B" lod lod-building }
+		{ model "Bldg_DowntownComm_Core_C" lod lod-building }
+		{ model "Bldg_DowntownComm_Front_A" lod lod-building }
+		{ model "Bldg_DowntownComm_Front_B" lod lod-building }
+		{ model "Bldg_DowntownComm_Front_C" lod lod-building }
+		{ model "Bldg_DowntownComm_Back_A" lod lod-building }
+		{ model "Bldg_DowntownComm_Back_B" lod lod-building }
+		{ model "Bldg_DowntownComm_Back_C" lod lod-building }
+		;; large
+		{ model "Bldg_DowntownCommLarge_Core_A" lod lod-building }
+		{ model "Bldg_DowntownCommLarge_Core_B" lod lod-building }
+		{ model "Bldg_DowntownCommLarge_Front_A" lod lod-building }
+		{ model "Bldg_DowntownCommLarge_Front_B" lod lod-building }
+		;; props
+		{ model "Bldg_DowntownComm_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_DowntownComm_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_DowntownComm_Props_C" lod lod-bldgdecos }
+		{ model "Bldg_DowntownCommLarge_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_DowntownCommLarge_Props_B" lod lod-bldgdecos }
+
+		;; PITTSBURGH VARIANTS
+		{ model "Bldg_PittsDuplex_Front_A" lod lod-building }
+		{ model "Bldg_PittsDuplex_Front_B" lod lod-building }
+		{ model "Bldg_PittsDuplex_Front_C" lod lod-building }
+		{ model "Bldg_PittsSidedHouse_Front_A" lod lod-building }
+		{ model "Bldg_PittsSidedHouse_Front_B" lod lod-building }
+		{ model "Bldg_PittsSidedHouse_Front_C" lod lod-building }
+		{ model "Bldg_PittsSidedHouse_Back_A" lod lod-building }
+		{ model "Bldg_PittsSidedHouse_Back_B" lod lod-building }
+		{ model "Bldg_PittsSidedHouse_Core_A" lod lod-building }
+		{ model "Bldg_PittsSidedHouse_Core_B" lod lod-building }
+		{ model "Bldg_PittsSidedHouse_Core_C" lod lod-building }
+		{ model "Bldg_PittsLargeHouse_Front_A" lod lod-building }
+		{ model "Bldg_PittsLargeHouse_Front_B" lod lod-building }
+		{ model "Bldg_PittsLargeHouse_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_PittsLargeHouse_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_PittsLargeHouse_Props_C" lod lod-bldgdecos }
+
+		;; CINCINNATI VARIANTS
+		{ model "Bldg_CinnBungalow_Front_A" lod lod-building }
+		{ model "Bldg_CinnBungalow_Front_B" lod lod-building }
+		{ model "Bldg_CinnBungalow_Front_C" lod lod-building }
+		{ model "Bldg_CinnItalianate_Front_A" lod lod-building }
+		{ model "Bldg_CinnItalianate_Front_B" lod lod-building }
+		{ model "Bldg_CinnItalianate_Front_C" lod lod-building }
+		{ model "Bldg_CinnItalianate3story_Front_A" lod lod-building }
+		{ model "Bldg_CinnItalianate3story_Front_B" lod lod-building }
+		{ model "Bldg_CinnItalianate3story_Front_A" lod lod-building }
+		{ model "Bldg_CinnItalianateFancy_Front_A" lod lod-building }
+		{ model "Bldg_CinnItalianateFancy_Front_B" lod lod-building }
+		{ model "Bldg_CinnItalianateFancy_Front_C" lod lod-building }
+
+		;; DETROIT VARIANTS	
+		{ model "Bldg_DetroitBungalow_Front_A" lod lod-building }
+		{ model "Bldg_DetroitBungalow_Front_B" lod lod-building }
+		{ model "Bldg_DetroitBungalow_Front_C" lod lod-building }
+
+		{ model "Bldg_DetroitHouse_Front_A" lod lod-building }
+		{ model "Bldg_DetroitHouse_Front_B" lod lod-building }
+		{ model "Bldg_DetroitHouse_Front_C" lod lod-building }
+
+		{ model "Bldg_DetroitTudor_Core_A" lod lod-building }
+		{ model "Bldg_DetroitTudor_Core_B" lod lod-building }
+		{ model "Bldg_DetroitTudor_Front_A" lod lod-building }
+		{ model "Bldg_DetroitTudor_Front_B" lod lod-building }
+		{ model "Bldg_DetroitTudor_Front_C" lod lod-building }
+
+
+		;; COMMERCIAL PROPS
+		;; restaurants, small
+
+		{ model "Bldg_BusinessfrontSRstr_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_BusinessfrontSRstr_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_BusinessfrontSRstr_Props_C" lod lod-bldgdecos }
+
+		;; storefronts, small
+
+		{ model "Bldg_BusinessfrontSStore_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_BusinessfrontSStore_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_BusinessfrontSStore_Props_C" lod lod-bldgdecos }
+		{ model "Bldg_BusinessfrontSStore_Props_D" lod lod-bldgdecos }
+		{ model "Bldg_BusinessfrontSStore_Props_E" lod lod-bldgdecos }
+
+		;; small dealerships
+		{ model "Bldg_DealershipS_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_DealershipS_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_DealershipS_Props_C" lod lod-bldgdecos }
+
+		;; medium commercial storefronts
+		{ model "Bldg_BusinessfrontMStore_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_BusinessfrontMStore_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_BusinessfrontMStore_Props_C" lod lod-bldgdecos }
+		{ model "Bldg_BusinessfrontMStore_Props_D" lod lod-bldgdecos }
+
+		;; medium restaurant props
+		{ model "Bldg_BusinessfrontMRstr_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_BusinessfrontMRstr_Props_B" lod lod-bldgdecos }
+
+		;; medium entertainment props
+		{ model "Bldg_BusinessfrontMEntertain_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_BusinessfrontMEntertain_Props_B" lod lod-bldgdecos }
+
+		;; large entertainment props
+		{ model "Bldg_BusinessfrontL_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_BusinessfrontL_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_BusinessfrontL_Props_C" lod lod-bldgdecos }
+
+		;; large dealterhip props
+		{ model "Bldg_DealershipL_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_DealershipL_Props_B" lod lod-bldgdecos }
+
+
+		;; empty tri
+		{ model "a_single_tri" lod lod-building }
+		
+
+
+		;; INDUSTRIAL BUILDINGS
+
+
+		;; small industrial buidlings
+		{ model "Bldg_IndstS1_Core_A" lod lod-building }
+		{ model "Bldg_IndstS1_Core_B" lod lod-building }
+		{ model "Bldg_IndstS1_Core_C" lod lod-building }
+		{ model "Bldg_IndstS1_Core_D" lod lod-building }
+
+		{ model "Bldg_IndstS1_Back_A" lod lod-building }
+		{ model "Bldg_IndstS1_Back_B" lod lod-building }
+		{ model "Bldg_IndstS1_Back_C" lod lod-building }
+		{ model "Bldg_IndstS1_Back_D" lod lod-building }
+
+		{ model "Bldg_IndstGarageS1_Front_A" lod lod-building }
+		{ model "Bldg_IndstGarageS1_Front_B" lod lod-building }
+		{ model "Bldg_IndstGarageS1_Front_C" lod lod-building }
+		{ model "Bldg_IndstGarageS1_Front_D" lod lod-building }
+		{ model "Bldg_IndstGarageS1_Front_E" lod lod-building }
+
+		{ model "Bldg_IndstShopS1_Front_A" lod lod-building }
+		{ model "Bldg_IndstShopS1_Front_B" lod lod-building }
+		{ model "Bldg_IndstShopS1_Front_C" lod lod-building }
+		{ model "Bldg_IndstShopS1_Front_D" lod lod-building }
+		{ model "Bldg_IndstShopS1_Front_E" lod lod-building }
+
+
+		;; medium industrial buildings
+		;; shops/warehouses
+		{ model "Bldg_IndstM_Core_A" lod lod-building }
+		{ model "Bldg_IndstM_Core_B" lod lod-building }
+		{ model "Bldg_IndstM_Core_C" lod lod-building }
+
+		{ model "Bldg_IndstM_Back_A" lod lod-building }
+		{ model "Bldg_IndstM_Back_B" lod lod-building }
+		{ model "Bldg_IndstM_Back_C" lod lod-building }
+
+		{ model "Bldg_IndstMShop_Front_A" lod lod-building }
+		{ model "Bldg_IndstMGarage_Front_A" lod lod-building }
+		{ model "Bldg_IndstMGarage_Front_B" lod lod-building }
+
+		;; factories
+		{ model "Bldg_Factory_Core_A" lod lod-building }
+		{ model "Bldg_Factory_Core_B" lod lod-building }
+		{ model "Bldg_Factory_Core_C" lod lod-building }
+
+		{ model "Bldg_Factory_Back_A" lod lod-building }
+		{ model "Bldg_Factory_Back_B" lod lod-building }
+		{ model "Bldg_Factory_Back_C" lod lod-building }
+
+		{ model "Bldg_Factory_Front_A" lod lod-building }
+		{ model "Bldg_Factory_Front_B" lod lod-building }
+		{ model "Bldg_Factory_Front_C" lod lod-building }
+
+		;; outdoor works (NO BACKS OR DECOS)
+		{ model "Bldg_OutdoorWorks_Core_A" lod lod-building }
+		{ model "Bldg_OutdoorWorks_Core_B" lod lod-building }
+
+		{ model "Bldg_OutdoorWorks_Front_A" lod lod-building }
+		{ model "Bldg_OutdoorWorks_Front_B" lod lod-building }
+
+
+		;; large industrial buildings
+		;; warehouses/garages
+		{ model "Bldg_IndstL_Core_A" lod lod-building }
+		{ model "Bldg_IndstL_Core_B" lod lod-building }
+
+		{ model "Bldg_IndstL_Back_A" lod lod-building }
+		{ model "Bldg_IndstL_Back_B" lod lod-building }
+
+		{ model "Bldg_IndstLGarage_Front_A" lod lod-building }
+		{ model "Bldg_IndstLGarage_Front_B" lod lod-building }
+
+		;; factories
+		{ model "Bldg_FactoryL_Core_A" lod lod-building }
+		{ model "Bldg_FactoryL_Core_B" lod lod-building }
+		{ model "Bldg_FactoryL_Core_C" lod lod-building }
+
+		{ model "Bldg_FactoryL_Back_A" lod lod-building }
+		{ model "Bldg_FactoryL_Back_B" lod lod-building }
+		{ model "Bldg_FactoryL_Back_B" lod lod-building }
+
+		{ model "Bldg_FactoryL_Front_A" lod lod-building }
+		{ model "Bldg_FactoryL_Front_B" lod lod-building }
+		{ model "Bldg_FactoryL_Front_C" lod lod-building } 
+
+		;; outdoor works (NO BACKS OR DECOS - cores differ, fronts randomize)
+		{ model "Bldg_OutdoorWorksLLumber_Core_A" lod lod-building }
+		{ model "Bldg_OutdoorWorksLSteel_Core_A" lod lod-building }
+		{ model "Bldg_OutdoorWorksLConcrt_Core_A" lod lod-building }
+		{ model "Bldg_OutdoorWorksLJunkyrd_Core_A" lod lod-building }
+		{ model "Bldg_OutdoorWorksLCoal_Core_A" lod lod-building }
+
+		{ model "Bldg_OutdoorWorksL_Front_A" lod lod-building }
+		{ model "Bldg_OutdoorWorksL_Front_B" lod lod-building }
+		{ model "Bldg_OutdoorWorksL_Front_C" lod lod-building }
+
+
+		;; INDUSTRIAL PROPS
+		;; general shop props
+		{ model "Bldg_IndstS_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_IndstS_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_IndstS_Props_C" lod lod-bldgdecos }
+		{ model "Bldg_IndstS_Props_D" lod lod-bldgdecos }
+		{ model "Bldg_IndstS_Props_E" lod lod-bldgdecos }
+		{ model "Bldg_IndstS_Props_F" lod lod-bldgdecos }
+		{ model "Bldg_IndstS_Props_G" lod lod-bldgdecos }
+		{ model "Bldg_IndstS_Props_H" lod lod-bldgdecos }
+		{ model "Bldg_IndstS_Props_I" lod lod-bldgdecos }
+
+		;; auto/car props
+		{ model "Bldg_IndstSAuto_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_IndstSAuto_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_IndstSAuto_Props_C" lod lod-bldgdecos }
+
+		;; medium decos
+		;; shop/warehouse decos
+		{ model "Bldg_IndstM_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_IndstM_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_IndstM_Props_C" lod lod-bldgdecos }
+
+		{ model "Bldg_Factory_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_Factory_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_Factory_Props_C" lod lod-bldgdecos }
+
+		;; large decos
+		;; warehouse/garage props
+		{ model "Bldg_IndstL_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_IndstL_Props_B" lod lod-bldgdecos }
+
+		;; factories
+		{ model "Bldg_FactoryL_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_FactoryL_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_FactoryL_Props_C" lod lod-bldgdecos }
+
+		;; PORT/LARGE INDUSTRIAL BUILDNGS
+		{ model "Bldg_DowntownIndustrial_Back_A" lod lod-building }
+		{ model "Bldg_DowntownIndustrial_Back_B" lod lod-building }
+		{ model "Bldg_DowntownIndustrial_Core_A" lod lod-building }
+		{ model "Bldg_DowntownIndustrial_Core_B" lod lod-building }
+		{ model "Bldg_DowntownIndustrial_Front_A" lod lod-building }
+		{ model "Bldg_DowntownIndustrial_Front_B" lod lod-building }
+		{ model "Bldg_DowntownIndustrial_Front_C" lod lod-building }
+		{ model "Bldg_DowntownIndustrial_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_DowntownIndustrial_Props_B" lod lod-bldgdecos }
+
+		{ model "Bldg_DowntownIndustrialLarge_Back_A" lod lod-building }
+		{ model "Bldg_DowntownIndustrialLarge_Back_B" lod lod-building }
+		{ model "Bldg_DowntownIndustrialLarge_Core_A" lod lod-building }
+		{ model "Bldg_DowntownIndustrialLarge_Core_B" lod lod-building }
+		{ model "Bldg_DowntownIndustrialLarge_Front_A" lod lod-building }
+		{ model "Bldg_DowntownIndustrialLarge_Front_B" lod lod-building }
+		{ model "Bldg_DowntownIndustrialLarge_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_DowntownIndustrialLarge_Props_B" lod lod-bldgdecos }
+
+
+		;; LOT DECOS 
+		;; need to be lod'd just like buildings so they don't pop
+
+		{ model "Decos/Deco_SL_AbandonedResd_A"	 lod lod-bldgdecos }
+		{ model "LotDeco_DerelictResdSmall_B"	lod lod-bldgdecos }
+		{ model "Decos/Deco_SL_AbandonedOther_A" lod lod-bldgdecos }
+		{ model "Decos/Deco_SL_Clutter_A"		 lod lod-bldgdecos }
+		{ model "LotDeco_VacantSmall_B"			 lod lod-bldgdecos }
+		{ model "Decos/Deco_SL_Park_A"			 lod lod-bldgdecos }
+		{ model "Decos/Deco_SL_Park_B"			 lod lod-bldgdecos }
+		{ model "Decos/Deco_ML_Park_A"			 lod lod-bldgdecos }
+
+		{ model "LotDeco_ConstructionSmall_Core_A"	lod lod-building }
+		{ model "LotDeco_ConstructionSmall_Core_B"	lod lod-building }
+		{ model "LotDeco_ConstructionSmall_Core_C"	lod lod-building }
+		{ model "LotDeco_ConstructionSmall_Props_A"	lod lod-bldgdecos }
+		{ model "LotDeco_ConstructionSmall_Props_B"	lod lod-bldgdecos }
+		{ model "LotDeco_ConstructionSmall_Props_C"	lod lod-bldgdecos }
+
+		{ model "LotDeco_ParkingLotMedium_Core_A" lod lod-bldgdecos }
+		{ model "LotDeco_ParkingLotMedium_Core_B" lod lod-bldgdecos }
+		{ model "LotDeco_ParkingLotMedium_Props_A" lod lod-bldgdecos }
+		{ model "LotDeco_ParkingLotMedium_Props_B" lod lod-bldgdecos }
+
+		{ model "LotDeco_CemeterySmall_A"		lod lod-bldgdecos }
+		{ model "LotDeco_CemeteryMedium_Core_A" lod lod-bldgdecos }
+		{ model "LotDeco_CemeteryMedium_Core_B" lod lod-bldgdecos }
+		{ model "LotDeco_CemeteryMedium_Props_A"	lod lod-bldgdecos }
+		{ model "LotDeco_CemeteryMedium_Props_B"    lod lod-bldgdecos }
+
+
+
+
+		;; places of worship
+
+		{ model "Bldg_WorshipChurch_Core_A" lod lod-building }
+		{ model "Bldg_WorshipChurch_Core_B" lod lod-building }
+		{ model "Bldg_WorshipChurch_Core_C" lod lod-building }
+		{ model "Bldg_WorshipChurch_Front_A" lod lod-bldgdecos }
+		{ model "Bldg_WorshipChurch_Front_B" lod lod-bldgdecos }
+		{ model "Bldg_WorshipChurch_Front_C" lod lod-bldgdecos }
+		{ model "Bldg_WorshipChurch_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_WorshipChurch_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_WorshipChurch_Props_C" lod lod-bldgdecos }
+		{ model "Bldg_WorshipChurchLrg_Core_A"  lod lod-building}
+		{ model "Bldg_WorshipChurchLrg_Core_B" lod lod-building }
+		{ model "Bldg_WorshipChurchLrg_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_WorshipChurchLrg_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_WorshipChurchLrg_Props_C" lod lod-bldgdecos }
+		{ model "Bldg_WorshipSynagogue_Core_A" lod lod-building }
+
+		;; civic buildings
+		{ model "Bldg_PoliceStation_Core_A" lod lod-building }
+		{ model "Bldg_PoliceStation_Core_B" lod lod-building }
+		{ model "Bldg_PoliceStation_Core_C" lod lod-building }
+		{ model "Bldg_PoliceStation_Front_A" lod lod-building }
+		{ model "Bldg_PoliceStation_Front_B" lod lod-building }
+		{ model "Bldg_PoliceStation_Front_C" lod lod-building }
+		{ model "Bldg_PoliceStation_Back_A" lod lod-building }
+		{ model "Bldg_PoliceStation_Back_B" lod lod-building }
+		{ model "Bldg_PoliceStation_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_PoliceStation_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_PoliceStation_Props_C" lod lod-bldgdecos }
+
+		{ model "Bldg_FireStationS_Core_A" lod lod-building }
+		{ model "Bldg_FireStationS_Core_B" lod lod-building }
+		{ model "Bldg_FireStationS_Front_A" lod lod-building }
+		{ model "Bldg_FireStationS_Front_B" lod lod-building }
+		{ model "Bldg_FireStationS_Front_C" lod lod-building }
+		{ model "Bldg_FireStationS_Back_A" lod lod-building }
+		{ model "Bldg_FireStationS_Back_B" lod lod-building }
+		{ model "Bldg_FireStationS_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_FireStationS_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_FireStationS_Props_C" lod lod-bldgdecos }
+		{ model "Bldg_FireStationL_Core_A" lod lod-building }
+		{ model "Bldg_FireStationL_Core_B" lod lod-building }
+		{ model "Bldg_FireStationL_Front_A" lod lod-building }
+		{ model "Bldg_FireStationL_Front_B" lod lod-building }
+		{ model "Bldg_FireStationL_Front_C" lod lod-building }
+		{ model "Bldg_FireStationL_Back_A" lod lod-building }
+		{ model "Bldg_FireStationL_Back_B" lod lod-building }
+		{ model "Bldg_FireStationL_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_FireStationL_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_FireStationL_Props_C" lod lod-bldgdecos }
+
+		{ model "Bldg_CivicS_Core_A" lod lod-building }
+		{ model "Bldg_CivicS_Core_B" lod lod-bldgdecos }
+		{ model "Bldg_CivicS_Front_A" lod lod-building }
+		{ model "Bldg_CivicS_Front_B" lod lod-building }
+		{ model "Bldg_CivicS_Front_C" lod lod-building }
+		{ model "Bldg_CivicS_Back_A" lod lod-building }
+		{ model "Bldg_CivicS_Back_B" lod lod-building }
+		{ model "Bldg_CivicS_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_CivicS_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_CivicSHospital_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_CivicSHospital_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_CivicSPost_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_CivicSPost_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_CivicSSchool_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_CivicSSchool_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_CivicLrg_Core_A" lod lod-building }
+		{ model "Bldg_CivicLrg_Core_B" lod lod-building }
+		{ model "Bldg_CivicLrg_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_CivicLrgHospital_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_CivicLrgPost_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_CivicLrgSchool_Props_A" lod lod-bldgdecos }
+
+		;; train stations
+		{ model "Bldg_TrainDepot_Front_A" lod lod-building }
+		{ model "Bldg_TrainDepot_Front_B" lod lod-building }
+		{ model "Bldg_TrainDepot_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_TrainDepot_Props_B" lod lod-bldgdecos }		
+		{ model "Bldg_TrainDepot_Core_A" lod lod-building }
+		{ model "Bldg_TrainDepot_Core_B" lod lod-building }
+		{ model "Bldg_TrainStationPass_Core_A" lod lod-building }
+		{ model "Bldg_TrainStationPass_Core_B" lod lod-building }
+		{ model "Bldg_TrainStationPass_Back_A" lod lod-building }
+		{ model "Bldg_TrainStationPass_Back_B" lod lod-building }
+		{ model "Bldg_TrainStationPass_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_TrainStationPass_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_TrainStationCargo_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_TrainStationCargo_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_TrainStationCargo_Core_A" lod lod-building }
+		{ model "Bldg_TrainStationCargo_Core_B" lod lod-building }
+		{ model "Bldg_TrainStationCargo_Front_A" lod lod-building }
+		{ model "Bldg_TrainStationCargo_Front_B" lod lod-building }
+
+
+		;; Atlantic City Boardwalk
+
+		;; left endcaps (boardwalkBookendEnd)
+		{ model "Bldg_AtlanticCommEndcapLeft_Back_A" lod lod-building }
+		{ model "Bldg_AtlanticCommEndcapLeft_Back_B" lod lod-building }
+		{ model "Bldg_AtlanticCommEndcapLeft_Core_A" lod lod-building }
+		{ model "Bldg_AtlanticCommEndcapLeft_Core_B" lod lod-building }
+		{ model "Bldg_AtlanticCommEndcapLeft_Front_A" lod lod-building }
+		{ model "Bldg_AtlanticCommEndcapLeft_Front_B" lod lod-building }
+		{ model "Bldg_AtlanticCommEndcapLeft_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_AtlanticCommEndcapLeft_Props_B" lod lod-bldgdecos }
+
+		;; right endcaps (boardwalkBookendStart)
+		{ model "Bldg_AtlanticCommEndcapRight_Back_A" lod lod-building }
+		{ model "Bldg_AtlanticCommEndcapRight_Back_B" lod lod-building }
+		{ model "Bldg_AtlanticCommEndcapRight_Core_A" lod lod-building }
+		{ model "Bldg_AtlanticCommEndcapRight_Core_B" lod lod-building }
+		{ model "Bldg_AtlanticCommEndcapRight_Front_A" lod lod-building }
+		{ model "Bldg_AtlanticCommEndcapRight_Front_B" lod lod-building }
+		{ model "Bldg_AtlanticCommEndcapRight_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_AtlanticCommEndcapRight_Props_B" lod lod-bldgdecos }
+
+		;; small boardwalk com
+		{ model "Bldg_AtlanticCommSmall_Back_A" lod lod-building }
+		{ model "Bldg_AtlanticCommSmall_Back_B" lod lod-building }
+		{ model "Bldg_AtlanticCommSmall_Back_C" lod lod-building }
+		{ model "Bldg_AtlanticCommSmall_Core_A" lod lod-building }
+		{ model "Bldg_AtlanticCommSmall_Core_B" lod lod-building }
+		{ model "Bldg_AtlanticCommSmall_Core_C" lod lod-building }
+		{ model "Bldg_AtlanticCommSmall_Front_A" lod lod-building }
+		{ model "Bldg_AtlanticCommSmall_Front_B" lod lod-building }
+		{ model "Bldg_AtlanticCommSmall_Front_C" lod lod-building }
+		{ model "Bldg_AtlanticCommSmall_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_AtlanticCommSmall_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_AtlanticCommSmall_Props_C" lod lod-bldgdecos }
+
+
+		;; medium boardwalk com
+		{ model "Bldg_AtlanticCommMedium_Back_A" lod lod-building }
+		{ model "Bldg_AtlanticCommMedium_Back_B" lod lod-building }
+		{ model "Bldg_AtlanticCommMedium_Back_C" lod lod-building }
+		{ model "Bldg_AtlanticCommMedium_Core_A" lod lod-building }
+		{ model "Bldg_AtlanticCommMedium_Core_B" lod lod-building }
+		{ model "Bldg_AtlanticCommMedium_Core_C" lod lod-building }
+		{ model "Bldg_AtlanticCommMedium_Front_A" lod lod-building }
+		{ model "Bldg_AtlanticCommMedium_Front_B" lod lod-building }
+		{ model "Bldg_AtlanticCommMedium_Front_C" lod lod-building }
+		{ model "Bldg_AtlanticCommMedium_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_AtlanticCommMedium_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_AtlanticCommMedium_Props_C" lod lod-bldgdecos }
+
+
+		;; large boardwalk
+		{ model "Bldg_AtlanticCommLarge_Core_A" lod lod-building }
+		{ model "Bldg_AtlanticCommLarge_Core_B" lod lod-building }
+		{ model "Bldg_AtlanticCommLarge_Core_C" lod lod-building }
+		{ model "Bldg_AtlanticCommLarge_Back_A" lod lod-building }
+		{ model "Bldg_AtlanticCommLarge_Back_B" lod lod-building }
+		{ model "Bldg_AtlanticCommLarge_Back_C" lod lod-building }
+		{ model "Bldg_AtlanticCommLarge_Front_A" lod lod-building }
+		{ model "Bldg_AtlanticCommLarge_Front_B" lod lod-building }
+		{ model "Bldg_AtlanticCommLarge_Front_C" lod lod-building }
+		{ model "Bldg_AtlanticCommLarge_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_AtlanticCommLarge_Props_B" lod lod-bldgdecos }
+		{ model "Bldg_AtlanticCommLarge_Props_C" lod lod-bldgdecos }
+
+		;; ritz hotel
+		{ model "Bldg_AtlanticCommRitz_Props_A" lod lod-bldgdecos }
+		{ model "Bldg_AtlanticCommRitz_Core_A" lod lod-building }
+
+		;; philadelphia
+		;; med bank
+		{ model "Bldg_Bank_coreA" lod lod-building }
+		{ model "Bldg_Bank_coreB" lod lod-building }
+		{ model "Bldg_Bank_coreC" lod lod-building }
+		{ model "Bldg_Bank_frontA" lod lod-building }
+		{ model "Bldg_Bank_frontB" lod lod-building }
+		{ model "Bldg_Bank_frontC" lod lod-building }
+		{ model "Bldg_Bank_backA" lod lod-building }
+		{ model "Bldg_Bank_backB" lod lod-building }
+		{ model "Bldg_Bank_backC" lod lod-building }
+		{ model "Bldg_Bank_propA" lod lod-bldgdecos }
+		{ model "Bldg_Bank_propB" lod lod-bldgdecos }
+		{ model "Bldg_Bank_propC" lod lod-bldgdecos }
+
+		;; big bank
+		{ model "Bldg_BigBank_core" lod lod-building }
+		{ model "Bldg_BigBank_frontA" lod lod-building }
+		{ model "Bldg_BigBank_frontB" lod lod-building }
+		{ model "Bldg_BigBank_backA" lod lod-building }
+		{ model "Bldg_BigBank_backB" lod lod-building }
+		{ model "Bldg_BigBank_propA" lod lod-bldgdecos }
+		{ model "Bldg_BigBank_propB" lod lod-bldgdecos }
+
+		;; jewelry store
+		{ model "Bldg_JS_coreA" lod lod-building }
+		{ model "Bldg_JS_coreB" lod lod-building }
+		{ model "Bldg_JS_coreC" lod lod-building }
+		{ model "Bldg_JS_frontA" lod lod-building }
+		{ model "Bldg_JS_frontB" lod lod-building }
+		{ model "Bldg_JS_frontC" lod lod-building }
+		{ model "Bldg_JS_backA" lod lod-building }
+		{ model "Bldg_JS_backB" lod lod-building }
+		{ model "Bldg_JS_backC" lod lod-building }
+		{ model "Bldg_JS_propsA" lod lod-bldgdecos }
+		{ model "Bldg_JS_propsB" lod lod-bldgdecos }
+		{ model "Bldg_JS_propsC" lod lod-bldgdecos }
+
+
+		;; NYC residential
+		{ model "Bldg_Brownstone_CoreA" lod lod-building }
+		{ model "Bldg_Brownstone_CoreB" lod lod-building }
+		{ model "Bldg_Brownstone_CoreC" lod lod-building }
+		{ model "Bldg_Brownstone_CoreD" lod lod-building }
+		{ model "Bldg_Brownstone_CoreE" lod lod-building }
+		{ model "Bldg_Brownstone_FrontA" lod lod-building }
+		{ model "Bldg_Brownstone_FrontB" lod lod-building }
+		{ model "Bldg_Brownstone_FrontC" lod lod-building }
+		{ model "Bldg_Brownstone_FrontD" lod lod-building }
+		{ model "Bldg_Brownstone_FrontE" lod lod-building }
+		{ model "Bldg_Brownstone_BackA" lod lod-building }
+		{ model "Bldg_Brownstone_BackB" lod lod-building }
+		{ model "Bldg_Brownstone_BackC" lod lod-building }
+		{ model "Bldg_Brownstone_BackD" lod lod-building }
+		{ model "Bldg_Brownstone_BackE" lod lod-building }
+		{ model "Bldg_Brownstone_PropA" lod lod-bldgdecos }
+		{ model "Bldg_Brownstone_PropB" lod lod-bldgdecos }
+		{ model "Bldg_Brownstone_PropC" lod lod-bldgdecos }
+		{ model "Bldg_Brownstone_PropD" lod lod-bldgdecos }
+
+		{ model "Bldg_Tenement_CoreA" lod lod-building }
+		{ model "Bldg_Tenement_CoreB" lod lod-building }
+		{ model "Bldg_Tenement_CoreC" lod lod-building }
+		{ model "Bldg_Tenement_CoreD" lod lod-building }
+		{ model "Bldg_Tenement_CoreE" lod lod-building }
+		{ model "Bldg_Tenement_CoreF" lod lod-building }
+		{ model "Bldg_Tenement_FrontA" lod lod-building }
+		{ model "Bldg_Tenement_FrontB" lod lod-building }
+		{ model "Bldg_Tenement_FrontC" lod lod-building }
+		{ model "Bldg_Tenement_FrontD" lod lod-building }
+		{ model "Bldg_Tenement_FrontE" lod lod-building }
+		{ model "Bldg_Tenement_FrontF" lod lod-building }
+		{ model "Bldg_Tenement_BackA" lod lod-building }
+		{ model "Bldg_Tenement_BackB" lod lod-building }
+		{ model "Bldg_Tenement_BackC" lod lod-building }
+		{ model "Bldg_Tenement_BackD" lod lod-building }
+		{ model "Bldg_Tenement_BackE" lod lod-building }
+		{ model "Bldg_Tenement_BackF" lod lod-building }
+		{ model "Bldg_Tenement_PropA" lod lod-bldgdecos }
+		{ model "Bldg_Tenement_PropB" lod lod-bldgdecos }
+		{ model "Bldg_Tenement_PropC" lod lod-bldgdecos }
+
+		{ model "Bldg_TenementsMed_NYC_CoreA" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_CoreB" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_CoreC" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_CoreD" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_CoreE" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_CoreF" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_FrontA" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_FrontB" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_FrontC" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_FrontD" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_FrontE" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_FrontF" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_BackA" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_BackB" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_BackC" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_BackD" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_BackE" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_BackF" lod lod-building }
+		{ model "Bldg_TenementsMed_NYC_PropA" lod lod-bldgdecos }
+		{ model "Bldg_TenementsMed_NYC_PropB" lod lod-bldgdecos }
+		{ model "Bldg_TenementsMed_NYC_PropC" lod lod-bldgdecos }
+		{ model "Bldg_TenementsMed_NYC_PropD" lod lod-bldgdecos }
+		{ model "Bldg_TenementsMed_NYC_PropE" lod lod-bldgdecos }
+		{ model "Bldg_TenementsMed_NYC_PropF" lod lod-bldgdecos }
+
+		{ model "Bldg_TenementsLarge_NYC_CoreA" lod lod-building }
+		{ model "Bldg_TenementsLarge_NYC_CoreB" lod lod-building }
+		{ model "Bldg_TenementsLarge_NYC_FrontA" lod lod-building }
+		{ model "Bldg_TenementsLarge_NYC_FrontB" lod lod-building }
+		{ model "Bldg_TenementsLarge_NYC_BackA" lod lod-building }
+		{ model "Bldg_TenementsLarge_NYC_BackB" lod lod-building }
+		{ model "Bldg_TenementsLarge_NYC_PropA" lod lod-bldgdecos }
+		{ model "Bldg_TenementsLarge_NYC_PropB" lod lod-bldgdecos }
+
+		{ model "Bldg_Comm_NYC_CoreA" lod lod-building }
+		{ model "Bldg_Comm_NYC_CoreB" lod lod-building }
+		{ model "Bldg_Comm_NYC_CoreC" lod lod-building }
+		{ model "Bldg_Comm_NYC_FrontA" lod lod-building }
+		{ model "Bldg_Comm_NYC_FrontB" lod lod-building }
+		{ model "Bldg_Comm_NYC_FrontC" lod lod-building }
+		{ model "Bldg_Comm_NYC_BackA" lod lod-building }
+		{ model "Bldg_Comm_NYC_BackB" lod lod-building }
+		{ model "Bldg_Comm_NYC_BackC" lod lod-building }
+		{ model "Bldg_Comm_NYC_PropA" lod lod-bldgdecos }
+		{ model "Bldg_Comm_NYC_PropB" lod lod-bldgdecos }
+		{ model "Bldg_Comm_NYC_PropC" lod lod-bldgdecos }
+
+		{ model "Bldg_Civic_NYC_CoreA" lod lod-building }
+		{ model "Bldg_Civic_NYC_CoreB" lod lod-building }
+		{ model "Bldg_Civic_NYC_CoreC" lod lod-building }
+		{ model "Bldg_Civic_NYC_FrontA" lod lod-building }
+		{ model "Bldg_Civic_NYC_FrontB" lod lod-building }
+		{ model "Bldg_Civic_NYC_FrontC" lod lod-building }
+		{ model "Bldg_Civic_NYC_BackA" lod lod-building }
+		{ model "Bldg_Civic_NYC_BackB" lod lod-building }
+		{ model "Bldg_Civic_NYC_BackC" lod lod-building }
+		{ model "Bldg_Civic_NYC_PropA" lod lod-bldgdecos }
+		{ model "Bldg_Civic_NYC_PropB" lod lod-bldgdecos }
+		{ model "Bldg_Civic_NYC_PropC" lod lod-bldgdecos }
+
+		{ model "Bldg_CivicLarge_NYC_CoreA" lod lod-building }
+		{ model "Bldg_CivicLarge_NYC_CoreB" lod lod-building }
+		{ model "Bldg_CivicLarge_NYC_CoreC" lod lod-building }
+		{ model "Bldg_CivicLarge_NYC_FrontA" lod lod-building }
+		{ model "Bldg_CivicLarge_NYC_FrontB" lod lod-building }
+		{ model "Bldg_CivicLarge_NYC_FrontC" lod lod-building }
+		{ model "Bldg_CivicLarge_NYC_BackA" lod lod-building }
+		{ model "Bldg_CivicLarge_NYC_BackB" lod lod-building }
+		{ model "Bldg_CivicLarge_NYC_BackC" lod lod-building }
+		{ model "Bldg_CivicLarge_NYC_PropA" lod lod-bldgdecos }
+		{ model "Bldg_CivicLarge_NYC_PropB" lod lod-bldgdecos }
+		{ model "Bldg_CivicLarge_NYC_PropC" lod lod-bldgdecos }
+
+	]
+} }

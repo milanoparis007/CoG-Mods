@@ -2065,7 +2065,10 @@ namespace CopKilling
                     result.ClearedCount++;
                 }
             }
-            Debug.Log($"{VerificationLogPrefix} [CopKilling] residual aggro clear pass cops={result.ConsideredCount} hadAggro={result.HadAggroCount} cleared={result.ClearedCount} silent={result.Silent}");
+            if (!result.Silent || result.HadAggroCount > 0 || result.ClearedCount > 0)
+            {
+                Debug.Log($"{VerificationLogPrefix} [CopKilling] residual aggro clear pass cops={result.ConsideredCount} hadAggro={result.HadAggroCount} cleared={result.ClearedCount} silent={result.Silent}");
+            }
             return result;
         }
 

@@ -4755,13 +4755,13 @@ namespace CopKilling
             {
                 if (ShouldLogSuppressionSkip(ref _lastCombatAdvisorTruceSuppressionLogFrame))
                 {
-                    Debug.Log($"[CopKilling] CombatAdvisor.MaybeAskForTruce skipped reason={reason} frame={Time.frameCount} resetUntil={_debugResetSuppressionUntilFrame} favorUntil={_politicalFavorSuppressionUntilFrame} other={other.id}");
+                    Debug.Log($"[CopKilling] CombatAdvisor.MaybeAskForTruce allowed-through reason={reason} frame={Time.frameCount} resetUntil={_debugResetSuppressionUntilFrame} favorUntil={_politicalFavorSuppressionUntilFrame} other={other.id}");
                 }
             }
             catch
             {
             }
-            return false;
+            return true;
         }
 
         private static bool CombatAdvisorOnTurnUpdatePrefix()

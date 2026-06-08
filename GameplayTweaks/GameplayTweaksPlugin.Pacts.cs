@@ -10,6 +10,7 @@ using Game.Session.Data;
 using Game.Session.Entities;
 using Game.Session.Player;
 using Game.Session.Player.AI;
+using Game.Session.Player.Commands;
 using Game.Session.Sim;
 using Game.Session.Sim.Modules;
 using Game.UI.Session;
@@ -114,6 +115,7 @@ public partial class GameplayTweaksPlugin
 		private static readonly Dictionary<string, int> _aiGangRobberyCooldownUntilDayByPair = new Dictionary<string, int>(StringComparer.Ordinal);
 		private static readonly Dictionary<string, int> _aiHumanRobberyPairCooldownUntilDay = new Dictionary<string, int>(StringComparer.Ordinal);
 		private static readonly Dictionary<string, DeferredAiHumanRobberyResponse> _deferredAiHumanRobberyResponsesByKey = new Dictionary<string, DeferredAiHumanRobberyResponse>(StringComparer.Ordinal);
+		private static readonly Dictionary<string, PendingAiHumanRobberyMeeting> _pendingAiHumanRobberyMeetingsByKey = new Dictionary<string, PendingAiHumanRobberyMeeting>(StringComparer.Ordinal);
 		private static readonly HashSet<string> _activeAiHumanRobberyResponseKeys = new HashSet<string>(StringComparer.Ordinal);
 		private static readonly Dictionary<string, int> _activeAiHumanRobberyResponseDayByKey = new Dictionary<string, int>(StringComparer.Ordinal);
 		private static readonly HashSet<int> _activeAiHumanRobberyResponseHumanPids = new HashSet<int>();
@@ -202,6 +204,7 @@ public partial class GameplayTweaksPlugin
 			_aiGangRobberyCooldownUntilDayByPair.Clear();
 			_aiHumanRobberyPairCooldownUntilDay.Clear();
 			_deferredAiHumanRobberyResponsesByKey.Clear();
+			_pendingAiHumanRobberyMeetingsByKey.Clear();
 			_activeAiHumanRobberyResponseKeys.Clear();
 			_activeAiHumanRobberyResponseDayByKey.Clear();
 			_activeAiHumanRobberyResponseHumanPids.Clear();
@@ -961,17 +964,22 @@ public partial class GameplayTweaksPlugin
 		private const bool AI_ROBBERY_HUMAN_CASH_MUTATION_ENABLED = false;
 		private static readonly bool AI_ROBBERY_CONTACT_PLAYER_RESPONSE_ENABLED = true;
 		private const bool AI_ROBBERY_CONTACT_VEHICLE_DEBIT_ENABLED = true;
-		private const float AI_ROBBERY_CONTACT_VEHICLE_HEAT_GAIN = 4f;
-		private const float AI_ROBBERY_CONTACT_REFUSE_HEAT_GAIN = 6f;
-		private const float AI_ROBBERY_CONTACT_EVADE_HEAT_GAIN = 4f;
+		private const float AI_ROBBERY_CONTACT_VEHICLE_HEAT_GAIN = 2f;
+		private const float AI_ROBBERY_CONTACT_REFUSE_HEAT_GAIN = 4f;
+		private const float AI_ROBBERY_CONTACT_EVADE_HEAT_GAIN = 2f;
 		private const float AI_ROBBERY_REFUSAL_ESCALATION_CHANCE = 0.2f;
 		private const float AI_ROBBERY_NEARBY_WORLD_DISTANCE = 24f;
 		private const float AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE = 14f;
+		private const float AI_ROBBERY_ARRIVED_HOLD_WORLD_DISTANCE = AI_ROBBERY_NEARBY_WORLD_DISTANCE;
 		private const float AI_ROBBERY_HUMAN_TERRITORY_MAX_CONTACT_DISTANCE = 14f;
 		private const int AI_ROBBERY_DIAGNOSTIC_MAX_CANDIDATES_PER_RUN = 3;
 		private const int AI_ROBBERY_MAX_CONTACTS_PER_SCAN = 1;
 		private const int AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS = 14;
-		private const int AI_ROBBERY_RESPONSE_LOCK_STALE_DAYS = 30;
+		private const int AI_ROBBERY_MEETING_ROUTE_MAX_DAYS = 84;
+		private const int AI_ROBBERY_MEETING_TARGET_COMMIT_REQUEUES = 1;
+		private const float AI_ROBBERY_MEETING_TARGET_COMMIT_DISTANCE = 16f;
+		private const int AI_ROBBERY_MEETING_TARGET_MOVE_WINDOW_RESETS = 2;
+		private const int AI_ROBBERY_RESPONSE_LOCK_STALE_DAYS = 1;
 	private const int AI_ROBBERY_COOLDOWN_DAYS_SIX_MONTHS = 180;
 	private const int AI_ROBBERY_HUMAN_DIAGNOSTIC_COOLDOWN_DAYS = AI_ROBBERY_COOLDOWN_DAYS_SIX_MONTHS;
 		private const int AI_ROBBERY_TRESPASS_GRACE_FAST_DAYS = 1;
@@ -1555,6 +1563,69 @@ public partial class GameplayTweaksPlugin
 			public int TrespassGraceDays;
 
 			public string Reason = string.Empty;
+		}
+
+		private sealed class PendingAiHumanRobberyMeeting
+		{
+			public int RobberPid;
+
+			public int HumanPid;
+
+			public long TargetCrewPeepId;
+
+			public long TargetVehicleId;
+
+			public long MeetingPeepId;
+
+			public long MeetingVehicleId;
+
+			public short MeetingNodeIndex;
+
+			public short MeetingCrewNodeIndex;
+
+			public short RouteTargetNodeIndex;
+
+			public short LastObservedNodeIndex;
+
+			public int QueuedDay;
+
+			public int NotBeforeDay;
+
+			public int ExpireDay;
+
+			public int CreatedDay;
+
+			public int Priority;
+
+			public int LastRouteIssuedDay;
+
+			public int LastProgressDay;
+
+			public int NoProgressChecks;
+
+			public float LastDistanceToMeeting = -1f;
+
+			public int DivergingRouteChecks;
+
+			public string Source = string.Empty;
+
+			public string Mode = string.Empty;
+
+			public string Reason = string.Empty;
+
+			public string MeetingCrewNodeSource = string.Empty;
+
+			public bool RouteQueued;
+
+			public bool Arrived;
+
+			public int RouteRequeueCount;
+
+			public bool FinalTargetRouteCommitted;
+
+			public bool ActorReassignmentGranted;
+
+			public int TargetMoveRouteWindowResets;
 		}
 
 		private sealed class AiRobberyResolutionPreview
@@ -3959,7 +4030,7 @@ public partial class GameplayTweaksPlugin
 				return false;
 			}
 
-			AddWarHeat(channel, victim.PID.id, robber.PID.id, 4f, sourceTag);
+			AddWarHeat(channel, victim.PID.id, robber.PID.id, AI_ROBBERY_CONTACT_VEHICLE_HEAT_GAIN, sourceTag);
 			RecordAiGangRobberyPairCooldown(robber, victim, now);
 			LogGrapevine($"{(externalNetwork ? "ROBBERY" : "PACT")}: {GetGangDisplayName(robber.PID.id)} skipped the shakedown and leaned on one of {GetGangDisplayName(victim.PID.id)}'s fronts instead.");
 			VerificationLog(verificationChannel, $"type={proposal.TradeKey} phase=front-closure-before-robbery result=closed day={now.days} robber={robber.PID.id} victim={victim.PID.id} action={actionSummary} chance={closureChance:0.00} roll={roll:0.00} cooldownDays={AI_ROBBERY_GANG_PAIR_COOLDOWN_DAYS}");
@@ -4008,7 +4079,7 @@ public partial class GameplayTweaksPlugin
 		float successChance = CalculateAiGangRobberySuccessChance(robber, victim, highValue);
 		bool success = SharedRng.NextDouble() < successChance;
 		GangOpsChannel channel = ResolveGangOpsChannelForGang(victim.PID.IsHumanPlayer ? robber.PID.id : victim.PID.id);
-		float heatGain = success ? (highValue ? 8f : 5f) : (highValue ? 18f : 12f);
+		float heatGain = success ? (highValue ? 5f : 3f) : (highValue ? 8f : 6f);
 		string robberName = GetGangDisplayName(robber.PID.id);
 		string victimName = victim.PID.IsHumanPlayer ? "your outfit" : GetGangDisplayName(victim.PID.id);
 
@@ -4651,6 +4722,18 @@ public partial class GameplayTweaksPlugin
 		}
 
 		AiRobberyResolutionPreview preview = BuildAiHumanRobberyResolutionPreview(humanPlayer, candidate);
+		bool hasPromptValue = preview.AvailableCash >= GetAiHumanRobberyMinimumCash(candidate);
+		if (hasPromptValue && HasActiveAiHumanRobberyResponseForHuman(humanPlayer))
+		{
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"robbery-meeting-suppressed robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} source={source} mode={mode} reason=human-response-active result=not-queued");
+			return;
+		}
+		if (hasPromptValue)
+		{
+			RecordAiHumanRobberyMeetingPending(candidate, humanPlayer, now, source, mode, createdDay);
+		}
 		if (AI_ROBBERY_CONTACT_PLAYER_RESPONSE_ENABLED)
 		{
 			if (ShouldDeferAiHumanRobberyResponsePopup(source)
@@ -4663,6 +4746,7 @@ public partial class GameplayTweaksPlugin
 				return;
 			}
 			RecordAiHumanRobberyDiagnosticCooldown(candidate, now);
+			ClearPendingAiHumanRobberyMeeting(candidate.Robber, humanPlayer, "response-popup-ui-unavailable", source);
 			string createdUnavailable = createdDay >= 0 ? $" createdDay={createdDay}" : string.Empty;
 			VerificationLog(
 				"AIPlayerRobbery",
@@ -4702,7 +4786,9 @@ public partial class GameplayTweaksPlugin
 		{
 			if (!ShouldReplaceDeferredAiHumanRobberyResponse(existing, candidate, now, source))
 			{
-				VerificationLog("AIPlayerRobbery", $"deferred phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} day={now.days} reason=pair-already-queued existingTarget={existing?.TargetCrewPeepId ?? 0L} existingNode=NID_{existing?.TargetNodeIndex ?? 0} existingSource={existing?.Source ?? string.Empty} result=pending-kept");
+				int oldExpireDay = existing.ExpireDay;
+				existing.ExpireDay = GetAiHumanRobberyDeferredResponseExpireDay(candidate.Robber.PID.id, humanPlayer.PID.id, Math.Max(existing.ExpireDay, now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS));
+				VerificationLog("AIPlayerRobbery", $"deferred phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} day={now.days} reason=pair-already-queued existingTarget={existing?.TargetCrewPeepId ?? 0L} existingNode=NID_{existing?.TargetNodeIndex ?? 0} existingSource={existing?.Source ?? string.Empty} expireDay={oldExpireDay}->{existing.ExpireDay} result=pending-kept");
 				return true;
 			}
 			VerificationLog("AIPlayerRobbery", $"deferred phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} day={now.days} reason=pair-queued-replaced oldTarget={existing?.TargetCrewPeepId ?? 0L} oldNode=NID_{existing?.TargetNodeIndex ?? 0} oldSource={existing?.Source ?? string.Empty} result=pending-updated");
@@ -4712,14 +4798,15 @@ public partial class GameplayTweaksPlugin
 			VerificationLog("AIPlayerRobbery", $"deferred phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} day={now.days} reason=human-response-active result=queued-next-turn");
 		}
 		TryShowAiHumanRobberyIntentTicker(candidate, now, source, "queued-response");
-		_deferredAiHumanRobberyResponsesByKey[key] = BuildDeferredAiHumanRobberyResponse(candidate, now, source, mode, createdDay);
+		DeferredAiHumanRobberyResponse deferred = BuildDeferredAiHumanRobberyResponse(candidate, humanPlayer, now, source, mode, createdDay);
+		_deferredAiHumanRobberyResponsesByKey[key] = deferred;
 		VerificationLog(
 			"AIPlayerRobbery",
-			$"deferred phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} enactedDay={now.days} notBeforeDay={now.days + 1} expireDay={now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS} result=queued-next-turn");
+			$"deferred phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} enactedDay={now.days} notBeforeDay={now.days + 1} expireDay={deferred.ExpireDay} result=queued-next-turn");
 		return true;
 	}
 
-	private static DeferredAiHumanRobberyResponse BuildDeferredAiHumanRobberyResponse(AiRobberyCandidate candidate, SimTime now, string source, string mode, int createdDay)
+	private static DeferredAiHumanRobberyResponse BuildDeferredAiHumanRobberyResponse(AiRobberyCandidate candidate, PlayerInfo humanPlayer, SimTime now, string source, string mode, int createdDay)
 	{
 		return new DeferredAiHumanRobberyResponse
 		{
@@ -4729,7 +4816,7 @@ public partial class GameplayTweaksPlugin
 			TargetNodeIndex = candidate.ContactNode?.id.index ?? 0,
 			EnactedDay = now.days,
 			NotBeforeDay = now.days + 1,
-			ExpireDay = now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS,
+			ExpireDay = GetAiHumanRobberyDeferredResponseExpireDay(candidate.Robber.PID.id, humanPlayer?.PID.id ?? 0, now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS),
 			CreatedDay = createdDay,
 			Source = source ?? string.Empty,
 			Mode = mode ?? string.Empty,
@@ -4751,6 +4838,934 @@ public partial class GameplayTweaksPlugin
 			TrespassGraceDays = candidate.TrespassGraceDays,
 			Reason = candidate.Reason ?? string.Empty
 		};
+	}
+
+	private static bool RecordAiHumanRobberyMeetingPending(AiRobberyCandidate candidate, PlayerInfo humanPlayer, SimTime now, string source, string mode, int createdDay)
+	{
+		if (candidate?.Robber == null || humanPlayer == null || !candidate.TargetCrew.IsValid)
+		{
+			return false;
+		}
+		if (TryGetActiveConvoInitiative(candidate.Robber, out NodeID convoMeetingPoint, out string convoTopic, out bool convoNeedsPeep))
+		{
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"robbery-meeting-skip-real-convo robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} targetCrew={candidate.TargetCrew.peepId.id} source={source} mode={mode} convoTopic={convoTopic ?? string.Empty} convoMeetingNode={convoMeetingPoint} convoNeedsPeep={convoNeedsPeep} result=not-queued");
+			return false;
+		}
+		string key = GetAiHumanRobberyMeetingKey(candidate.Robber, humanPlayer);
+		if (string.IsNullOrEmpty(key))
+		{
+			return false;
+		}
+		if (!TrySelectAiHumanRobberyMeetingCrew(candidate, out CrewAssignment meetingCrew, out Node meetingCrewNode, out string meetingCrewNodeSource))
+		{
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"robbery-meeting-capacity-blocked robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} source={source} mode={mode} reason=no-meeting-crew result=not-queued");
+			return false;
+		}
+		int priority = GetDeferredAiHumanRobberyPriority(candidate, source);
+		int notBeforeDay = Math.Max(now.days + 1, createdDay >= 0 ? createdDay + 1 : now.days + 1);
+		PendingAiHumanRobberyMeeting previousPending = null;
+		if (_pendingAiHumanRobberyMeetingsByKey.TryGetValue(key, out PendingAiHumanRobberyMeeting existing))
+		{
+			bool sameTarget = existing.TargetCrewPeepId == (long)candidate.TargetCrew.peepId.id;
+			bool sameNode = existing.MeetingNodeIndex == (candidate.ContactNode?.id.index ?? 0);
+			bool sameActor = existing.MeetingPeepId == (long)meetingCrew.peepId.id;
+			PlayerInfo robber = candidate.Robber;
+			EntityID existingPeepId = existing.MeetingPeepId > 0L ? EntityID.FromID((ulong)existing.MeetingPeepId) : EntityID.INVALID;
+			CrewAssignment existingCrew = existingPeepId.IsValid && robber?.crew != null
+				? robber.crew.GetCrewForPeep(existingPeepId)
+				: CrewAssignment.EMPTY;
+			bool existingActorValid = existingCrew.IsValid
+				&& !existingCrew.IsDead
+				&& existingCrew.peepId.IsValid
+				&& existingCrew.IsInVehicle
+				&& existingCrew.VehicleID.IsValid
+				&& (long)existingCrew.VehicleID.id == existing.MeetingVehicleId;
+			bool routeCommitted = existing.RouteQueued || existing.Arrived || existing.LastRouteIssuedDay != int.MinValue;
+			bool existingExpired = IsPendingAiHumanRobberyMeetingExpired(existing, now);
+			previousPending = existingExpired ? null : existing;
+			if (existingExpired)
+			{
+				VerificationLog(
+					"AIPlayerRobbery",
+					$"robbery-meeting-replace-expired robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} oldMeetingPeep={existing.MeetingPeepId} oldMeetingVehicle={existing.MeetingVehicleId} oldTarget={existing.TargetCrewPeepId} oldMeetingNode=NID_{existing.MeetingNodeIndex} oldExpireDay={existing.ExpireDay} hardExpireDay={GetPendingAiHumanRobberyMeetingHardExpireDay(existing)} day={now.days} source={source} mode={mode} result=replace-expired");
+			}
+			if (!existingExpired && sameTarget && existingActorValid && routeCommitted)
+			{
+				int oldPriority = existing.Priority;
+				existing.Priority = Math.Max(existing.Priority, priority);
+				existing.ExpireDay = ClampPendingAiHumanRobberyMeetingExpireDay(existing, Math.Max(existing.ExpireDay, now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS));
+				if (priority >= oldPriority)
+				{
+					existing.Source = source ?? existing.Source;
+					existing.Mode = mode ?? existing.Mode;
+					existing.Reason = candidate.Reason ?? existing.Reason;
+					existing.CreatedDay = createdDay;
+				}
+				VerificationLog(
+					"AIPlayerRobbery",
+					$"robbery-meeting-retained robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} meetingPeep={existing.MeetingPeepId} meetingVehicle={existing.MeetingVehicleId} targetCrew={existing.TargetCrewPeepId} meetingNode=NID_{existing.MeetingNodeIndex} source={source} mode={mode} existingSource={existing.Source} priority={priority}/{oldPriority}->{existing.Priority} actorLock=True routeLock=True proposedPeep={meetingCrew.peepId.id} proposedVehicle={meetingCrew.VehicleID.id} proposedNode={candidate.ContactNode?.id ?? NodeID.INVALID} sameNode={sameNode} routeQueued={existing.RouteQueued} arrived={existing.Arrived} result=pending-kept");
+				return true;
+			}
+			if (!existingExpired
+				&& sameTarget
+				&& routeCommitted
+				&& !existingActorValid
+				&& meetingCrew.IsValid
+				&& meetingCrew.peepId.IsValid
+				&& meetingCrew.VehicleID.IsValid)
+			{
+				int oldPriority = existing.Priority;
+				long oldPeep = existing.MeetingPeepId;
+				long oldVehicle = existing.MeetingVehicleId;
+				existing.MeetingPeepId = (long)meetingCrew.peepId.id;
+				existing.MeetingVehicleId = (long)meetingCrew.VehicleID.id;
+				existing.Priority = Math.Max(existing.Priority, priority);
+				existing.ExpireDay = ClampPendingAiHumanRobberyMeetingExpireDay(existing, Math.Max(existing.ExpireDay, now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS));
+				existing.MeetingCrewNodeIndex = meetingCrewNode?.id.index ?? existing.MeetingCrewNodeIndex;
+				existing.LastObservedNodeIndex = meetingCrewNode?.id.index ?? existing.LastObservedNodeIndex;
+				existing.RouteTargetNodeIndex = 0;
+				existing.RouteQueued = false;
+				existing.Arrived = false;
+				existing.LastProgressDay = now.days;
+				existing.Source = source ?? existing.Source;
+				existing.Mode = mode ?? existing.Mode;
+				existing.Reason = candidate.Reason ?? existing.Reason;
+				existing.CreatedDay = createdDay;
+				VerificationLog(
+					"AIPlayerRobbery",
+					$"robbery-meeting-retained robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} meetingPeep={existing.MeetingPeepId} oldMeetingPeep={oldPeep} meetingVehicle={existing.MeetingVehicleId} oldMeetingVehicle={oldVehicle} targetCrew={existing.TargetCrewPeepId} meetingNode=NID_{existing.MeetingNodeIndex} source={source} mode={mode} existingSource={existing.Source} priority={priority}/{oldPriority}->{existing.Priority} actorRecovered=True vehicleRecovered=True vehicleChanged={oldVehicle != existing.MeetingVehicleId} routeLock=True proposedNode={candidate.ContactNode?.id ?? NodeID.INVALID} sameNode={sameNode} result=pending-kept");
+				return true;
+			}
+			if (!existingExpired && sameTarget && sameNode && existingActorValid)
+			{
+				int oldPriority = existing.Priority;
+				existing.Priority = Math.Max(existing.Priority, priority);
+				existing.ExpireDay = ClampPendingAiHumanRobberyMeetingExpireDay(existing, Math.Max(existing.ExpireDay, now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS));
+				if (priority >= oldPriority)
+				{
+					existing.Source = source ?? existing.Source;
+					existing.Mode = mode ?? existing.Mode;
+					existing.Reason = candidate.Reason ?? existing.Reason;
+					existing.CreatedDay = createdDay;
+				}
+				VerificationLog(
+					"AIPlayerRobbery",
+					$"robbery-meeting-retained robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} meetingPeep={existing.MeetingPeepId} meetingVehicle={existing.MeetingVehicleId} targetCrew={existing.TargetCrewPeepId} meetingNode=NID_{existing.MeetingNodeIndex} source={source} mode={mode} existingSource={existing.Source} priority={priority}/{oldPriority}->{existing.Priority} actorLock=True proposedPeep={meetingCrew.peepId.id} proposedVehicle={meetingCrew.VehicleID.id} result=pending-kept");
+				return true;
+			}
+			if (!existingExpired && existing.QueuedDay == now.days && priority <= existing.Priority && sameTarget && sameNode && sameActor)
+			{
+				VerificationLog(
+					"AIPlayerRobbery",
+					$"robbery-meeting-retained robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} meetingPeep={existing.MeetingPeepId} meetingVehicle={existing.MeetingVehicleId} targetCrew={existing.TargetCrewPeepId} meetingNode=NID_{existing.MeetingNodeIndex} source={source} mode={mode} existingSource={existing.Source} priority={priority}/{existing.Priority} result=pending-kept");
+				return true;
+			}
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"robbery-meeting-updated robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} oldMeetingPeep={existing.MeetingPeepId} oldMeetingVehicle={existing.MeetingVehicleId} oldTarget={existing.TargetCrewPeepId} oldMeetingNode=NID_{existing.MeetingNodeIndex} oldSource={existing.Source} newMeetingPeep={meetingCrew.peepId.id} newMeetingVehicle={meetingCrew.VehicleID.id} newTarget={candidate.TargetCrew.peepId.id} newMeetingNode={candidate.ContactNode?.id ?? NodeID.INVALID} source={source} mode={mode} priority={priority}/{existing.Priority} result=pending-updated");
+		}
+		PendingAiHumanRobberyMeeting pending = new PendingAiHumanRobberyMeeting
+		{
+			RobberPid = candidate.Robber.PID.id,
+			HumanPid = humanPlayer.PID.id,
+			TargetCrewPeepId = (long)candidate.TargetCrew.peepId.id,
+			TargetVehicleId = candidate.TargetCrew.VehicleID.IsValid ? (long)candidate.TargetCrew.VehicleID.id : 0L,
+			MeetingPeepId = (long)meetingCrew.peepId.id,
+			MeetingVehicleId = meetingCrew.VehicleID.IsValid ? (long)meetingCrew.VehicleID.id : 0L,
+			MeetingNodeIndex = candidate.ContactNode?.id.index ?? 0,
+			MeetingCrewNodeIndex = meetingCrewNode?.id.index ?? 0,
+			RouteTargetNodeIndex = previousPending?.RouteTargetNodeIndex ?? 0,
+			LastObservedNodeIndex = previousPending?.LastObservedNodeIndex ?? (meetingCrewNode?.id.index ?? 0),
+			QueuedDay = now.days,
+			NotBeforeDay = notBeforeDay,
+			ExpireDay = now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS,
+			CreatedDay = createdDay,
+			Priority = priority,
+			LastRouteIssuedDay = previousPending?.LastRouteIssuedDay ?? int.MinValue,
+			LastProgressDay = previousPending?.LastProgressDay ?? now.days,
+			NoProgressChecks = previousPending?.NoProgressChecks ?? 0,
+			Source = source ?? string.Empty,
+			Mode = mode ?? string.Empty,
+			Reason = candidate.Reason ?? string.Empty,
+			MeetingCrewNodeSource = meetingCrewNodeSource ?? string.Empty,
+			RouteQueued = previousPending?.RouteQueued ?? false,
+			Arrived = previousPending?.Arrived ?? false,
+			RouteRequeueCount = previousPending?.RouteRequeueCount ?? 0,
+			FinalTargetRouteCommitted = previousPending?.FinalTargetRouteCommitted ?? false,
+			ActorReassignmentGranted = previousPending?.ActorReassignmentGranted ?? false,
+			TargetMoveRouteWindowResets = previousPending?.TargetMoveRouteWindowResets ?? 0
+		};
+		_pendingAiHumanRobberyMeetingsByKey[key] = pending;
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"robbery-meeting-queued robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} meetingCrewNode=NID_{pending.MeetingCrewNodeIndex} meetingCrewSource={pending.MeetingCrewNodeSource} targetCrew={pending.TargetCrewPeepId} targetVehicle={pending.TargetVehicleId} meetingNode=NID_{pending.MeetingNodeIndex} queuedDay={pending.QueuedDay} notBeforeDay={pending.NotBeforeDay} expireDay={pending.ExpireDay} source={pending.Source} mode={pending.Mode} priority={pending.Priority} reason={pending.Reason} promptStillLegacy=True result=pending");
+		TryQueuePendingAiHumanRobberyMeetingRoute(pending, candidate.Robber, now, "record:" + (source ?? "unknown"), allowRequeue: false);
+		return true;
+	}
+
+	private static bool TrySelectAiHumanRobberyMeetingCrew(AiRobberyCandidate candidate, out CrewAssignment meetingCrew, out Node meetingCrewNode, out string meetingCrewNodeSource)
+	{
+		meetingCrew = CrewAssignment.EMPTY;
+		meetingCrewNode = null;
+		meetingCrewNodeSource = "none";
+		if (candidate?.Robber == null || candidate.ContactNode == null)
+		{
+			return false;
+		}
+		float bestDistance = float.MaxValue;
+		foreach ((CrewAssignment crew, Node node, string source) entry in GetAiRobberyCrewNodes(candidate.Robber, allowSafehouseFallback: true))
+		{
+			if (!entry.crew.IsValid || entry.crew.IsDead || !entry.crew.peepId.IsValid || entry.node == null)
+			{
+				continue;
+			}
+			if (!TryResolveRuntimeFrontActionCrew(candidate.Robber, entry.crew, out CrewAssignment actionCrew, out _)
+				|| !actionCrew.IsValid
+				|| actionCrew.peepId.IsNotValid
+				|| !actionCrew.IsInVehicle
+				|| actionCrew.VehicleID.IsNotValid
+				|| IsCrewAssignedToOtherPendingRetaliationAction(candidate.Robber.PID, actionCrew.peepId, EntityID.INVALID, out _)
+				|| IsRetaliationConvoInitiativeCrewReserved(candidate.Robber, actionCrew, out _, out _, out _, out _)
+				|| ShouldRuntimeGangAttackerRetreat(candidate.Robber, actionCrew, out _))
+			{
+				continue;
+			}
+			Node actionNode = entry.node;
+			string actionSource = entry.source;
+			if (actionCrew.peepId != entry.crew.peepId
+				&& TryGetAiRobberyCrewNode(actionCrew, out Node resolvedActionNode, out string resolvedActionSource)
+				&& resolvedActionNode != null)
+			{
+				actionNode = resolvedActionNode;
+				actionSource = resolvedActionSource;
+			}
+			float distance = (actionNode.pos - candidate.ContactNode.pos).Magnitude;
+			bool replaces = distance + 0.25f < bestDistance;
+			if (!replaces && Math.Abs(distance - bestDistance) <= 0.25f && meetingCrew.IsValid)
+			{
+				bool entryIsBoss = IsRuntimeFrontActionBoss(candidate.Robber, actionCrew.GetPeep());
+				bool selectedIsBoss = IsRuntimeFrontActionBoss(candidate.Robber, meetingCrew.GetPeep());
+				replaces = !entryIsBoss && selectedIsBoss;
+			}
+			if (!replaces)
+			{
+				continue;
+			}
+			meetingCrew = actionCrew;
+			meetingCrewNode = actionNode;
+			meetingCrewNodeSource = actionSource ?? string.Empty;
+			bestDistance = distance;
+		}
+		return meetingCrew.IsValid && meetingCrew.peepId.IsValid && meetingCrewNode != null;
+	}
+
+	private static bool IsPendingAiHumanRobberyMeetingActorValid(
+		PendingAiHumanRobberyMeeting pending,
+		PlayerInfo robber,
+		out CrewAssignment meetingCrew,
+		out Entity meetingPeep,
+		out NodeID currentNodeId,
+		out string currentNodeSource,
+		out string reason)
+	{
+		meetingCrew = CrewAssignment.EMPTY;
+		meetingPeep = null;
+		currentNodeId = NodeID.INVALID;
+		currentNodeSource = "none";
+		reason = "invalid";
+		if (pending == null)
+		{
+			reason = "missing-pending";
+			return false;
+		}
+		if (robber?.crew == null || pending.MeetingPeepId <= 0L)
+		{
+			reason = "missing-robber-or-peep";
+			return false;
+		}
+		EntityID meetingPeepId = EntityID.FromID((ulong)pending.MeetingPeepId);
+		meetingCrew = meetingPeepId.IsValid ? robber.crew.GetCrewForPeep(meetingPeepId) : CrewAssignment.EMPTY;
+		if (!meetingCrew.IsValid)
+		{
+			reason = "crew-missing";
+			return false;
+		}
+		if (meetingCrew.IsDead)
+		{
+			reason = "crew-dead";
+			return false;
+		}
+		meetingPeep = meetingCrew.GetPeep();
+		if (meetingPeep?.data?.person?.IsAlive != true)
+		{
+			reason = "peep-dead";
+			return false;
+		}
+		if (!meetingCrew.IsInVehicle || meetingCrew.VehicleID.IsNotValid)
+		{
+			reason = "no-vehicle";
+			return false;
+		}
+		if (pending.MeetingVehicleId > 0L && (long)meetingCrew.VehicleID.id != pending.MeetingVehicleId)
+		{
+			reason = "vehicle-changed";
+			return false;
+		}
+		if (!TryResolveRuntimeFrontActionCrewNodeQuiet(meetingCrew, meetingPeep, out currentNodeId, out currentNodeSource)
+			|| currentNodeId.IsNotValid)
+		{
+			reason = "no-physical-node";
+			return false;
+		}
+		reason = "valid";
+		return true;
+	}
+
+	private static bool IsCrewReservedForOtherPendingAiHumanRobberyMeeting(PlayerInfo robber, CrewAssignment crew, PendingAiHumanRobberyMeeting allowedPending)
+	{
+		if (robber == null || !crew.IsValid || crew.peepId.IsNotValid)
+		{
+			return false;
+		}
+		long peepId = (long)crew.peepId.id;
+		long vehicleId = crew.VehicleID.IsValid ? (long)crew.VehicleID.id : 0L;
+		SimTime now = G.GetNow();
+		foreach (PendingAiHumanRobberyMeeting pending in _pendingAiHumanRobberyMeetingsByKey.Values)
+		{
+			if (pending == null
+				|| pending == allowedPending
+				|| pending.RobberPid != robber.PID.id
+				|| IsPendingAiHumanRobberyMeetingExpired(pending, now))
+			{
+				continue;
+			}
+			if (pending.MeetingPeepId == peepId || vehicleId > 0L && pending.MeetingVehicleId == vehicleId)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static bool TryReassignPendingAiHumanRobberyMeetingActor(PendingAiHumanRobberyMeeting pending, PlayerInfo robber, SimTime now, string source, string invalidReason)
+	{
+		if (pending == null || robber?.crew == null || pending.ActorReassignmentGranted || pending.MeetingNodeIndex <= 0)
+		{
+			return false;
+		}
+		Node meetingNode = new NodeID(pending.MeetingNodeIndex).FindNode();
+		if (meetingNode?.id.IsValid != true)
+		{
+			return false;
+		}
+		CrewAssignment bestCrew = CrewAssignment.EMPTY;
+		Node bestNode = null;
+		string bestSource = "none";
+		float bestDistance = float.MaxValue;
+		long oldPeep = pending.MeetingPeepId;
+		long oldVehicle = pending.MeetingVehicleId;
+		foreach ((CrewAssignment crew, Node node, string source) entry in GetAiRobberyCrewNodes(robber, allowSafehouseFallback: true))
+		{
+			if (!entry.crew.IsValid || entry.crew.IsDead || !entry.crew.peepId.IsValid || entry.node == null)
+			{
+				continue;
+			}
+			if ((long)entry.crew.peepId.id == oldPeep)
+			{
+				continue;
+			}
+			if (!TryResolveRuntimeFrontActionCrew(robber, entry.crew, out CrewAssignment actionCrew, out _)
+				|| !actionCrew.IsValid
+				|| actionCrew.peepId.IsNotValid
+				|| !actionCrew.IsInVehicle
+				|| actionCrew.VehicleID.IsNotValid
+				|| (long)actionCrew.peepId.id == oldPeep
+				|| (oldVehicle > 0L && (long)actionCrew.VehicleID.id == oldVehicle)
+				|| IsCrewAssignedToOtherPendingRetaliationAction(robber.PID, actionCrew.peepId, EntityID.INVALID, out _)
+				|| IsCrewReservedForOtherPendingAiHumanRobberyMeeting(robber, actionCrew, pending)
+				|| IsRetaliationConvoInitiativeCrewReserved(robber, actionCrew, out _, out _, out _, out _)
+				|| ShouldRuntimeGangAttackerRetreat(robber, actionCrew, out _))
+			{
+				continue;
+			}
+			Entity peep = actionCrew.GetPeep();
+			if (peep?.data?.person?.IsAlive != true)
+			{
+				continue;
+			}
+			Node actionNode = entry.node;
+			string actionSource = entry.source;
+			if (actionCrew.peepId != entry.crew.peepId
+				&& TryGetAiRobberyCrewNode(actionCrew, out Node resolvedActionNode, out string resolvedActionSource)
+				&& resolvedActionNode != null)
+			{
+				actionNode = resolvedActionNode;
+				actionSource = resolvedActionSource;
+			}
+			float distance = (actionNode.pos - meetingNode.pos).Magnitude;
+			bool replaces = distance + 0.25f < bestDistance;
+			if (!replaces && Math.Abs(distance - bestDistance) <= 0.25f && bestCrew.IsValid)
+			{
+				bool entryIsBoss = IsRuntimeFrontActionBoss(robber, actionCrew.GetPeep());
+				bool selectedIsBoss = IsRuntimeFrontActionBoss(robber, bestCrew.GetPeep());
+				replaces = !entryIsBoss && selectedIsBoss;
+			}
+			if (!replaces)
+			{
+				continue;
+			}
+			bestCrew = actionCrew;
+			bestNode = actionNode;
+			bestSource = actionSource ?? string.Empty;
+			bestDistance = distance;
+		}
+		if (!bestCrew.IsValid || bestCrew.peepId.IsNotValid || bestCrew.VehicleID.IsNotValid || bestNode == null)
+		{
+			return false;
+		}
+		pending.ActorReassignmentGranted = true;
+		pending.MeetingPeepId = (long)bestCrew.peepId.id;
+		pending.MeetingVehicleId = (long)bestCrew.VehicleID.id;
+		pending.MeetingCrewNodeIndex = bestNode.id.index;
+		pending.LastObservedNodeIndex = bestNode.id.index;
+		pending.RouteTargetNodeIndex = 0;
+		pending.RouteQueued = false;
+		pending.Arrived = false;
+		pending.NoProgressChecks = 0;
+		pending.DivergingRouteChecks = 0;
+		pending.LastDistanceToMeeting = bestDistance;
+		pending.LastProgressDay = now.days;
+		pending.MeetingCrewNodeSource = bestSource ?? string.Empty;
+		TryExtendPendingAiHumanRobberyMeetingExpiry(pending, now, source, "actor-reassigned");
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"robbery-meeting-actor-reassigned robber={pending.RobberPid} human={pending.HumanPid} oldMeetingPeep={oldPeep} oldMeetingVehicle={oldVehicle} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} targetCrew={pending.TargetCrewPeepId} meetingCrewNode=NID_{pending.MeetingCrewNodeIndex} meetingCrewSource={pending.MeetingCrewNodeSource} meetingNode=NID_{pending.MeetingNodeIndex} queuedDay={pending.QueuedDay} expireDay={pending.ExpireDay} day={now.days} distance={bestDistance:0.0} invalidReason={invalidReason} source={source} result=reassigned");
+		return true;
+	}
+
+	private static bool TryExtendPendingAiHumanRobberyMeetingExpiry(PendingAiHumanRobberyMeeting pending, SimTime now, string source, string reason)
+	{
+		if (pending == null)
+		{
+			return false;
+		}
+		int hardExpireDay = GetPendingAiHumanRobberyMeetingHardExpireDay(pending);
+		if (now.days > hardExpireDay)
+		{
+			return false;
+		}
+		int oldExpireDay = pending.ExpireDay;
+		int nextExpireDay = Math.Min(hardExpireDay, now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS);
+		if (nextExpireDay <= pending.ExpireDay)
+		{
+			return false;
+		}
+		pending.ExpireDay = nextExpireDay;
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"robbery-meeting-expiry-extended robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} meetingNode=NID_{pending.MeetingNodeIndex} queuedDay={pending.QueuedDay} oldExpireDay={oldExpireDay} expireDay={pending.ExpireDay} hardExpireDay={hardExpireDay} day={now.days} lastProgressDay={pending.LastProgressDay} routeQueued={pending.RouteQueued} requeues={pending.RouteRequeueCount} reason={reason} source={source} result=extended");
+		return true;
+	}
+
+	private static int GetPendingAiHumanRobberyMeetingHardExpireDay(PendingAiHumanRobberyMeeting pending)
+	{
+		return pending == null ? int.MinValue : pending.QueuedDay + AI_ROBBERY_MEETING_ROUTE_MAX_DAYS;
+	}
+
+	private static int ClampPendingAiHumanRobberyMeetingExpireDay(PendingAiHumanRobberyMeeting pending, int requestedExpireDay)
+	{
+		int hardExpireDay = GetPendingAiHumanRobberyMeetingHardExpireDay(pending);
+		return hardExpireDay > 0 ? Math.Min(hardExpireDay, requestedExpireDay) : requestedExpireDay;
+	}
+
+	private static int GetAiHumanRobberyDeferredResponseExpireDay(int robberPid, int humanPid, int requestedExpireDay)
+	{
+		if (TryGetPendingAiHumanRobberyMeeting(robberPid, humanPid, out PendingAiHumanRobberyMeeting pending))
+		{
+			return ClampPendingAiHumanRobberyMeetingExpireDay(pending, requestedExpireDay);
+		}
+		return requestedExpireDay;
+	}
+
+	private static bool IsPendingAiHumanRobberyMeetingExpired(PendingAiHumanRobberyMeeting pending, SimTime now)
+	{
+		return pending == null || pending.ExpireDay < now.days || now.days > GetPendingAiHumanRobberyMeetingHardExpireDay(pending);
+	}
+
+	private static bool TryQueuePendingAiHumanRobberyMeetingRoute(PendingAiHumanRobberyMeeting pending, PlayerInfo robber, SimTime now, string source, bool allowRequeue)
+	{
+		if (pending == null || robber?.crew == null || robber.commands == null || pending.MeetingPeepId <= 0L || pending.MeetingNodeIndex <= 0)
+		{
+			return false;
+		}
+		try
+		{
+			EntityID meetingPeepId = EntityID.FromID((ulong)pending.MeetingPeepId);
+			CrewAssignment meetingCrew = robber.crew.GetCrewForPeep(meetingPeepId);
+			Entity meetingPeep = meetingCrew.IsValid ? meetingCrew.GetPeep() : null;
+			Node meetingNode = new NodeID(pending.MeetingNodeIndex).FindNode();
+			if (!meetingCrew.IsValid || meetingCrew.IsDead || meetingPeep?.data?.person?.IsAlive != true || meetingNode?.id.IsValid != true)
+			{
+				VerificationLog("AIPlayerRobbery", $"robbery-meeting-route-blocked robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} meetingNode=NID_{pending.MeetingNodeIndex} source={source} reason=invalid-route-context actorDead={(meetingCrew.IsValid && meetingCrew.IsDead) || meetingPeep?.data?.person?.IsAlive == false} result=not-queued");
+				return false;
+			}
+			if (TryGetActiveConvoInitiative(robber, out NodeID convoMeetingPoint, out string convoTopic, out bool convoNeedsPeep))
+			{
+				VerificationLog("AIPlayerRobbery", $"robbery-meeting-route-blocked robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingNode=NID_{pending.MeetingNodeIndex} source={source} reason=real-convo-active convoTopic={convoTopic} convoMeetingNode={convoMeetingPoint} convoNeedsPeep={convoNeedsPeep} result=not-queued");
+				return false;
+			}
+			if (IsCrewAssignedToOtherPendingRetaliationAction(robber.PID, meetingCrew.peepId, EntityID.INVALID, out PendingRetaliationFrontTicker busyPending))
+			{
+				VerificationLog("AIPlayerRobbery", $"robbery-meeting-route-blocked robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} meetingNode=NID_{pending.MeetingNodeIndex} source={source} reason=pending-{GetPendingRetaliationActionKind(busyPending)} building={busyPending?.BuildingId.id ?? 0UL} result=not-queued");
+				return false;
+			}
+			if (!TryResolveRuntimeFrontActionCrewNodeQuiet(meetingCrew, meetingPeep, out NodeID currentNodeId, out string currentNodeSource)
+				|| currentNodeId.IsNotValid)
+			{
+				VerificationLog("AIPlayerRobbery", $"robbery-meeting-route-blocked robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} meetingNode=NID_{pending.MeetingNodeIndex} source={source} reason=no-physical-node result=not-queued");
+				return false;
+			}
+			pending.MeetingCrewNodeIndex = currentNodeId.index;
+			if (currentNodeId == meetingNode.id || meetingPeep.data?.agent?.nid == meetingNode.id)
+			{
+				bool routeArrivalHold = TryHoldPendingAiHumanRobberyMeetingActor(pending, robber, meetingCrew, currentNodeId, now, "arrived-exact", source);
+				pending.Arrived = true;
+				pending.RouteQueued = false;
+				pending.RouteTargetNodeIndex = meetingNode.id.index;
+				pending.LastObservedNodeIndex = meetingNode.id.index;
+				pending.LastProgressDay = now.days;
+				VerificationLog("AIPlayerRobbery", $"robbery-meeting-arrived robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} currentNode={currentNodeId} currentSource={currentNodeSource} meetingNode={meetingNode.id} queuedDay={pending.QueuedDay} day={now.days} requeues={pending.RouteRequeueCount} routeArrivalHold={routeArrivalHold} promptStillLegacy=True source={source} result=arrived");
+				return true;
+			}
+			if (!allowRequeue && pending.RouteQueued)
+			{
+				return true;
+			}
+			Node currentNode = currentNodeId.FindNode();
+			float currentDistanceToMeeting = currentNode != null ? (currentNode.pos - meetingNode.pos).Magnitude : -1f;
+			bool finalMeetingRouteActive = pending.FinalTargetRouteCommitted
+				|| (pending.RouteQueued
+					&& pending.RouteTargetNodeIndex > 0
+					&& pending.RouteTargetNodeIndex == meetingNode.id.index);
+			if (finalMeetingRouteActive
+				&& currentDistanceToMeeting >= 0f
+				&& currentDistanceToMeeting <= AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE)
+			{
+				bool routeArrivalHold = TryHoldPendingAiHumanRobberyMeetingActor(pending, robber, meetingCrew, currentNodeId, now, "arrived-nearby", source);
+				pending.Arrived = true;
+				pending.RouteQueued = false;
+				pending.RouteTargetNodeIndex = meetingNode.id.index;
+				pending.LastObservedNodeIndex = currentNodeId.index;
+				pending.LastDistanceToMeeting = currentDistanceToMeeting;
+				pending.LastProgressDay = now.days;
+				VerificationLog("AIPlayerRobbery", $"robbery-meeting-arrived robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} currentNode={currentNodeId} currentSource={currentNodeSource} meetingNode={meetingNode.id} distance={currentDistanceToMeeting:0.0} promptDistance={AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE:0.0} queuedDay={pending.QueuedDay} day={now.days} requeues={pending.RouteRequeueCount} routeArrivalHold={routeArrivalHold} promptStillLegacy=True source={source} result=arrived-nearby");
+				return true;
+			}
+			bool reachedRouteSegment = allowRequeue
+				&& pending.RouteQueued
+				&& pending.RouteTargetNodeIndex > 0
+				&& pending.RouteTargetNodeIndex != meetingNode.id.index
+				&& currentNodeId.index == pending.RouteTargetNodeIndex;
+			if (reachedRouteSegment)
+			{
+				pending.RouteQueued = false;
+				pending.RouteTargetNodeIndex = 0;
+				pending.NoProgressChecks = 0;
+				pending.DivergingRouteChecks = 0;
+				pending.LastDistanceToMeeting = currentDistanceToMeeting;
+				pending.LastProgressDay = now.days;
+				TryExtendPendingAiHumanRobberyMeetingExpiry(pending, now, source, "segment-complete");
+				VerificationLog(
+					"AIPlayerRobbery",
+					$"robbery-meeting-route-segment-complete robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} currentNode={currentNodeId} currentSource={currentNodeSource} meetingNode={meetingNode.id} queuedDay={pending.QueuedDay} day={now.days} requeues={pending.RouteRequeueCount} source={source} result=queue-next-leg");
+			}
+			bool closeRangeTargetHandoff = allowRequeue
+				&& pending.RouteQueued
+				&& !reachedRouteSegment
+				&& pending.RouteTargetNodeIndex > 0
+				&& pending.RouteTargetNodeIndex != meetingNode.id.index
+				&& currentDistanceToMeeting >= 0f
+				&& currentDistanceToMeeting <= AI_ROBBERY_MEETING_TARGET_COMMIT_DISTANCE;
+			if (closeRangeTargetHandoff)
+			{
+				short previousRouteTargetNodeIndex = pending.RouteTargetNodeIndex;
+				pending.RouteQueued = false;
+				pending.NoProgressChecks = 0;
+				pending.DivergingRouteChecks = 0;
+				pending.LastDistanceToMeeting = currentDistanceToMeeting;
+				pending.LastProgressDay = now.days;
+				TryExtendPendingAiHumanRobberyMeetingExpiry(pending, now, source, "close-range-target-handoff");
+				VerificationLog(
+					"AIPlayerRobbery",
+					$"robbery-meeting-route-close-range-handoff robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} currentNode={currentNodeId} currentSource={currentNodeSource} previousRouteTargetNode=NID_{previousRouteTargetNodeIndex} meetingNode={meetingNode.id} distance={currentDistanceToMeeting:0.0} commitDistance={AI_ROBBERY_MEETING_TARGET_COMMIT_DISTANCE:0.0} queuedDay={pending.QueuedDay} day={now.days} requeues={pending.RouteRequeueCount} source={source} result=queue-target-leg");
+			}
+			if (allowRequeue
+				&& pending.RouteQueued
+				&& pending.RouteTargetNodeIndex > 0
+				&& !reachedRouteSegment
+				&& !closeRangeTargetHandoff
+				&& robber.commands.PeepHasTask(meetingCrew.peepId))
+			{
+				bool progressed = pending.LastObservedNodeIndex > 0 && pending.LastObservedNodeIndex != currentNodeId.index;
+				bool diverging = progressed
+					&& pending.LastDistanceToMeeting >= 0f
+					&& currentDistanceToMeeting > pending.LastDistanceToMeeting + 1f;
+				if (progressed)
+				{
+					pending.NoProgressChecks = 0;
+					pending.LastProgressDay = now.days;
+					if (diverging)
+					{
+						pending.DivergingRouteChecks++;
+					}
+					else
+					{
+						pending.DivergingRouteChecks = 0;
+						TryExtendPendingAiHumanRobberyMeetingExpiry(pending, now, source, "route-progress");
+					}
+				}
+				else
+				{
+					pending.NoProgressChecks++;
+					pending.DivergingRouteChecks = 0;
+				}
+				VerificationLog(
+					"AIPlayerRobbery",
+					$"robbery-meeting-route-progress robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} previousNode=NID_{pending.LastObservedNodeIndex} currentNode={currentNodeId} currentSource={currentNodeSource} routeTargetNode=NID_{pending.RouteTargetNodeIndex} meetingNode={meetingNode.id} progressed={progressed} diverging={diverging} distance={currentDistanceToMeeting:0.0} lastDistance={pending.LastDistanceToMeeting:0.0} divergingChecks={pending.DivergingRouteChecks} taskActive=True noProgressChecks={pending.NoProgressChecks} requeues={pending.RouteRequeueCount} source={source} result=route-active");
+				pending.LastObservedNodeIndex = currentNodeId.index;
+				pending.LastDistanceToMeeting = currentDistanceToMeeting;
+				bool routeDiverged = pending.DivergingRouteChecks >= 2;
+				if (routeDiverged)
+				{
+					pending.RouteQueued = false;
+					pending.DivergingRouteChecks = 0;
+					VerificationLog(
+						"AIPlayerRobbery",
+						$"robbery-meeting-route-diverged robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} currentNode={currentNodeId} currentSource={currentNodeSource} routeTargetNode=NID_{pending.RouteTargetNodeIndex} meetingNode={meetingNode.id} queuedDay={pending.QueuedDay} day={now.days} distance={currentDistanceToMeeting:0.0} requeues={pending.RouteRequeueCount} source={source} result=requeue-required");
+				}
+				if (!routeDiverged && pending.NoProgressChecks < 2)
+				{
+					return true;
+				}
+				if (!routeDiverged)
+				{
+					pending.RouteQueued = false;
+					VerificationLog(
+						"AIPlayerRobbery",
+						$"robbery-meeting-route-stale robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} currentNode={currentNodeId} currentSource={currentNodeSource} routeTargetNode=NID_{pending.RouteTargetNodeIndex} meetingNode={meetingNode.id} queuedDay={pending.QueuedDay} day={now.days} noProgressChecks={pending.NoProgressChecks} requeues={pending.RouteRequeueCount} source={source} result=requeue-required");
+				}
+			}
+			if (!TryBuildRuntimeFrontApproachRoute(robber.PID, meetingPeep, meetingNode, out PathData routePath, out string routeReason))
+			{
+				VerificationLog("AIPlayerRobbery", $"robbery-meeting-route-blocked robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} currentNode={currentNodeId} currentSource={currentNodeSource} meetingNode={meetingNode.id} source={source} reason={routeReason} result=not-queued");
+				return false;
+			}
+			bool forceTargetRoute = allowRequeue
+				&& (pending.FinalTargetRouteCommitted
+					|| pending.RouteRequeueCount + 1 >= AI_ROBBERY_MEETING_TARGET_COMMIT_REQUEUES
+					|| (currentDistanceToMeeting >= 0f && currentDistanceToMeeting <= AI_ROBBERY_MEETING_TARGET_COMMIT_DISTANCE));
+			Node routeNode = ResolveFrontRouteCommandNode(meetingNode, routePath, allowSegmentTarget: !forceTargetRoute, out NodeID routeNodeId, out string routeGoal);
+			if (routeNode?.id.IsValid != true)
+			{
+				routeNode = meetingNode;
+				routeNodeId = meetingNode.id;
+				routeGoal = "target-fallback";
+			}
+			bool routeAuthorityReset = false;
+			bool routeIsFinalTarget = routeNodeId == meetingNode.id;
+			if (forceTargetRoute || routeIsFinalTarget)
+			{
+				robber.commands.FlushQueue(meetingCrew.peepId, cancelActive: true);
+				routeAuthorityReset = true;
+			}
+			robber.commands.AddCommandImmediate(new CommandGoto(robber.PID, meetingCrew.peepId, routeNode));
+			if (allowRequeue)
+			{
+				pending.RouteRequeueCount++;
+			}
+			pending.RouteQueued = true;
+			pending.Arrived = false;
+			pending.RouteTargetNodeIndex = routeNodeId.index;
+			if (routeIsFinalTarget)
+			{
+				pending.FinalTargetRouteCommitted = true;
+			}
+			pending.LastObservedNodeIndex = currentNodeId.index;
+			pending.LastDistanceToMeeting = currentDistanceToMeeting;
+			pending.DivergingRouteChecks = 0;
+			pending.LastRouteIssuedDay = now.days;
+			if (pending.LastProgressDay <= 0)
+			{
+				pending.LastProgressDay = now.days;
+			}
+			TryExtendPendingAiHumanRobberyMeetingExpiry(pending, now, source, allowRequeue ? "route-requeued" : "route-queued");
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"robbery-meeting-route-{(allowRequeue ? "requeued" : "queued")} robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} currentNode={currentNodeId} currentSource={currentNodeSource} routeTargetNode={routeNodeId} meetingNode={meetingNode.id} routeGoal={routeGoal} targetCommitted={pending.FinalTargetRouteCommitted} forceTargetRoute={forceTargetRoute} routeAuthorityReset={routeAuthorityReset} route={routeReason} cost={routePath.cost} queuedDay={pending.QueuedDay} day={now.days} requeues={pending.RouteRequeueCount} promptStillLegacy=True source={source} result=queued");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			VerificationLog("AIPlayerRobbery", $"robbery-meeting-route-failed robber={pending?.RobberPid ?? 0} human={pending?.HumanPid ?? 0} meetingPeep={pending?.MeetingPeepId ?? 0L} meetingNode=NID_{pending?.MeetingNodeIndex ?? 0} source={source} reason={ex.GetType().Name}:{ex.Message} result=not-queued");
+			return false;
+		}
+	}
+
+	private static void ServicePendingAiHumanRobberyMeetings(PlayerInfo humanPlayer, SimTime now, string source)
+	{
+		if (humanPlayer == null || _pendingAiHumanRobberyMeetingsByKey.Count == 0)
+		{
+			return;
+		}
+		foreach (KeyValuePair<string, PendingAiHumanRobberyMeeting> kv in _pendingAiHumanRobberyMeetingsByKey.ToList())
+		{
+			PendingAiHumanRobberyMeeting pending = kv.Value;
+			if (pending == null || pending.HumanPid != humanPlayer.PID.id)
+			{
+				continue;
+			}
+			if (IsPendingAiHumanRobberyMeetingExpired(pending, now))
+			{
+				bool timeoutExtended = false;
+				if (pending.Arrived && TryExtendPendingAiHumanRobberyMeetingExpiry(pending, now, source, "timeout-arrived"))
+				{
+					timeoutExtended = true;
+					VerificationLog(
+						"AIPlayerRobbery",
+						$"robbery-meeting-timeout-deferred robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} meetingNode=NID_{pending.MeetingNodeIndex} queuedDay={pending.QueuedDay} expireDay={pending.ExpireDay} day={now.days} lastProgressDay={pending.LastProgressDay} requeues={pending.RouteRequeueCount} source={source} result=arrived-kept");
+				}
+				bool recentlyProgressed = !pending.Arrived
+					&& pending.RouteQueued
+					&& pending.LastProgressDay > 0
+					&& pending.LastProgressDay >= now.days - AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS;
+				if (!timeoutExtended && recentlyProgressed && TryExtendPendingAiHumanRobberyMeetingExpiry(pending, now, source, "timeout-moving-route"))
+				{
+					timeoutExtended = true;
+					VerificationLog(
+						"AIPlayerRobbery",
+						$"robbery-meeting-timeout-deferred robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} meetingNode=NID_{pending.MeetingNodeIndex} queuedDay={pending.QueuedDay} expireDay={pending.ExpireDay} day={now.days} lastProgressDay={pending.LastProgressDay} requeues={pending.RouteRequeueCount} source={source} result=moving-route-kept");
+				}
+				bool softExpiredBeforeHardWindow = pending.ExpireDay < now.days && now.days <= GetPendingAiHumanRobberyMeetingHardExpireDay(pending);
+				bool staleRouteCheckPending = !pending.Arrived
+					&& pending.RouteQueued
+					&& pending.RouteTargetNodeIndex > 0
+					&& pending.NoProgressChecks > 0;
+				if (!timeoutExtended && softExpiredBeforeHardWindow && staleRouteCheckPending && TryExtendPendingAiHumanRobberyMeetingExpiry(pending, now, source, "timeout-stale-route-check"))
+				{
+					timeoutExtended = true;
+					VerificationLog(
+						"AIPlayerRobbery",
+						$"robbery-meeting-timeout-deferred robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} meetingNode=NID_{pending.MeetingNodeIndex} queuedDay={pending.QueuedDay} expireDay={pending.ExpireDay} day={now.days} noProgressChecks={pending.NoProgressChecks} requeues={pending.RouteRequeueCount} source={source} result=stale-route-check-kept");
+				}
+				if (!timeoutExtended)
+				{
+					if (IsPendingAiHumanRobberyMeetingExpired(pending, now))
+					{
+						bool deferredRemoved = ClearDeferredAiHumanRobberyResponseForMeeting(pending, "meeting-route-expired", source);
+						VerificationLog("AIPlayerRobbery", $"robbery-meeting-timeout robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} meetingNode=NID_{pending.MeetingNodeIndex} queuedDay={pending.QueuedDay} expireDay={pending.ExpireDay} hardExpireDay={GetPendingAiHumanRobberyMeetingHardExpireDay(pending)} day={now.days} requeues={pending.RouteRequeueCount} deferredRemoved={deferredRemoved} source={source} result=expired-cleared");
+						ClearPendingAiHumanRobberyMeeting(pending.RobberPid, pending.HumanPid, "meeting-route-expired", source);
+						continue;
+					}
+				}
+			}
+			PlayerInfo robber = G.FindPlayerById(pending.RobberPid);
+			if (!IsPendingAiHumanRobberyMeetingActorValid(pending, robber, out CrewAssignment validMeetingCrew, out Entity validMeetingPeep, out NodeID validCurrentNodeId, out string validCurrentNodeSource, out string invalidActorReason))
+			{
+				if (TryReassignPendingAiHumanRobberyMeetingActor(pending, robber, now, source, invalidActorReason))
+				{
+					TryQueuePendingAiHumanRobberyMeetingRoute(pending, robber, now, source, allowRequeue: true);
+					continue;
+				}
+				VerificationLog(
+					"AIPlayerRobbery",
+					$"robbery-meeting-actor-reassign-unavailable robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} targetCrew={pending.TargetCrewPeepId} meetingNode=NID_{pending.MeetingNodeIndex} queuedDay={pending.QueuedDay} expireDay={pending.ExpireDay} day={now.days} reassignmentGranted={pending.ActorReassignmentGranted} invalidReason={invalidActorReason} source={source} result=clear-required");
+				ClearPendingAiHumanRobberyMeeting(pending.RobberPid, pending.HumanPid, "meeting-actor-invalid-" + invalidActorReason, source);
+				continue;
+			}
+			if (pending.Arrived)
+			{
+				NodeID currentNodeId = validCurrentNodeId;
+				string currentNodeSource = validCurrentNodeSource;
+				Node meetingNode = new NodeID(pending.MeetingNodeIndex).FindNode();
+				Node currentNode = currentNodeId.FindNode();
+				float distance = currentNode != null && meetingNode != null
+					? (currentNode.pos - meetingNode.pos).Magnitude
+					: -1f;
+				bool sameMeetingNode = currentNodeId.IsValid && currentNodeId.index == pending.MeetingNodeIndex;
+				bool withinPromptDistance = distance >= 0f && distance <= AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE;
+				bool withinArrivedHoldDistance = distance >= 0f && distance <= AI_ROBBERY_ARRIVED_HOLD_WORLD_DISTANCE;
+				bool stillPresent = currentNodeId.IsValid
+					&& (sameMeetingNode || withinPromptDistance || withinArrivedHoldDistance);
+				if (stillPresent)
+				{
+					pending.LastObservedNodeIndex = currentNodeId.index;
+					pending.LastDistanceToMeeting = distance;
+					pending.LastProgressDay = now.days;
+					bool routeArrivalHold = TryHoldPendingAiHumanRobberyMeetingActor(pending, robber, validMeetingCrew, currentNodeId, now, "arrived-held", source);
+					if (!sameMeetingNode && !withinPromptDistance && withinArrivedHoldDistance)
+					{
+						VerificationLog(
+							"AIPlayerRobbery",
+							$"robbery-meeting-arrived-hold-grace robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} currentNode={currentNodeId} currentSource={currentNodeSource} meetingNode=NID_{pending.MeetingNodeIndex} distance={distance:0.0} holdDistance={AI_ROBBERY_ARRIVED_HOLD_WORLD_DISTANCE:0.0} promptDistance={AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE:0.0} queuedDay={pending.QueuedDay} day={now.days} requeues={pending.RouteRequeueCount} routeArrivalHold={routeArrivalHold} source={source} result=held-nearby");
+					}
+					TryExtendPendingAiHumanRobberyMeetingExpiry(pending, now, source, "arrived-held");
+					continue;
+				}
+				pending.Arrived = false;
+				pending.RouteQueued = false;
+				pending.LastObservedNodeIndex = currentNodeId.IsValid ? currentNodeId.index : pending.LastObservedNodeIndex;
+				VerificationLog(
+					"AIPlayerRobbery",
+					$"robbery-meeting-arrival-lost robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} currentNode={currentNodeId} currentSource={currentNodeSource} meetingNode=NID_{pending.MeetingNodeIndex} distance={distance:0.0} holdDistance={AI_ROBBERY_ARRIVED_HOLD_WORLD_DISTANCE:0.0} queuedDay={pending.QueuedDay} day={now.days} requeues={pending.RouteRequeueCount} source={source} result=route-required");
+			}
+			if (TryQueuePendingAiHumanRobberyMeetingRoute(pending, robber, now, source, allowRequeue: true))
+			{
+				continue;
+			}
+			pending.NoProgressChecks++;
+			if (pending.NoProgressChecks >= 2)
+			{
+				VerificationLog("AIPlayerRobbery", $"robbery-meeting-timeout robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} meetingNode=NID_{pending.MeetingNodeIndex} queuedDay={pending.QueuedDay} day={now.days} noProgressChecks={pending.NoProgressChecks} requeues={pending.RouteRequeueCount} source={source} result=route-unavailable");
+			}
+		}
+	}
+
+	internal static int AddPendingAiHumanRobberyMeetingReservations(PlayerInfo robber, ISet<ulong> reservedVehicleIds)
+	{
+		if (robber == null || _pendingAiHumanRobberyMeetingsByKey.Count == 0)
+		{
+			return 0;
+		}
+		HashSet<long> meetings = new HashSet<long>();
+		SimTime now = G.GetNow();
+		foreach (PendingAiHumanRobberyMeeting pending in _pendingAiHumanRobberyMeetingsByKey.Values)
+		{
+			if (pending == null || pending.RobberPid != robber.PID.id || pending.MeetingPeepId <= 0L || IsPendingAiHumanRobberyMeetingExpired(pending, now))
+			{
+				continue;
+			}
+			meetings.Add(pending.MeetingPeepId);
+			if (pending.MeetingVehicleId > 0L)
+			{
+				reservedVehicleIds?.Add((ulong)pending.MeetingVehicleId);
+			}
+		}
+		return meetings.Count;
+	}
+
+	internal static bool IsCrewReservedForPendingAiHumanRobberyMeeting(PlayerInfo robber, CrewAssignment crew)
+	{
+		if (robber == null || !crew.IsValid || crew.peepId.IsNotValid)
+		{
+			return false;
+		}
+		long peepId = (long)crew.peepId.id;
+		long vehicleId = crew.VehicleID.IsValid ? (long)crew.VehicleID.id : 0L;
+		SimTime now = G.GetNow();
+		return _pendingAiHumanRobberyMeetingsByKey.Values.Any(pending => pending != null
+			&& pending.RobberPid == robber.PID.id
+			&& !IsPendingAiHumanRobberyMeetingExpired(pending, now)
+			&& (pending.MeetingPeepId == peepId || vehicleId > 0L && pending.MeetingVehicleId == vehicleId));
+	}
+
+	private static void ExtendArrivedPendingAiHumanRobberyMeetingDeferredResponses(PlayerInfo humanPlayer, SimTime now, string source)
+	{
+		if (humanPlayer == null || _pendingAiHumanRobberyMeetingsByKey.Count == 0 || _deferredAiHumanRobberyResponsesByKey.Count == 0)
+		{
+			return;
+		}
+		foreach (PendingAiHumanRobberyMeeting pending in _pendingAiHumanRobberyMeetingsByKey.Values.ToList())
+		{
+			if (pending == null || pending.HumanPid != humanPlayer.PID.id || !pending.Arrived)
+			{
+				continue;
+			}
+			string key = GetAiHumanRobberyDeferredResponseKey(pending.RobberPid, pending.HumanPid);
+			if (string.IsNullOrEmpty(key) || !_deferredAiHumanRobberyResponsesByKey.TryGetValue(key, out DeferredAiHumanRobberyResponse deferred) || deferred == null)
+			{
+				continue;
+			}
+			int oldPendingExpireDay = pending.ExpireDay;
+			TryExtendPendingAiHumanRobberyMeetingExpiry(pending, now, source, "arrived-response-wait");
+			int oldDeferredExpireDay = deferred.ExpireDay;
+			int targetExpireDay = Math.Max(deferred.ExpireDay, pending.ExpireDay);
+			if (targetExpireDay > deferred.ExpireDay)
+			{
+				deferred.ExpireDay = targetExpireDay;
+				VerificationLog(
+					"AIPlayerRobbery",
+					$"robbery-meeting-deferred-expiry-extended robber={deferred.RobberPid} human={humanPlayer.PID.id} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} targetCrew={deferred.TargetCrewPeepId} meetingNode=NID_{pending.MeetingNodeIndex} oldExpireDay={oldDeferredExpireDay} expireDay={deferred.ExpireDay} pendingExpireDay={oldPendingExpireDay}->{pending.ExpireDay} day={now.days} source={source} result=arrived-meeting-active");
+			}
+		}
+	}
+
+	private static bool TryGetPendingAiHumanRobberyMeeting(int robberPid, int humanPid, out PendingAiHumanRobberyMeeting pending)
+	{
+		pending = null;
+		string key = GetAiHumanRobberyMeetingKey(robberPid, humanPid);
+		return !string.IsNullOrEmpty(key)
+			&& _pendingAiHumanRobberyMeetingsByKey.TryGetValue(key, out pending)
+			&& pending != null;
+	}
+
+	private static void ClearPendingAiHumanRobberyMeeting(PlayerInfo robber, PlayerInfo humanPlayer, string reason, string source)
+	{
+		if (robber == null || humanPlayer == null)
+		{
+			return;
+		}
+		ClearPendingAiHumanRobberyMeeting(robber.PID.id, humanPlayer.PID.id, reason, source);
+	}
+
+	private static bool ClearDeferredAiHumanRobberyResponseForMeeting(PendingAiHumanRobberyMeeting pending, string reason, string source)
+	{
+		if (pending == null)
+		{
+			return false;
+		}
+		string deferredKey = GetAiHumanRobberyDeferredResponseKey(pending.RobberPid, pending.HumanPid);
+		bool removed = !string.IsNullOrEmpty(deferredKey) && _deferredAiHumanRobberyResponsesByKey.Remove(deferredKey);
+		if (removed)
+		{
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"cleared phase=deferred-response robber={pending.RobberPid} human={pending.HumanPid} targetCrew={pending.TargetCrewPeepId} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} meetingNode=NID_{pending.MeetingNodeIndex} queuedDay={pending.QueuedDay} expireDay={pending.ExpireDay} source={source} reason={reason} result=meeting-cleared");
+		}
+		return removed;
+	}
+
+	private static void ClearPendingAiHumanRobberyMeeting(int robberPid, int humanPid, string reason, string source)
+	{
+		string key = GetAiHumanRobberyMeetingKey(robberPid, humanPid);
+		if (string.IsNullOrEmpty(key) || !_pendingAiHumanRobberyMeetingsByKey.TryGetValue(key, out PendingAiHumanRobberyMeeting pending))
+		{
+			return;
+		}
+		NodeID currentNodeId = NodeID.INVALID;
+		string currentNodeSource = "none";
+		try
+		{
+			PlayerInfo robber = G.FindPlayerById(pending.RobberPid);
+			EntityID meetingPeepId = pending.MeetingPeepId > 0L ? EntityID.FromID((ulong)pending.MeetingPeepId) : EntityID.INVALID;
+			CrewAssignment meetingCrew = meetingPeepId.IsValid && robber?.crew != null
+				? robber.crew.GetCrewForPeep(meetingPeepId)
+				: CrewAssignment.EMPTY;
+			if (meetingCrew.IsValid)
+			{
+				TryResolveRuntimeFrontActionCrewNodeQuiet(meetingCrew, meetingCrew.GetPeep(), out currentNodeId, out currentNodeSource);
+			}
+		}
+		catch
+		{
+		}
+		_pendingAiHumanRobberyMeetingsByKey.Remove(key);
+		VerificationLog(
+			"AIPlayerRobbery",
+			$"robbery-meeting-cleared robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} targetCrew={pending.TargetCrewPeepId} currentNode={currentNodeId} currentSource={currentNodeSource} routeTargetNode=NID_{pending.RouteTargetNodeIndex} meetingNode=NID_{pending.MeetingNodeIndex} queuedDay={pending.QueuedDay} source={source} reason={reason} routeQueued={pending.RouteQueued} arrived={pending.Arrived} noProgressChecks={pending.NoProgressChecks} requeues={pending.RouteRequeueCount} result=cleared");
 	}
 
 	private static bool ShouldReplaceDeferredAiHumanRobberyResponse(DeferredAiHumanRobberyResponse existing, AiRobberyCandidate candidate, SimTime now, string source)
@@ -4870,6 +5885,8 @@ public partial class GameplayTweaksPlugin
 		{
 			SimTime now = G.GetNow();
 			ClearStaleAiHumanRobberyResponseLocks(humanPlayer, now);
+			ServicePendingAiHumanRobberyMeetings(humanPlayer, now, sourceTag + "-meeting-route");
+			ExtendArrivedPendingAiHumanRobberyMeetingDeferredResponses(humanPlayer, now, sourceTag);
 			if (humanPlayer == null || _deferredAiHumanRobberyResponsesByKey.Count == 0 || HasActiveAiHumanRobberyResponseForHuman(humanPlayer))
 			{
 				return;
@@ -4886,9 +5903,21 @@ public partial class GameplayTweaksPlugin
 				{
 					continue;
 				}
+				if (TryGetPendingAiHumanRobberyMeeting(deferred.RobberPid, humanPlayer.PID.id, out PendingAiHumanRobberyMeeting expiryPendingMeeting)
+					&& !expiryPendingMeeting.Arrived
+					&& expiryPendingMeeting.ExpireDay >= now.days
+					&& deferred.ExpireDay < expiryPendingMeeting.ExpireDay)
+				{
+					int oldExpireDay = deferred.ExpireDay;
+					deferred.ExpireDay = expiryPendingMeeting.ExpireDay;
+					VerificationLog(
+						"AIPlayerRobbery",
+						$"robbery-meeting-deferred-expiry-extended robber={deferred.RobberPid} human={humanPlayer.PID.id} meetingPeep={expiryPendingMeeting.MeetingPeepId} meetingVehicle={expiryPendingMeeting.MeetingVehicleId} targetCrew={deferred.TargetCrewPeepId} meetingNode=NID_{expiryPendingMeeting.MeetingNodeIndex} oldExpireDay={oldExpireDay} expireDay={deferred.ExpireDay} day={now.days} source={sourceTag} result=pending-meeting-active");
+				}
 				if (deferred.ExpireDay < now.days)
 				{
 					_deferredAiHumanRobberyResponsesByKey.Remove(kv.Key);
+					ClearPendingAiHumanRobberyMeeting(deferred.RobberPid, humanPlayer.PID.id, "deferred-response-expired", sourceTag);
 					VerificationLog("AIPlayerRobbery", $"expired phase=deferred-response robber={deferred.RobberPid} targetCrew={deferred.TargetCrewPeepId} enactedDay={deferred.EnactedDay} expireDay={deferred.ExpireDay} day={now.days} source={sourceTag}");
 					continue;
 				}
@@ -4898,6 +5927,7 @@ public partial class GameplayTweaksPlugin
 					if (!TryBuildDeferredAiHumanRobberyCandidateSnapshot(deferred, robber, humanPlayer, now, blockReason, out candidate, out string snapshotReason))
 					{
 						_deferredAiHumanRobberyResponsesByKey.Remove(kv.Key);
+						ClearPendingAiHumanRobberyMeeting(deferred.RobberPid, humanPlayer.PID.id, "deferred-response-cleared-" + snapshotReason, sourceTag);
 						VerificationLog("AIPlayerRobbery", $"cleared phase=deferred-response robber={deferred.RobberPid} targetCrew={deferred.TargetCrewPeepId} enactedDay={deferred.EnactedDay} day={now.days} reason={snapshotReason} originalReason={blockReason} source={sourceTag}");
 						continue;
 					}
@@ -4909,6 +5939,7 @@ public partial class GameplayTweaksPlugin
 					if (!TryBuildDeferredAiHumanRobberyCandidateSnapshot(deferred, robber, humanPlayer, now, "target-changed", out candidate, out string snapshotReason))
 					{
 						_deferredAiHumanRobberyResponsesByKey.Remove(kv.Key);
+						ClearPendingAiHumanRobberyMeeting(deferred.RobberPid, humanPlayer.PID.id, "deferred-response-cleared-" + snapshotReason, sourceTag);
 						VerificationLog("AIPlayerRobbery", $"cleared phase=deferred-response robber={deferred.RobberPid} targetCrew={deferred.TargetCrewPeepId} newTarget={newTarget} enactedDay={deferred.EnactedDay} day={now.days} reason={snapshotReason} originalReason=target-changed source={sourceTag}");
 						continue;
 					}
@@ -4918,14 +5949,72 @@ public partial class GameplayTweaksPlugin
 				if (preview.AvailableCash < GetAiHumanRobberyMinimumCash(candidate))
 				{
 					_deferredAiHumanRobberyResponsesByKey.Remove(kv.Key);
+					ClearPendingAiHumanRobberyMeeting(deferred.RobberPid, humanPlayer.PID.id, "deferred-response-low-cash", sourceTag);
 					LogAiHumanRobberyLowCashContactPreview(candidate, humanPlayer, now, "deferred-turn-start:" + deferred.Source, deferred.Mode);
 					continue;
 				}
-				string displaySource = "deferred-turn-start:" + deferred.Source;
+				bool meetingArrivalReady = false;
+				if (TryGetPendingAiHumanRobberyMeeting(deferred.RobberPid, humanPlayer.PID.id, out PendingAiHumanRobberyMeeting pendingMeeting))
+				{
+					if (!pendingMeeting.Arrived)
+					{
+						if (IsPendingAiHumanRobberyMeetingExpired(pendingMeeting, now))
+						{
+							_deferredAiHumanRobberyResponsesByKey.Remove(kv.Key);
+							VerificationLog("AIPlayerRobbery", $"robbery-meeting-prompt-cancelled robber={deferred.RobberPid} human={humanPlayer.PID.id} meetingPeep={pendingMeeting.MeetingPeepId} meetingVehicle={pendingMeeting.MeetingVehicleId} targetCrew={deferred.TargetCrewPeepId} currentNode=NID_{pendingMeeting.LastObservedNodeIndex} routeTargetNode=NID_{pendingMeeting.RouteTargetNodeIndex} meetingNode=NID_{pendingMeeting.MeetingNodeIndex} queuedDay={pendingMeeting.QueuedDay} expireDay={pendingMeeting.ExpireDay} day={now.days} source={sourceTag} reason=meeting-expired result=cancelled");
+							ClearPendingAiHumanRobberyMeeting(deferred.RobberPid, humanPlayer.PID.id, "meeting-prompt-expired", sourceTag);
+							continue;
+						}
+						deferred.NotBeforeDay = now.days + 1;
+						deferred.ExpireDay = Math.Max(deferred.ExpireDay, pendingMeeting.ExpireDay);
+						VerificationLog(
+							"AIPlayerRobbery",
+							$"robbery-meeting-prompt-deferred robber={deferred.RobberPid} human={humanPlayer.PID.id} meetingPeep={pendingMeeting.MeetingPeepId} meetingVehicle={pendingMeeting.MeetingVehicleId} targetCrew={deferred.TargetCrewPeepId} currentNode=NID_{pendingMeeting.LastObservedNodeIndex} routeTargetNode=NID_{pendingMeeting.RouteTargetNodeIndex} meetingNode=NID_{pendingMeeting.MeetingNodeIndex} queuedDay={pendingMeeting.QueuedDay} day={now.days} nextCheckDay={deferred.NotBeforeDay} expireDay={pendingMeeting.ExpireDay} routeQueued={pendingMeeting.RouteQueued} noProgressChecks={pendingMeeting.NoProgressChecks} requeues={pendingMeeting.RouteRequeueCount} source={sourceTag} result=waiting-for-arrival");
+						return;
+					}
+					if (!EnsureArrivedAiHumanRobberyMeetingTargetInPromptRange(pendingMeeting, deferred, robber, humanPlayer, candidate.TargetCrew, candidate.ContactNode, candidate.TargetNodeSource, now, sourceTag))
+					{
+						return;
+					}
+					meetingArrivalReady = true;
+					VerificationLog(
+						"AIPlayerRobbery",
+						$"robbery-meeting-prompt-ready robber={deferred.RobberPid} human={humanPlayer.PID.id} meetingPeep={pendingMeeting.MeetingPeepId} meetingVehicle={pendingMeeting.MeetingVehicleId} targetCrew={deferred.TargetCrewPeepId} meetingNode=NID_{pendingMeeting.MeetingNodeIndex} queuedDay={pendingMeeting.QueuedDay} day={now.days} requeues={pendingMeeting.RouteRequeueCount} source={sourceTag} result=arrival-confirmed");
+					short currentPromptNodeIndex = candidate.ContactNode?.id.index ?? 0;
+					if (pendingMeeting.MeetingNodeIndex > 0
+						&& currentPromptNodeIndex != pendingMeeting.MeetingNodeIndex
+						&& TryBuildDeferredAiHumanRobberyCandidateSnapshot(deferred, robber, humanPlayer, now, "target-changed", out AiRobberyCandidate meetingCandidate, out string meetingSnapshotReason))
+					{
+						candidate = meetingCandidate;
+						preview = BuildAiHumanRobberyResolutionPreview(humanPlayer, candidate);
+						VerificationLog(
+							"AIPlayerRobbery",
+							$"robbery-meeting-prompt-node-locked robber={deferred.RobberPid} human={humanPlayer.PID.id} meetingPeep={pendingMeeting.MeetingPeepId} meetingVehicle={pendingMeeting.MeetingVehicleId} targetCrew={deferred.TargetCrewPeepId} currentNode=NID_{currentPromptNodeIndex} meetingNode=NID_{pendingMeeting.MeetingNodeIndex} lockedNode={candidate.ContactNode?.id ?? NodeID.INVALID} snapshotReason={meetingSnapshotReason} day={now.days} source={sourceTag} result=meeting-snapshot");
+						if (preview.AvailableCash < GetAiHumanRobberyMinimumCash(candidate))
+						{
+							_deferredAiHumanRobberyResponsesByKey.Remove(kv.Key);
+							ClearPendingAiHumanRobberyMeeting(deferred.RobberPid, humanPlayer.PID.id, "deferred-response-low-cash-after-meeting-lock", sourceTag);
+							LogAiHumanRobberyLowCashContactPreview(candidate, humanPlayer, now, "robbery-meeting-arrival:" + deferred.Source, deferred.Mode);
+							continue;
+						}
+					}
+					else if (pendingMeeting.MeetingNodeIndex > 0 && currentPromptNodeIndex != pendingMeeting.MeetingNodeIndex)
+					{
+						VerificationLog(
+							"AIPlayerRobbery",
+							$"robbery-meeting-prompt-node-lock-skipped robber={deferred.RobberPid} human={humanPlayer.PID.id} meetingPeep={pendingMeeting.MeetingPeepId} meetingVehicle={pendingMeeting.MeetingVehicleId} targetCrew={deferred.TargetCrewPeepId} currentNode=NID_{currentPromptNodeIndex} meetingNode=NID_{pendingMeeting.MeetingNodeIndex} day={now.days} source={sourceTag} result=snapshot-unavailable");
+					}
+				}
+				string displaySource = (meetingArrivalReady ? "robbery-meeting-arrival:" : "deferred-turn-start:") + deferred.Source;
 				if (TryShowAiHumanRobberyResponsePopup(candidate, humanPlayer, preview, now, displaySource, deferred.Mode, deferred.CreatedDay >= 0 ? deferred.CreatedDay : deferred.EnactedDay))
 				{
-					_deferredAiHumanRobberyResponsesByKey.Remove(kv.Key);
-					VerificationLog("AIPlayerRobbery", $"shown phase=deferred-response robber={deferred.RobberPid} targetCrew={deferred.TargetCrewPeepId} enactedDay={deferred.EnactedDay} day={now.days} source={sourceTag} mode={deferred.Mode} result=shown-at-turn-start");
+					deferred.NotBeforeDay = now.days + 1;
+					deferred.ExpireDay = Math.Max(deferred.ExpireDay, now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS);
+					if (meetingArrivalReady)
+					{
+						VerificationLog("AIPlayerRobbery", $"robbery-meeting-prompt-shown robber={deferred.RobberPid} human={humanPlayer.PID.id} targetCrew={deferred.TargetCrewPeepId} enactedDay={deferred.EnactedDay} day={now.days} nextCheckDay={deferred.NotBeforeDay} expireDay={deferred.ExpireDay} source={sourceTag} mode={deferred.Mode} result=shown-after-arrival-choice-pending");
+					}
+					VerificationLog("AIPlayerRobbery", $"shown phase=deferred-response robber={deferred.RobberPid} targetCrew={deferred.TargetCrewPeepId} enactedDay={deferred.EnactedDay} day={now.days} nextCheckDay={deferred.NotBeforeDay} expireDay={deferred.ExpireDay} source={sourceTag} mode={deferred.Mode} result=shown-choice-pending");
 					return;
 				}
 				VerificationLog("AIPlayerRobbery", $"deferred phase=deferred-response robber={deferred.RobberPid} targetCrew={deferred.TargetCrewPeepId} enactedDay={deferred.EnactedDay} day={now.days} source={sourceTag} mode={deferred.Mode} result=ui-unavailable-kept");
@@ -5026,6 +6115,222 @@ public partial class GameplayTweaksPlugin
 		return true;
 	}
 
+	private static bool EnsureArrivedAiHumanRobberyMeetingTargetInPromptRange(PendingAiHumanRobberyMeeting pending, DeferredAiHumanRobberyResponse deferred, PlayerInfo robber, PlayerInfo humanPlayer, CrewAssignment targetCrew, Node fallbackTargetNode, string fallbackTargetNodeSource, SimTime now, string source)
+	{
+		try
+		{
+			if (pending == null || deferred == null || robber == null || humanPlayer == null || !pending.Arrived)
+			{
+				return true;
+			}
+			Node meetingNode = pending.MeetingNodeIndex > 0 ? new NodeID(pending.MeetingNodeIndex).FindNode() : null;
+			if (meetingNode?.id.IsValid != true)
+			{
+				return true;
+			}
+			if (!TryGetAiHumanRobberyTargetPhysicalNode(targetCrew, out Node targetNode, out string targetNodeSource))
+			{
+				if (TryGetCurrentAiHumanRobberyMeetingTargetFallbackNode(fallbackTargetNode, fallbackTargetNodeSource, out Node fallbackNode, out string fallbackNodeSource))
+				{
+					float fallbackDistance = (fallbackNode.pos - meetingNode.pos).Magnitude;
+					if (fallbackNode.id == meetingNode.id || fallbackDistance <= AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE)
+					{
+						VerificationLog(
+							"AIPlayerRobbery",
+							$"robbery-meeting-prompt-target-fallback robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} targetCrew={pending.TargetCrewPeepId} meetingNode={meetingNode.id} fallbackNode={fallbackNode.id} fallbackSource={fallbackNodeSource} physicalReason={targetNodeSource} distance={fallbackDistance:0.0} promptDistance={AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE:0.0} queuedDay={pending.QueuedDay} day={now.days} source={source} result=fallback-nearby");
+						return true;
+					}
+					targetNode = fallbackNode;
+					targetNodeSource = fallbackNodeSource + "/" + targetNodeSource;
+				}
+				else
+				{
+					int hardExpireDay = GetPendingAiHumanRobberyMeetingHardExpireDay(pending);
+					if (pending.ExpireDay < now.days || now.days > hardExpireDay)
+					{
+						bool deferredRemoved = ClearDeferredAiHumanRobberyResponseForMeeting(pending, "meeting-target-node-unavailable-expired", source);
+						VerificationLog(
+							"AIPlayerRobbery",
+							$"robbery-meeting-prompt-target-give-up robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} targetCrew={pending.TargetCrewPeepId} meetingNode={meetingNode.id} queuedDay={pending.QueuedDay} expireDay={pending.ExpireDay} hardExpireDay={hardExpireDay} day={now.days} source={source} reason={targetNodeSource} deferredRemoved={deferredRemoved} result=expired-cleared");
+						ClearPendingAiHumanRobberyMeeting(pending.RobberPid, pending.HumanPid, "meeting-target-node-unavailable-expired", source);
+						return false;
+					}
+					int nextExpireDay = ClampPendingAiHumanRobberyMeetingExpireDay(pending, Math.Max(pending.ExpireDay, now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS));
+					pending.ExpireDay = Math.Min(hardExpireDay, Math.Max(pending.ExpireDay, nextExpireDay));
+					deferred.NotBeforeDay = now.days + 1;
+					deferred.ExpireDay = Math.Min(hardExpireDay, Math.Max(deferred.ExpireDay, nextExpireDay));
+					VerificationLog(
+						"AIPlayerRobbery",
+						$"robbery-meeting-prompt-target-deferred robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} targetCrew={pending.TargetCrewPeepId} meetingNode={meetingNode.id} queuedDay={pending.QueuedDay} day={now.days} nextCheckDay={deferred.NotBeforeDay} expireDay={deferred.ExpireDay} source={source} reason={targetNodeSource} result=target-node-unavailable");
+					return false;
+				}
+			}
+			float distance = (targetNode.pos - meetingNode.pos).Magnitude;
+			if (targetNode.id == meetingNode.id || distance <= AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE)
+			{
+				return true;
+			}
+
+			short oldMeetingNodeIndex = pending.MeetingNodeIndex;
+			short oldRouteTargetNodeIndex = pending.RouteTargetNodeIndex;
+			int oldQueuedDay = pending.QueuedDay;
+			int oldHardExpireDay = GetPendingAiHumanRobberyMeetingHardExpireDay(pending);
+			int oldExpireDay = pending.ExpireDay;
+			int oldDeferredExpireDay = deferred.ExpireDay;
+			bool routeAuthorityReset = TryResetPendingAiHumanRobberyMeetingRouteAuthority(pending, robber, now, "target-moved", source, oldMeetingNodeIndex, targetNode.id.index);
+			pending.MeetingNodeIndex = targetNode.id.index;
+			pending.RouteTargetNodeIndex = 0;
+			pending.RouteQueued = false;
+			pending.Arrived = false;
+			pending.FinalTargetRouteCommitted = false;
+			pending.NoProgressChecks = 0;
+			pending.DivergingRouteChecks = 0;
+			pending.LastDistanceToMeeting = -1f;
+			pending.LastProgressDay = now.days;
+			pending.Source = source ?? pending.Source;
+
+			deferred.TargetNodeIndex = targetNode.id.index;
+			deferred.Distance = distance;
+			deferred.SameNode = false;
+			deferred.TargetNodeSource = targetNodeSource ?? string.Empty;
+			deferred.NotBeforeDay = now.days + 1;
+			bool routeWindowReset = false;
+			if (pending.TargetMoveRouteWindowResets < AI_ROBBERY_MEETING_TARGET_MOVE_WINDOW_RESETS)
+			{
+				pending.TargetMoveRouteWindowResets++;
+				pending.QueuedDay = now.days;
+				pending.ExpireDay = Math.Max(pending.ExpireDay, now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS);
+				deferred.ExpireDay = Math.Max(deferred.ExpireDay, pending.ExpireDay);
+				routeWindowReset = true;
+				VerificationLog(
+					"AIPlayerRobbery",
+					$"robbery-meeting-target-moved-window-reset robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} targetCrew={pending.TargetCrewPeepId} oldMeetingNode=NID_{oldMeetingNodeIndex} targetNode={targetNode.id} oldQueuedDay={oldQueuedDay} queuedDay={pending.QueuedDay} oldHardExpireDay={oldHardExpireDay} hardExpireDay={GetPendingAiHumanRobberyMeetingHardExpireDay(pending)} oldExpireDay={oldExpireDay} oldDeferredExpireDay={oldDeferredExpireDay} resets={pending.TargetMoveRouteWindowResets}/{AI_ROBBERY_MEETING_TARGET_MOVE_WINDOW_RESETS} day={now.days} source={source} result=reset");
+			}
+			deferred.ExpireDay = ClampPendingAiHumanRobberyMeetingExpireDay(pending, Math.Max(deferred.ExpireDay, Math.Max(pending.ExpireDay, now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS)));
+			pending.ExpireDay = ClampPendingAiHumanRobberyMeetingExpireDay(pending, Math.Max(pending.ExpireDay, deferred.ExpireDay));
+
+			bool routeQueued = TryQueuePendingAiHumanRobberyMeetingRoute(pending, robber, now, source + "-target-moved", allowRequeue: true);
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"robbery-meeting-prompt-target-moved robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} targetCrew={pending.TargetCrewPeepId} oldMeetingNode=NID_{oldMeetingNodeIndex} oldRouteTargetNode=NID_{oldRouteTargetNodeIndex} targetNode={targetNode.id} targetNodeSource={targetNodeSource} distance={distance:0.0} promptDistance={AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE:0.0} oldQueuedDay={oldQueuedDay} queuedDay={pending.QueuedDay} routeWindowReset={routeWindowReset} routeWindowResets={pending.TargetMoveRouteWindowResets}/{AI_ROBBERY_MEETING_TARGET_MOVE_WINDOW_RESETS} day={now.days} nextCheckDay={deferred.NotBeforeDay} expireDay={deferred.ExpireDay} routeQueued={routeQueued} routeAuthorityReset={routeAuthorityReset} source={source} result={(routeQueued ? "requeued-to-target" : "waiting-for-route")}");
+			return false;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] EnsureArrivedAiHumanRobberyMeetingTargetInPromptRange failed: " + ex.Message);
+			return true;
+		}
+	}
+
+	private static bool TryHoldPendingAiHumanRobberyMeetingActor(PendingAiHumanRobberyMeeting pending, PlayerInfo robber, CrewAssignment meetingCrew, NodeID currentNodeId, SimTime now, string reason, string source)
+	{
+		if (pending == null || robber?.commands == null || !meetingCrew.IsValid)
+		{
+			return false;
+		}
+		try
+		{
+			if (!robber.commands.PeepHasTask(meetingCrew.peepId))
+			{
+				return false;
+			}
+			robber.commands.FlushQueue(meetingCrew.peepId, cancelActive: true);
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"robbery-meeting-arrival-hold robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} currentNode={currentNodeId} meetingNode=NID_{pending.MeetingNodeIndex} routeTargetNode=NID_{pending.RouteTargetNodeIndex} queuedDay={pending.QueuedDay} day={now.days} reason={reason} source={source} result=held");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			VerificationLog("AIPlayerRobbery", $"robbery-meeting-arrival-hold-failed robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} currentNode={currentNodeId} meetingNode=NID_{pending.MeetingNodeIndex} queuedDay={pending.QueuedDay} day={now.days} reason={reason} source={source} error={ex.GetType().Name}:{ex.Message} result=not-held");
+			return false;
+		}
+	}
+
+	private static bool TryResetPendingAiHumanRobberyMeetingRouteAuthority(PendingAiHumanRobberyMeeting pending, PlayerInfo robber, SimTime now, string reason, string source, short oldMeetingNodeIndex, short newMeetingNodeIndex)
+	{
+		if (pending == null || robber?.crew == null || robber.commands == null || pending.MeetingPeepId <= 0L)
+		{
+			return false;
+		}
+		try
+		{
+			EntityID meetingPeepId = EntityID.FromID((ulong)pending.MeetingPeepId);
+			CrewAssignment meetingCrew = robber.crew.GetCrewForPeep(meetingPeepId);
+			if (!meetingCrew.IsValid)
+			{
+				return false;
+			}
+			if (!robber.commands.PeepHasTask(meetingCrew.peepId))
+			{
+				return false;
+			}
+			robber.commands.FlushQueue(meetingCrew.peepId, cancelActive: true);
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"robbery-meeting-route-authority-reset robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} oldRouteTargetNode=NID_{pending.RouteTargetNodeIndex} oldMeetingNode=NID_{oldMeetingNodeIndex} newMeetingNode=NID_{newMeetingNodeIndex} queuedDay={pending.QueuedDay} day={now.days} reason={reason} source={source} result=reset");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			VerificationLog("AIPlayerRobbery", $"robbery-meeting-route-authority-reset-failed robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} oldMeetingNode=NID_{oldMeetingNodeIndex} newMeetingNode=NID_{newMeetingNodeIndex} queuedDay={pending.QueuedDay} day={now.days} reason={reason} source={source} error={ex.GetType().Name}:{ex.Message} result=not-reset");
+			return false;
+		}
+	}
+
+	private static bool TryGetCurrentAiHumanRobberyMeetingTargetFallbackNode(Node fallbackTargetNode, string fallbackTargetNodeSource, out Node node, out string source)
+	{
+		node = null;
+		source = "no-current-target-fallback";
+		if (fallbackTargetNode?.id.IsValid != true)
+		{
+			return false;
+		}
+		string normalizedSource = fallbackTargetNodeSource ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(normalizedSource)
+			|| string.Equals(normalizedSource, "none", StringComparison.OrdinalIgnoreCase)
+			|| normalizedSource.IndexOf("deferred-snapshot", StringComparison.OrdinalIgnoreCase) >= 0)
+		{
+			source = string.IsNullOrWhiteSpace(normalizedSource) ? "target-fallback-source-empty" : "target-fallback-source-" + normalizedSource;
+			return false;
+		}
+		node = fallbackTargetNode;
+		source = "candidate-contact:" + normalizedSource;
+		return true;
+	}
+
+	private static bool TryGetAiHumanRobberyTargetPhysicalNode(CrewAssignment targetCrew, out Node node, out string source)
+	{
+		node = null;
+		source = "invalid-target";
+		try
+		{
+			if (!targetCrew.IsValid || targetCrew.IsDead)
+			{
+				return false;
+			}
+			if (targetCrew.IsInVehicle && targetCrew.VehicleID.IsValid)
+			{
+				if (MultiCrewVehicleHelper.TryGetStrictPhysicalVehicleNode(targetCrew.VehicleID, out node, out source) && node != null)
+				{
+					source = string.IsNullOrWhiteSpace(source) ? "target-vehicle-physical" : source;
+					return true;
+				}
+				source = "target-vehicle-not-physical";
+				return false;
+			}
+			Entity peep = targetCrew.GetPeep();
+			node = peep?.components?.agent?.GetNode();
+			source = node != null ? "target-agent" : "target-agent-missing";
+			return node != null;
+		}
+		catch (Exception ex)
+		{
+			source = "target-node-error-" + ex.GetType().Name;
+			return false;
+		}
+	}
+
 	private static bool IsDeferredAiHumanRobberySnapshotRecoverableReason(string blockReason)
 	{
 		return string.Equals(blockReason, "nearby-contact-too-far", StringComparison.Ordinal)
@@ -5070,7 +6375,14 @@ public partial class GameplayTweaksPlugin
 			VerificationLog(
 				"AIPlayerRobbery",
 				$"auto phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID}{created} cashPreview={preview.Amount} availableCash={preview.AvailableCash} safehouseCash={preview.SafehouseCash} vehicleCash={preview.VehicleCash} peepCash={preview.PeepCash} canDebitSafehouse={preview.CanDebitSafehouse} canDebitCleanCash={preview.CanDebitCleanCash} canDebitVehicle={preview.CanDebitVehicle} canDebitPeep={preview.CanDebitPeep} favors={favors} reasonText=\"{robberyReason}\" evadeRefuseMode=True cooldownDays={GetAiHumanRobberyCooldownSummary()} result=auto-evasion");
-			ResolveAiHumanRobberyEvasion(candidate, humanPlayer, preview, now, source, mode + "-standing-order", createdDay);
+			try
+			{
+				ResolveAiHumanRobberyEvasion(candidate, humanPlayer, preview, now, source, mode + "-standing-order", createdDay);
+			}
+			finally
+			{
+				ClearAiHumanRobberyResponseAfterExplicitChoice(candidate, humanPlayer, "standing-order-evasion", source);
+			}
 			return true;
 		}
 		_activeAiHumanRobberyResponseKeys.Add(key);
@@ -5079,6 +6391,7 @@ public partial class GameplayTweaksPlugin
 		VerificationLog(
 			"AIPlayerRobbery",
 			$"prompt phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID}{created} cashPreview={preview.Amount} availableCash={preview.AvailableCash} safehouseCash={preview.SafehouseCash} vehicleCash={preview.VehicleCash} peepCash={preview.PeepCash} canDebitSafehouse={preview.CanDebitSafehouse} canDebitCleanCash={preview.CanDebitCleanCash} canDebitVehicle={preview.CanDebitVehicle} canDebitPeep={preview.CanDebitPeep} favors={favors} reasonText=\"{robberyReason}\" evadeRefuseMode={evadeRefuseMode} cooldownDays={GetAiHumanRobberyCooldownSummary()} result=shown");
+		ClearPendingAiHumanRobberyMeeting(candidate.Robber, humanPlayer, "response-popup-shown-choice-pending", source);
 
 		Action clearActive = delegate
 		{
@@ -5097,6 +6410,7 @@ public partial class GameplayTweaksPlugin
 			}
 			finally
 			{
+				ClearAiHumanRobberyResponseAfterExplicitChoice(candidate, humanPlayer, "explicit-pay", source);
 				clearActive();
 			}
 		};
@@ -5108,6 +6422,7 @@ public partial class GameplayTweaksPlugin
 			}
 			finally
 			{
+				ClearAiHumanRobberyResponseAfterExplicitChoice(candidate, humanPlayer, "explicit-refuse", source);
 				clearActive();
 			}
 		};
@@ -5119,6 +6434,7 @@ public partial class GameplayTweaksPlugin
 			}
 			finally
 			{
+				ClearAiHumanRobberyResponseAfterExplicitChoice(candidate, humanPlayer, "explicit-favor", source);
 				clearActive();
 			}
 		};
@@ -5144,6 +6460,27 @@ public partial class GameplayTweaksPlugin
 		return true;
 	}
 
+	private static void ClearAiHumanRobberyResponseAfterExplicitChoice(AiRobberyCandidate candidate, PlayerInfo humanPlayer, string reason, string source)
+	{
+		try
+		{
+			if (candidate?.Robber == null || humanPlayer == null)
+			{
+				return;
+			}
+			string deferredKey = GetAiHumanRobberyDeferredResponseKey(candidate.Robber, humanPlayer);
+			bool deferredRemoved = !string.IsNullOrEmpty(deferredKey) && _deferredAiHumanRobberyResponsesByKey.Remove(deferredKey);
+			ClearPendingAiHumanRobberyMeeting(candidate.Robber, humanPlayer, reason, source);
+			VerificationLog(
+				"AIPlayerRobbery",
+				$"cleared phase=response-popup robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} source={source} reason={reason} deferredRemoved={deferredRemoved} result=choice-cleared");
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] ClearAiHumanRobberyResponseAfterExplicitChoice failed: " + ex.Message);
+		}
+	}
+
 	internal static bool HasActiveAiHumanRobberyResponseForHuman(PlayerInfo humanPlayer)
 	{
 		try
@@ -5166,7 +6503,7 @@ public partial class GameplayTweaksPlugin
 			}
 			int currentDay = now.days;
 			List<string> staleKeys = _activeAiHumanRobberyResponseKeys
-				.Where(key => !_activeAiHumanRobberyResponseDayByKey.TryGetValue(key, out int shownDay) || currentDay - shownDay > AI_ROBBERY_RESPONSE_LOCK_STALE_DAYS)
+				.Where(key => !_activeAiHumanRobberyResponseDayByKey.TryGetValue(key, out int shownDay) || currentDay - shownDay >= AI_ROBBERY_RESPONSE_LOCK_STALE_DAYS)
 				.ToList();
 			if (staleKeys.Count == 0)
 			{
@@ -5475,6 +6812,14 @@ public partial class GameplayTweaksPlugin
 					attackAction = "attack-unavailable-business-closure:" + fallbackBusinessAction;
 					result = "refused-attack-unavailable-business-closure";
 				}
+				else if (!retaliationQueued && QueueAiHumanRobberyRefusalAttack(channel, candidate, humanPlayer, escalationDueDay, "ai-human-robbery-refused-attack-delayed"))
+				{
+					retaliationQueued = true;
+					retaliationInitializedSameTurn = false;
+					attackCrewCount = 0;
+					attackAction = "attack-delayed-revenge";
+					result = "refused-attack-delayed-revenge";
+				}
 			}
 			else if (TryForceCloseRobberyRetaliationImportantBusiness(channel, candidate.Robber, humanPlayer, "ai-human-robbery-refused-business", out string businessAction))
 			{
@@ -5486,10 +6831,27 @@ public partial class GameplayTweaksPlugin
 			{
 				retaliationQueued = TryInitializeAiHumanRobberyRefusalAttack(channel, candidate, humanPlayer, desiredCrewCount, escalationDueDay, "ai-human-robbery-refused-business-unavailable-attack-same-turn-init", out attackCrewCount, out string fallbackAttackAction);
 				retaliationInitializedSameTurn = retaliationQueued;
-				attackAction = retaliationQueued ? "business-unavailable-" + fallbackAttackAction : "business-unavailable-attack-init-failed";
-				result = retaliationQueued ? "refused-business-unavailable-attack-initialized" : "refused-business-unavailable-attack-init-failed";
+				if (retaliationQueued)
+				{
+					attackAction = "business-unavailable-" + fallbackAttackAction;
+					result = "refused-business-unavailable-attack-initialized";
+				}
+				else if (QueueAiHumanRobberyRefusalAttack(channel, candidate, humanPlayer, escalationDueDay, "ai-human-robbery-refused-business-unavailable-attack-delayed"))
+				{
+					retaliationQueued = true;
+					retaliationInitializedSameTurn = false;
+					attackCrewCount = 0;
+					attackAction = "business-unavailable-attack-delayed-revenge";
+					result = "refused-business-unavailable-attack-delayed-revenge";
+				}
+				else
+				{
+					attackAction = "business-unavailable-attack-init-failed";
+					result = "refused-business-unavailable-attack-init-failed";
+				}
 			}
 		}
+		ApplyAiHumanRobberyRefusalRelationshipBuffs(candidate, humanPlayer, heldFirm, result);
 		VerificationLog(
 			"AIPlayerRobbery",
 			$"refusal-escalation phase=response-popup robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} targetCrew={candidate.TargetCrew.peepId.id} chance={escalationChance:0.00} roll={escalationRoll:0.00} eligibleReason={escalationReason} escalated={retaliationQueued} queued={retaliationQueued} initializedSameTurn={retaliationInitializedSameTurn} dueDay={(retaliationQueued && attackAction.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0 ? (retaliationInitializedSameTurn ? now.days : escalationDueDay) : -1)} desiredCrew={desiredCrewCount} action={attackAction} source={source} mode={mode}");
@@ -5512,6 +6874,30 @@ public partial class GameplayTweaksPlugin
 		VerificationLog(
 			"AIPlayerRobbery",
 			$"resolved phase=response-popup source={source} mode={mode}-refuse robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID}{created} heldFirm={heldFirm} cash={(cashDebited ? preview.Amount : 0)} cashDebited={cashDebited} cashSource={cashSource} cashBefore={cashBefore} cashAfter={cashAfter} retaliationQueued={retaliationQueued} retaliationAction={attackAction} refusalEscalated={retaliationQueued} escalationChance={escalationChance:0.00} escalationRoll={escalationRoll:0.00} attackCrews={attackCrewCount} heat={AI_ROBBERY_CONTACT_REFUSE_HEAT_GAIN:0.0} cooldownDays={GetAiHumanRobberyCooldownSummary()} result={result}");
+	}
+
+	private static void ApplyAiHumanRobberyRefusalRelationshipBuffs(AiRobberyCandidate candidate, PlayerInfo humanPlayer, bool heldFirm, string result)
+	{
+		if (candidate?.Robber == null || humanPlayer == null || candidate.Robber.PID.id == humanPlayer.PID.id)
+		{
+			return;
+		}
+		try
+		{
+			EntityID robberCrewPeep = GetCrewPeepForPlayer(candidate.Robber);
+			EntityID humanCrewPeep = candidate.TargetCrew.IsValid && candidate.TargetCrew.peepId.IsValid
+				? candidate.TargetCrew.peepId
+				: GetCrewPeepForPlayer(humanPlayer);
+			bool robberTable = AddDirectedRelationshipBuff(candidate.Robber, humanPlayer, "relbuff-gangs-robbery1-table-on-finish", robberCrewPeep);
+			bool robberBuff = AddDirectedRelationshipBuff(candidate.Robber, humanPlayer, "relbuff-gangs-robbery1-buff", robberCrewPeep);
+			bool humanTable = AddDirectedRelationshipBuff(humanPlayer, candidate.Robber, "relbuff-gangs-robbery1-table-on-finish", humanCrewPeep);
+			bool humanBuff = !heldFirm && AddDirectedRelationshipBuff(humanPlayer, candidate.Robber, "relbuff-gangs-robbery1-buff", humanCrewPeep);
+			VerificationLog("AIPlayerRobbery", $"refusal-relationship-buffs robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} heldFirm={heldFirm} result={result} robberTable={robberTable} robberBuff={robberBuff} humanTable={humanTable} humanBuff={humanBuff}");
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] ApplyAiHumanRobberyRefusalRelationshipBuffs failed: " + ex.Message);
+		}
 	}
 
 	private static string ChooseAiHumanRobberyRefusalSuccessOutcome(AiRobberyCandidate candidate, PlayerInfo humanPlayer, out float attackChance, out double roll, out string reason)
@@ -6338,6 +7724,33 @@ public partial class GameplayTweaksPlugin
 	{
 		string pairKey = GetAiHumanRobberyPairCooldownKey(robber, humanPlayer);
 		return string.IsNullOrEmpty(pairKey) ? string.Empty : pairKey + ":deferred-response";
+	}
+
+	private static string GetAiHumanRobberyDeferredResponseKey(int robberPid, int humanPid)
+	{
+		if (robberPid <= 0 || humanPid <= 0)
+		{
+			return string.Empty;
+		}
+		return "humanpair:" + robberPid.ToString(CultureInfo.InvariantCulture) + ":" + humanPid.ToString(CultureInfo.InvariantCulture) + ":deferred-response";
+	}
+
+	private static string GetAiHumanRobberyMeetingKey(PlayerInfo robber, PlayerInfo humanPlayer)
+	{
+		if (robber == null || humanPlayer == null)
+		{
+			return string.Empty;
+		}
+		return GetAiHumanRobberyMeetingKey(robber.PID.id, humanPlayer.PID.id);
+	}
+
+	private static string GetAiHumanRobberyMeetingKey(int robberPid, int humanPid)
+	{
+		if (robberPid <= 0 || humanPid <= 0)
+		{
+			return string.Empty;
+		}
+		return "humanpair:" + robberPid.ToString(CultureInfo.InvariantCulture) + ":" + humanPid.ToString(CultureInfo.InvariantCulture) + ":robbery-meeting";
 	}
 
 	private static IEnumerable<string> GetAiHumanRobberyDiagnosticCooldownKeys(AiRobberyCandidate candidate)

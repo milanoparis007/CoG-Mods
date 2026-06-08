@@ -1249,6 +1249,29 @@ public partial class GameplayTweaksPlugin
 					&& attackerPeep?.data?.agent?.pid.FindPlayer()?.IsJustCop == true
 					&& target.IsValid
 					&& targetIsHuman;
+				PlayerID? attackerPid = attackerPeep?.data?.agent?.pid;
+				PlayerID? targetPid = targetPeep?.data?.agent?.pid;
+				bool frontDefenseAggroBypass = _frontDefenseAggroCombatBypassActive;
+				if (!frontDefenseAggroBypass
+					&& attackerIsAi
+					&& targetIsHuman
+					&& attackerPid.HasValue
+					&& targetPid.HasValue
+					&& ShouldSuppressIncomingAiCombatAfterRecentHumanFrontDefense(attackerPid.Value, targetPid.Value, attacker.VehicleID, target.VehicleID, out string frontDefenseSuppressReason))
+				{
+					VerificationLog("VehicleGroupCombat.AI", $"mode-skip source=PerformAICombat reason={frontDefenseSuppressReason} attackerVehicle={attacker.VehicleID.id} targetVehicle={target.VehicleID.id} attackerPid={attackerPid.Value.id} targetPid={targetPid.Value.id}");
+					return false;
+				}
+				if (!frontDefenseAggroBypass
+					&& attackerIsAi
+					&& targetIsHuman
+					&& attackerPid.HasValue
+					&& targetPid.HasValue
+					&& ShouldSuppressIncomingAiCombatDuringPendingHumanRetaliationRoute(attackerPid.Value, targetPid.Value, attacker.peepId, attacker.VehicleID, target.VehicleID, out string pendingRouteSuppressReason))
+				{
+					VerificationLog("VehicleGroupCombat.AI", $"mode-skip source=PerformAICombat reason={pendingRouteSuppressReason} attackerPeep={attacker.peepId.id} attackerVehicle={attacker.VehicleID.id} targetVehicle={target.VehicleID.id} attackerPid={attackerPid.Value.id} targetPid={targetPid.Value.id}");
+					return false;
+				}
 				int minAiLivingCrewForVehicleCombat = attackerIsCopRetaliatingOnHuman ? 1 : 3;
 				int minAiDriveByShooters = attackerIsCopRetaliatingOnHuman ? 1 : 2;
 				int minAiOnFootOccupants = attackerIsCopRetaliatingOnHuman ? 1 : 2;
@@ -1276,8 +1299,6 @@ public partial class GameplayTweaksPlugin
 					}
 					return true;
 				}
-				PlayerID? attackerPid = attackerPeep?.data?.agent?.pid;
-				PlayerID? targetPid = targetPeep?.data?.agent?.pid;
 				if (attackerIsCopRetaliatingOnHuman
 					&& attackerPid.HasValue
 					&& targetPid.HasValue

@@ -3973,6 +3973,15 @@ namespace GameplayTweaks
 				{
 					return false;
 				}
+				if (restrictions.IsTerritoryLocked
+					&& !restrictions.IsTiedHouseLocked
+					&& !restrictions.IsForcedClosed)
+				{
+					GameplayTweaksPlugin.VerificationLog(
+						"CanBuySellCache",
+						$"buy-sell-territory-lock-bypassed building={building.Id.id} biz={biz.Id.id} pid={player.PID.id} source={source} territory={restrictions.territoryLock.id}");
+					return false;
+				}
 
 				string reason = restrictions.IsForcedClosed
 					? "forced-closed"
@@ -5430,10 +5439,23 @@ namespace GameplayTweaks
 		{
 			var enemies = new List<Entity>();
 			var seen = new HashSet<ulong>();
+			bool hasPrimaryTargetVehicle = TryGetAttackPopupTargetVehicle(primaryTarget, out EntityID primaryTargetVehicleId);
+			int skippedOtherVehicles = 0;
 			foreach (EntityID attackTargetId in CombatManager.GetAttackTargetsAtNode(attackerPid, nodeId) ?? Enumerable.Empty<EntityID>())
 			{
 				Entity attackTarget = attackTargetId.FindEntity();
-				if (attackTarget == null || !attackTarget.Id.IsValid || !seen.Add(attackTarget.Id.id))
+				if (attackTarget == null || !attackTarget.Id.IsValid)
+				{
+					continue;
+				}
+				if (hasPrimaryTargetVehicle
+					&& (!TryGetAttackPopupTargetVehicle(attackTarget, out EntityID attackTargetVehicleId)
+						|| attackTargetVehicleId != primaryTargetVehicleId))
+				{
+					skippedOtherVehicles++;
+					continue;
+				}
+				if (!seen.Add(attackTarget.Id.id))
 				{
 					continue;
 				}
@@ -5448,8 +5470,34 @@ namespace GameplayTweaks
 				enemies.Insert(0, primaryTarget);
 				Debug.Log($"[GameplayTweaks] Forced primary target into attack popup attackerPid={attackerPid.id} target={primaryTarget.Id.id} node={nodeId}");
 			}
-			Debug.Log($"[GameplayTweaks] Attack popup enemies built attackerPid={attackerPid.id} node={nodeId} primaryTarget={(primaryTarget?.Id.id ?? 0UL)} count={enemies.Count}");
+			Debug.Log($"[GameplayTweaks] Attack popup enemies built attackerPid={attackerPid.id} node={nodeId} primaryTarget={(primaryTarget?.Id.id ?? 0UL)} targetVehicle={primaryTargetVehicleId.id} skippedOtherVehicles={skippedOtherVehicles} count={enemies.Count}");
 			return enemies;
+		}
+
+		private static bool TryGetAttackPopupTargetVehicle(Entity target, out EntityID vehicleId)
+		{
+			vehicleId = EntityID.INVALID;
+			if (target == null || !target.Id.IsValid)
+			{
+				return false;
+			}
+			PlayerID targetPid = target.data?.agent?.pid ?? PlayerID.INVALID;
+			PlayerCrew targetCrew = targetPid.IsValid ? targetPid.FindPlayer()?.crew : null;
+			if (targetCrew == null)
+			{
+				return false;
+			}
+			CrewAssignment targetAssignment = targetCrew.GetCrewForPeep(target.Id);
+			if (!targetAssignment.IsValid)
+			{
+				targetAssignment = targetCrew.GetCrewForTarget(target.Id);
+			}
+			if (!targetAssignment.IsValid || !targetAssignment.IsInVehicle || !targetAssignment.VehicleID.IsValid)
+			{
+				return false;
+			}
+			vehicleId = targetAssignment.VehicleID;
+			return true;
 		}
 
 		private static bool ShouldForceIncludeAttackPopupTarget(EntityID attackerVehicleId, PlayerID attackerPid, Entity entity)

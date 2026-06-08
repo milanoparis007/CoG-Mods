@@ -4080,9 +4080,9 @@ public partial class GameplayTweaksPlugin : BaseUnityPlugin
 
 	internal const int PACTOPS_WARHEAT_DECAY_INTERVAL_DAYS = 7;
 
-internal static readonly string[] DEBUG_RELBUFF_IDS = new string[9] { "relbuff-cop-killed-precinct", "relbuff-cop-killed-citywide", "relbuff-politics-protection", "relbuff-pact-boss-killed", "relbuff-pact-leader-killed", "relbuff-gang-death", "relbuff-pact-support-cash", "relbuff-pact-support-intro", "relbuff-pact-trade" };
+internal static readonly string[] DEBUG_RELBUFF_IDS = new string[10] { "relbuff-cop-killed-precinct", "relbuff-cop-killed-citywide", "relbuff-politics-protection", "relbuff-pact-boss-killed", "relbuff-pact-leader-killed", "relbuff-gang-death", "relbuff-gang-injury", "relbuff-pact-support-cash", "relbuff-pact-support-intro", "relbuff-pact-trade" };
 
-internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
+internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 {
 	"relbuff-cop-killed-precinct",
 	"relbuff-cop-killed-citywide",
@@ -4090,6 +4090,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 	"relbuff-pact-boss-killed",
 	"relbuff-pact-leader-killed",
 	"relbuff-gang-death",
+	"relbuff-gang-injury",
 	"relbuff-pact-joined",
 	"relbuff-pact-support-cash",
 	"relbuff-pact-support-intro",
@@ -4125,6 +4126,31 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 };
 
 	private static readonly HashSet<string> _persistentGangRelationshipBuffIds = new HashSet<string>(PERSISTENT_GANG_RELBUFF_IDS, StringComparer.OrdinalIgnoreCase);
+
+	private static readonly string[] _retaliationRelationshipHostileBuffIds = new string[6]
+	{
+		"relbuff-gang-injury",
+		"relbuff-gangs-robbery1-table-on-finish",
+		"relbuff-gangs-robbery2-table-on-finish",
+		"relbuff-gangs-robbery1-buff",
+		"relbuff-gangs-hitsquad-buff",
+		"relbuff-gangs-loan-unpaid"
+	};
+
+	private static readonly string[] _retaliationRelationshipSevereBuffIds = new string[3]
+	{
+		"relbuff-pact-leader-killed",
+		"relbuff-pact-boss-killed",
+		"relbuff-gang-death"
+	};
+
+	private const float RETALIATION_RELATIONSHIP_HEAT_SCALE = 1.1f;
+
+	private const float RETALIATION_RELATIONSHIP_HEAT_BONUS_CAP = 32f;
+
+	private const int PERSISTENT_HOSTILE_RELBUFF_MIN_DAYS = 180;
+
+	private const int PERSISTENT_SEVERE_RELBUFF_MIN_DAYS = 360;
 
 	private static readonly HashSet<string> _seenGangAttackTickerKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -4400,6 +4426,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			|| TextContains(message, "pair-queued-replaced")
 			|| TextContains(message, "refusal-")
 			|| TextContains(message, "evasion-")
+			|| TextContains(message, "robbery-meeting-")
 			|| TextContains(message, "quick-attack")
 			|| TextContains(message, "coordinated attack")
 			|| TextContains(message, "important business closure")
@@ -4412,16 +4439,42 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		return TextContains(message, "front-crew-selected")
 			|| TextContains(message, "front-closure-queued")
 			|| TextContains(message, "front-closure-completed")
+			|| TextContains(message, "front-closure-direct-failed")
+			|| TextContains(message, "front-route-segment-queued")
+			|| TextContains(message, "front-route-commitment-resolving")
+			|| TextContains(message, "front-route-commitment-final-approach")
+			|| TextContains(message, "front-target-locked-existing")
+			|| TextContains(message, "business-target-locked-existing")
+			|| TextContains(message, "front-capacity-blocked")
+			|| TextContains(message, "business-capacity-blocked")
+			|| TextContains(message, "front-crew-selection-capacity-blocked")
+			|| TextContains(message, "front-crew-busy-pending-action")
+			|| TextContains(message, "front-delayed-action-marked")
+			|| TextContains(message, "front-delayed-action-queued")
+			|| TextContains(message, "front-delayed-action-requeued")
+			|| TextContains(message, "front-delayed-action-limit-grace")
+			|| TextContains(message, "front-delayed-action-limit-reassigned")
 			|| TextContains(message, "front-delayed-action-completed")
 			|| TextContains(message, "front-delayed-action-abandoned")
 			|| TextContains(message, "front-delayed-action-reassigned")
+			|| TextContains(message, "front-travel-requeued")
 			|| TextContains(message, "front-defended")
+			|| TextContains(message, "front-defended-aggro")
+			|| TextContains(message, "front-actor-reuse-penalty")
+			|| TextContains(message, "robbery-meeting-")
+			|| TextContains(message, "tracked-business-closure")
+			|| TextContains(message, "post-front-return")
+			|| TextContains(message, "Physical front action queued")
 			|| TextContains(message, "business-closure-queued")
+			|| TextContains(message, "business-closure-progress-wait-extended")
+			|| TextContains(message, "business-closure-route-commitment-final-approach")
 			|| TextContains(message, "business-closure-completed")
 			|| TextContains(message, "business-closure-give-up")
 			|| TextContains(message, "business-closure-route-commitment-completed")
 			|| TextContains(message, "forced-closed")
 			|| TextContains(message, "notice phase=business-closure-completed")
+			|| TextContains(message, "warning-deferred")
+			|| TextContains(message, "deferred-retry-wait")
 			|| TextContains(message, "result=shown")
 			|| EventEquals(eventTag, "COORDINATED")
 			|| EventEquals(eventTag, "FrontTicker");
@@ -4431,6 +4484,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 	{
 		return EventEquals(eventTag, "fight-commit")
 			|| EventEquals(eventTag, "execute")
+			|| EventEquals(eventTag, "mode-skip")
+			|| EventEquals(eventTag, "front-defense-suppression-registered")
 			|| EventEquals(eventTag, "onfoot-spread")
 			|| EventEquals(eventTag, "onfoot-spread-exchange")
 			|| EventEquals(eventTag, "driveby-distribution")
@@ -17680,13 +17735,6 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 					{
 						continue;
 					}
-					if (!HasRetaliationWarHeatAgainstHuman(playerInfo, humanPlayer))
-					{
-						RemoveRetaliationBuffsBetween(playerInfo, humanPlayer, "no-warheat-evidence");
-						ClearWarBetweenPlayers(playerInfo, humanPlayer);
-						VerificationLog("PactRetaliation", $"Re-aggro skipped and stale retaliation buffs removed gang={playerInfo.PID.id} reason=no-warheat-evidence");
-						continue;
-					}
 					if (neutralizedByLeaderTruce.Contains(playerInfo.PID.id))
 					{
 						VerificationLog("PactRetaliation", $"Re-aggro skipped due leader truce member={playerInfo.PID.id}");
@@ -17696,6 +17744,11 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 					{
 						ClearWarBetweenPlayers(playerInfo, humanPlayer);
 						VerificationLog("PactRetaliation", $"Re-aggro skipped due direct truce member={playerInfo.PID.id}");
+						continue;
+					}
+					if (!HasRetaliationWarHeatAgainstHuman(playerInfo, humanPlayer))
+					{
+						VerificationLog("PactRetaliation", $"Re-aggro dormant; retaliation buffs preserved gang={playerInfo.PID.id} reason=no-warheat-evidence");
 						continue;
 					}
 					ActivateWarBetweenPlayers(playerInfo, humanPlayer);
@@ -17876,6 +17929,9 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				long phaseTicks = StartPerfTimer();
 				ShowDeferredHumanRetaliationFrontTickersOnTurnStart(humanPlayer, "player-turn-start");
 				LogHumanTurnStartPhase("crew-cap:front-warning-prompts", phaseTicks);
+				phaseTicks = StartPerfTimer();
+				CleanupPendingRetaliationFrontTickersOnTurnStart("player-turn-start-front-cleanup");
+				LogHumanTurnStartPhase("crew-cap:front-cleanup", phaseTicks);
 				phaseTicks = StartPerfTimer();
 				TurnUpdatePatch.ProcessDeferredAiHumanRobberyResponsesOnHumanTurnStart(humanPlayer, "player-turn-start");
 				LogHumanTurnStartPhase("crew-cap:robbery-prompts", phaseTicks);
@@ -18924,34 +18980,92 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		public bool DelayedPhysicalActionAbandoned;
 		public string DelayedPhysicalActionAbandonedReason;
 		public NodeID DelayedLastObservedNodeId = NodeID.INVALID;
+		public NodeID DelayedRouteTargetNodeId = NodeID.INVALID;
+		public NodeID DelayedFinalRouteIssuedFromNodeId = NodeID.INVALID;
+		public bool DelayedFinalApproachGraceGranted;
+		public bool DelayedFinalApproachProgressObserved;
+		public bool DelayedTerminalReassignmentGranted;
+		public bool DelayedBusinessActorReassignmentGranted;
 		public int DelayedNoProgressChecks;
 		public int DelayedRouteRequeueCount;
 		public bool DelayedMultiTurnHumanFrontRoute;
 	}
 
+	private sealed class HumanFrontDefenseCombatSuppression
+	{
+		public int AttackerPid;
+		public int DefenderPid;
+		public int CreatedDay;
+		public int UntilDay;
+		public ulong BuildingId;
+		public ulong FrontCloserPeepId;
+		public ulong FrontCloserVehicleId;
+		public ulong DefenderVehicleId;
+		public string BlockerIds;
+		public string Source;
+	}
+
+	private sealed class RecentRetaliationFrontActorUse
+	{
+		public int AttackerPid;
+		public ulong PeepId;
+		public ulong VehicleId;
+		public ulong BuildingId;
+		public int CreatedDay;
+		public int UntilDay;
+		public string Reason;
+		public string Source;
+	}
+
 	private static readonly Dictionary<ulong, PendingRetaliationFrontTicker> _pendingRetaliationFrontTickersByBuilding = new Dictionary<ulong, PendingRetaliationFrontTicker>();
+
+	private static readonly Dictionary<string, HumanFrontDefenseCombatSuppression> _humanFrontDefenseCombatSuppressionsByPair = new Dictionary<string, HumanFrontDefenseCombatSuppression>(StringComparer.Ordinal);
+
+	private static readonly Dictionary<ulong, RecentRetaliationFrontActorUse> _recentRetaliationFrontActorUseByPeep = new Dictionary<ulong, RecentRetaliationFrontActorUse>();
+
+	private static readonly Dictionary<ulong, RecentRetaliationFrontActorUse> _recentRetaliationFrontActorUseByVehicle = new Dictionary<ulong, RecentRetaliationFrontActorUse>();
+
+	private static int _lastFrontTurnStartCleanupLogDay = int.MinValue;
 
 	private static MethodInfo _combatDoPayAttackCostMethod;
 
-	private const int RETALIATION_FRONT_DEFENDED_RETRY_BLOCK_DAYS = 14;
+	private static bool _frontDefenseAggroCombatBypassActive;
 
-	private const int RETALIATION_FRONT_TOO_FAR_RETRY_BLOCK_DAYS = 14;
+	private const int RETALIATION_FRONT_RETRY_MIN_DAYS = 14;
+
+	private const int RETALIATION_FRONT_RETRY_MAX_DAYS = 56;
+
+	private const int RETALIATION_FRONT_TOO_FAR_RETRY_BLOCK_DAYS = 28;
 
 	private const int RETALIATION_FRONT_DELAYED_ACTION_GIVE_UP_DAYS = 21;
 
-	private const int RETALIATION_FRONT_DELAYED_ACTION_MOVING_GIVE_UP_DAYS = 112 * 7;
+	private const int RETALIATION_FRONT_DELAYED_ACTION_MOVING_GIVE_UP_DAYS = 84;
+
+	private const int RETALIATION_FRONT_DELAYED_ACTION_FINAL_GRACE_DAYS = 28;
 
 	private const int RETALIATION_FRONT_DELAYED_ACTION_REQUEUE_COOLDOWN_DAYS = 7;
 
-	private const int RETALIATION_FRONT_DELAYED_ACTION_MULTITURN_MAX_REQUEUES = 112;
+	private const int RETALIATION_FRONT_DELAYED_ACTION_MULTITURN_MAX_REQUEUES = 12;
+
+	private const int RETALIATION_FRONT_DELAYED_ACTION_HUMAN_ROUTE_COMMIT_REQUEUES = 4;
+
+	private const int RETALIATION_FRONT_DELAYED_ACTION_HUMAN_ROUTE_COMMIT_DAYS = 28;
+
+	private const int RETALIATION_FRONT_DELAYED_ACTION_SEGMENT_TARGET_MAX_REQUEUES = 2;
 
 	private const int RETALIATION_FRONT_DELAYED_ACTION_HUMAN_MAX_REQUEUES = RETALIATION_FRONT_DELAYED_ACTION_MULTITURN_MAX_REQUEUES;
 
-	private const int RETALIATION_FRONT_DELAYED_ACTION_LOST_NODE_GIVE_UP_DAYS = RETALIATION_FRONT_DELAYED_ACTION_MOVING_GIVE_UP_DAYS;
+	private const int RETALIATION_FRONT_DELAYED_ACTION_LOST_NODE_GIVE_UP_DAYS = 42;
 
-	private const int RETALIATION_BUSINESS_CLOSURE_HUMAN_MAX_REQUEUES = 112;
+	private const int RETALIATION_BUSINESS_CLOSURE_HUMAN_MAX_REQUEUES = 12;
 
-	private const int RETALIATION_BUSINESS_CLOSURE_HUMAN_GIVE_UP_DAYS = 112 * 7;
+	private const int RETALIATION_BUSINESS_CLOSURE_HUMAN_GIVE_UP_DAYS = 84;
+
+	private const int RETALIATION_BUSINESS_CLOSURE_PROGRESS_GIVE_UP_DAYS = RETALIATION_BUSINESS_CLOSURE_HUMAN_GIVE_UP_DAYS + RETALIATION_FRONT_DELAYED_ACTION_LOST_NODE_GIVE_UP_DAYS;
+
+	private const int HUMAN_FRONT_DEFENSE_COMBAT_SUPPRESSION_DAYS = 14;
+
+	private const int RETALIATION_FRONT_ACTOR_REUSE_PENALTY_DAYS = 28;
 
 	private const int RETALIATION_ROBBERY_BUSINESS_CLOSURE_FORCE_REQUEUES = 3;
 
@@ -18959,9 +19073,11 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 
 	private const int INDEPENDENT_HUMAN_FRONT_PRESSURE_MAX_PER_AUTO_PASS = 1;
 
-	private const int INDEPENDENT_HUMAN_FRONT_PRESSURE_PENDING_BLOCK_DAYS = 14;
+	private const int RETALIATION_NORMAL_DUTY_VEHICLE_RESERVE = 1;
 
-	private const int INDEPENDENT_HUMAN_FRONT_PRESSURE_PENDING_GLOBAL_CAP = 2;
+	private const int RETALIATION_CONVO_INITIATIVE_VEHICLE_RESERVE = 1;
+
+	private const int ROBBERY_MEETING_DRYRUN_LOG_COOLDOWN_DAYS = 14;
 
 	private const float INDEPENDENT_HUMAN_FRONT_PRESSURE_MIN_HEAT_FLOOR = 8f;
 
@@ -18975,6 +19091,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 
 	private const float AI_VS_HUMAN_FRONT_ACTION_MAX_CREW_DISTANCE = 120f;
 
+	private const float AI_VS_HUMAN_FRONT_ACTION_TERMINAL_REASSIGN_MAX_CREW_DISTANCE = 150f;
+
 	private const float AI_FORCED_CLOSURE_HQ_SEARCH_RADIUS = 110f;
 
 	private const float AI_FORCED_CLOSURE_FRONT_SEARCH_RADIUS = 75f;
@@ -18983,7 +19101,11 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 
 	private static readonly Dictionary<string, int> _retaliationFrontRetryBlockedUntilDayByKey = new Dictionary<string, int>(StringComparer.Ordinal);
 
+	private static readonly Dictionary<string, int> _retaliationFrontPairRetryBlockedUntilDayByKey = new Dictionary<string, int>(StringComparer.Ordinal);
+
 	private static readonly Dictionary<string, int> _aiFrontClosureGrapevineLastDayByPair = new Dictionary<string, int>(StringComparer.Ordinal);
+
+	private static readonly Dictionary<string, int> _robberyMeetingDryRunLastDayByPair = new Dictionary<string, int>(StringComparer.Ordinal);
 
 	private struct TweaksSavedTextStamp
 	{
@@ -20772,7 +20894,12 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		RuntimeGangAttackApproachSourceByPair.Clear();
 		ClearAllPendingRetaliationFrontTickers("gangops-reset");
 		_retaliationFrontRetryBlockedUntilDayByKey.Clear();
+		_retaliationFrontPairRetryBlockedUntilDayByKey.Clear();
 		_aiFrontClosureGrapevineLastDayByPair.Clear();
+		_humanFrontDefenseCombatSuppressionsByPair.Clear();
+		_recentRetaliationFrontActorUseByPeep.Clear();
+		_recentRetaliationFrontActorUseByVehicle.Clear();
+		_frontDefenseAggroCombatBypassActive = false;
 	}
 
 	internal static void ResetRuntimeCampaignStateForNewGame(string sourceTag)
@@ -20798,7 +20925,12 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		_lastJailReconcileLogFrameByKey.Clear();
 		ClearAllPendingRetaliationFrontTickers("new-game-reset");
 		_retaliationFrontRetryBlockedUntilDayByKey.Clear();
+		_retaliationFrontPairRetryBlockedUntilDayByKey.Clear();
 		_aiFrontClosureGrapevineLastDayByPair.Clear();
+		_humanFrontDefenseCombatSuppressionsByPair.Clear();
+		_recentRetaliationFrontActorUseByPeep.Clear();
+		_recentRetaliationFrontActorUseByVehicle.Clear();
+		_frontDefenseAggroCombatBypassActive = false;
 		_deferredSafeFederalArrestFollowupsByPeep.Clear();
 		_deferredSelectedVehicleUiRefreshByVehicle.Clear();
 		_deferredBuildingPickContainerLayoutRefreshByVehicle.Clear();
@@ -27625,7 +27757,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			}
 			if (flag2 && ShouldPersistGangRelationshipBuff(buffId))
 			{
-				UpsertPersistentGangRelationshipBuffRecordFromLive(source, target, buffId, relationshipFromPlayerTo, entityID);
+				UpsertPersistentGangRelationshipBuffRecordFromLive(source, target, buffId, relationshipFromPlayerTo, entityID, enforceMinimumDuration: true);
 			}
 			if (logSuccess)
 			{
@@ -27861,18 +27993,33 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		{
 			return;
 		}
-		_lastGangRelationshipBuffReconcileDay = days;
 		try
 		{
 			EnsureSaveDataDefaults();
+			if (SaveData?.GangRelationshipBuffs == null)
+			{
+				return;
+			}
+			if (!IsPersistentGangRelationshipBuffWorldReady(days))
+			{
+				if (SaveData.GangRelationshipBuffs.Count > 0)
+				{
+					Debug.Log($"[GameplayTweaks][Buff] Deferred persistent gang buff reconcile source={sourceTag} records={SaveData.GangRelationshipBuffs.Count} day={days} reason=world-not-ready");
+				}
+				return;
+			}
+			_lastGangRelationshipBuffReconcileDay = days;
 			SnapshotPersistentGangRelationshipBuffsFromLiveRelations();
 			DeduplicatePersistentGangRelationshipBuffLedger();
-			if (SaveData?.GangRelationshipBuffs == null || SaveData.GangRelationshipBuffs.Count == 0)
+			if (SaveData.GangRelationshipBuffs.Count == 0)
 			{
 				return;
 			}
 			int num = 0;
 			int num2 = 0;
+			int num4 = 0;
+			int num5 = 0;
+			int num6 = 0;
 			for (int num3 = SaveData.GangRelationshipBuffs.Count - 1; num3 >= 0; num3--)
 			{
 				GangRelationshipBuffState gangRelationshipBuffState = SaveData.GangRelationshipBuffs[num3];
@@ -27880,14 +28027,14 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				{
 					SaveData.GangRelationshipBuffs.RemoveAt(num3);
 					num2++;
+					num4++;
 					continue;
 				}
 				PlayerInfo playerById = G.FindPlayerById(gangRelationshipBuffState.SourcePid);
 				PlayerInfo playerById2 = G.FindPlayerById(gangRelationshipBuffState.TargetPid);
 				if (playerById == null || playerById2 == null || playerById.social == null || playerById2.social == null)
 				{
-					SaveData.GangRelationshipBuffs.RemoveAt(num3);
-					num2++;
+					num6++;
 					continue;
 				}
 				if (IsPersistentGangRelationshipBuffExpired(gangRelationshipBuffState, days))
@@ -27895,6 +28042,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 					RemoveDirectedRelationshipBuffLive(playerById, playerById2, gangRelationshipBuffState.BuffId);
 					SaveData.GangRelationshipBuffs.RemoveAt(num3);
 					num2++;
+					num5++;
 					continue;
 				}
 				if (RestorePersistentGangRelationshipBuffState(playerById, playerById2, gangRelationshipBuffState))
@@ -27902,15 +28050,48 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 					num++;
 				}
 			}
-			if (num > 0 || num2 > 0)
+			if (num > 0 || num2 > 0 || num6 > 0)
 			{
-				Debug.Log($"[GameplayTweaks][Buff] Reconciled persistent gang buffs source={sourceTag} refreshed={num} pruned={num2} day={days}");
+				Debug.Log($"[GameplayTweaks][Buff] Reconciled persistent gang buffs source={sourceTag} refreshed={num} pruned={num2} invalid={num4} expired={num5} missingPlayers={num6} day={days}");
 			}
 		}
 		catch (Exception ex)
 		{
 			Debug.LogWarning($"[GameplayTweaks][Buff] Persistent gang buff reconcile failed source={sourceTag}: {ex.Message}");
 		}
+	}
+
+	private static bool IsPersistentGangRelationshipBuffWorldReady(int days)
+	{
+		if (days <= 0)
+		{
+			return false;
+		}
+		try
+		{
+			PlayerInfo humanPlayer = G.GetHumanPlayer();
+			if (humanPlayer == null || humanPlayer.social == null)
+			{
+				return false;
+			}
+			int num = 0;
+			foreach (PlayerInfo allPlayer in G.GetAllPlayers())
+			{
+				if (allPlayer?.social == null)
+				{
+					continue;
+				}
+				num++;
+				if (num >= 2)
+				{
+					return true;
+				}
+			}
+		}
+		catch
+		{
+		}
+		return false;
 	}
 
 	private static bool TryGetRelationshipFromPlayerTo(PlayerInfo source, PlayerInfo target, bool createIfMissing, out Relationship relationship)
@@ -27934,6 +28115,79 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			relationship = null;
 			return false;
 		}
+	}
+
+	private static int GetDirectedGangRelationshipScore(PlayerInfo source, PlayerInfo target)
+	{
+		try
+		{
+			Relationship relationship;
+			if (!TryGetRelationshipFromPlayerTo(source, target, createIfMissing: false, out relationship) || relationship == null)
+			{
+				return 0;
+			}
+			return Mathf.Clamp(ReadFixnum(relationship.Evaluate().current), -100, 100);
+		}
+		catch
+		{
+			return 0;
+		}
+	}
+
+	private static float GetDirectedGangRelationshipHostility(PlayerInfo source, PlayerInfo target, out int relationshipScore, out bool hostileBuff, out bool severeBuff)
+	{
+		relationshipScore = GetDirectedGangRelationshipScore(source, target);
+		float hostility = Mathf.Clamp01((-relationshipScore) / 80f);
+		hostileBuff = HasAnyRelationshipBuff(source, target, _retaliationRelationshipHostileBuffIds);
+		severeBuff = HasAnyRelationshipBuff(source, target, _retaliationRelationshipSevereBuffIds);
+		if (hostileBuff)
+		{
+			hostility = Mathf.Max(hostility, 0.55f);
+		}
+		if (severeBuff)
+		{
+			hostility = Mathf.Max(hostility, 0.75f);
+		}
+		return Mathf.Clamp01(hostility);
+	}
+
+	private static float GetRelationshipAdjustedWarHeat(GangOpsChannel channel, PlayerInfo attacker, PlayerInfo defender, float warHeat, out int relationshipScore, out float relationshipHostility, out float relationshipHeatBonus, out bool hostileBuff)
+	{
+		relationshipScore = 0;
+		relationshipHostility = 0f;
+		relationshipHeatBonus = 0f;
+		hostileBuff = false;
+		float rawHeat = Mathf.Clamp(warHeat, 0f, 100f);
+		if (attacker == null || defender == null || attacker.PID.id == defender.PID.id)
+		{
+			return rawHeat;
+		}
+		relationshipHostility = GetDirectedGangRelationshipHostility(attacker, defender, out relationshipScore, out hostileBuff, out bool severeBuff);
+		if (relationshipHostility <= 0f)
+		{
+			return rawHeat;
+		}
+		float revengeThreshold = Mathf.Max(1f, GetEffectiveWarHeatThresholdForRevenge(channel));
+		relationshipHeatBonus = Mathf.Clamp(relationshipHostility * revengeThreshold * RETALIATION_RELATIONSHIP_HEAT_SCALE, 0f, RETALIATION_RELATIONSHIP_HEAT_BONUS_CAP);
+		if (severeBuff)
+		{
+			relationshipHeatBonus = Mathf.Max(relationshipHeatBonus, Mathf.Min(RETALIATION_RELATIONSHIP_HEAT_BONUS_CAP, revengeThreshold * 0.7f));
+		}
+		return Mathf.Clamp(rawHeat + relationshipHeatBonus, 0f, 100f);
+	}
+
+	private static void ApplyHumanCrewKillRelationshipBuff(PlayerInfo victimGang, PlayerInfo humanPlayer, GangOpsChannel channel, string reason)
+	{
+		if (victimGang == null || humanPlayer == null || victimGang.PID.id == humanPlayer.PID.id)
+		{
+			return;
+		}
+		const string crewKillBuffId = "relbuff-gang-injury";
+		EntityID victimBossPeep = GetCrewPeepForPlayer(victimGang);
+		EntityID humanBossPeep = GetCrewPeepForPlayer(humanPlayer);
+		bool victimToHuman = AddDirectedRelationshipBuff(victimGang, humanPlayer, crewKillBuffId, victimBossPeep, logSuccess: false);
+		bool humanToVictim = AddDirectedRelationshipBuff(humanPlayer, victimGang, crewKillBuffId, humanBossPeep, logSuccess: false);
+		VerificationLog("GangBossBuffs", $"crew-death-relationship-buff victimGang={victimGang.PID.id} human={humanPlayer.PID.id} buff={crewKillBuffId} victimBossPeep={victimBossPeep.id} humanBossPeep={humanBossPeep.id} victimToHuman={victimToHuman} humanToVictim={humanToVictim} channel={GetGangOpsChannelTag(channel)} reason={reason}");
 	}
 
 	private static bool IsUsableRelationshipBuffCrewPeep(EntityID peepId)
@@ -27997,6 +28251,62 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		return !string.IsNullOrEmpty(buffId) && _persistentGangRelationshipBuffIds.Contains(buffId);
 	}
 
+	private static int ApplyPersistentGangRelationshipBuffMinimumExpireDay(string buffId, int absoluteExpireDay)
+	{
+		if (absoluteExpireDay < 0)
+		{
+			return absoluteExpireDay;
+		}
+		int num = GetPersistentGangRelationshipBuffMinimumDays(buffId);
+		if (num <= 0)
+		{
+			return absoluteExpireDay;
+		}
+		int days;
+		try
+		{
+			days = G.GetNow().days;
+		}
+		catch
+		{
+			days = -1;
+		}
+		if (days <= 0)
+		{
+			return absoluteExpireDay;
+		}
+		return Math.Max(absoluteExpireDay, days + num);
+	}
+
+	private static int GetPersistentGangRelationshipBuffMinimumDays(string buffId)
+	{
+		if (ContainsStringOrdinalIgnoreCase(_retaliationRelationshipSevereBuffIds, buffId))
+		{
+			return PERSISTENT_SEVERE_RELBUFF_MIN_DAYS;
+		}
+		if (ContainsStringOrdinalIgnoreCase(_retaliationRelationshipHostileBuffIds, buffId))
+		{
+			return PERSISTENT_HOSTILE_RELBUFF_MIN_DAYS;
+		}
+		return 0;
+	}
+
+	private static bool ContainsStringOrdinalIgnoreCase(string[] values, string value)
+	{
+		if (values == null || string.IsNullOrEmpty(value))
+		{
+			return false;
+		}
+		for (int i = 0; i < values.Length; i++)
+		{
+			if (string.Equals(values[i], value, StringComparison.OrdinalIgnoreCase))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private static string GetPersistentGangRelationshipBuffKey(int sourcePid, int targetPid, string buffId)
 	{
 		return sourcePid + ">" + targetPid + ":" + (buffId ?? string.Empty).ToLowerInvariant();
@@ -28019,7 +28329,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		return -1;
 	}
 
-	private static void UpsertPersistentGangRelationshipBuffRecordFromLive(PlayerInfo source, PlayerInfo target, string buffId, Relationship relationshipFromPlayerTo, EntityID fallbackCrewPeep)
+	private static void UpsertPersistentGangRelationshipBuffRecordFromLive(PlayerInfo source, PlayerInfo target, string buffId, Relationship relationshipFromPlayerTo, EntityID fallbackCrewPeep, bool enforceMinimumDuration = false)
 	{
 		if (source == null || target == null || !ShouldPersistGangRelationshipBuff(buffId))
 		{
@@ -28037,6 +28347,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		}
 		int persistentGangRelationshipBuffRecordIndex = FindPersistentGangRelationshipBuffRecordIndex(source.PID.id, target.PID.id, buffId);
 		GangRelationshipBuffState gangRelationshipBuffState = ((persistentGangRelationshipBuffRecordIndex >= 0) ? SaveData.GangRelationshipBuffs[persistentGangRelationshipBuffRecordIndex] : null);
+		int previousExpireDay = (gangRelationshipBuffState != null) ? gangRelationshipBuffState.AbsoluteExpireDay : int.MinValue;
 		if (gangRelationshipBuffState == null)
 		{
 			gangRelationshipBuffState = new GangRelationshipBuffState();
@@ -28047,7 +28358,26 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		gangRelationshipBuffState.BuffId = buffId;
 		EntityID entityID = ResolveRelationshipBuffCrewPeep(source, target, (!relationshipBuffState.crewpeep.IsNotValid) ? relationshipBuffState.crewpeep : fallbackCrewPeep);
 		gangRelationshipBuffState.CrewPeepId = (entityID.IsNotValid ? 0L : ((long)entityID.id));
-		gangRelationshipBuffState.AbsoluteExpireDay = (relationshipBuffState.expires.NeverHappens ? -1 : relationshipBuffState.expires.days);
+		int absoluteExpireDay = (relationshipBuffState.expires.NeverHappens ? -1 : relationshipBuffState.expires.days);
+		int persistentExpireDay = absoluteExpireDay;
+		if (previousExpireDay == -1)
+		{
+			persistentExpireDay = -1;
+		}
+		else if (persistentExpireDay >= 0 && previousExpireDay > persistentExpireDay)
+		{
+			persistentExpireDay = previousExpireDay;
+		}
+		if (enforceMinimumDuration)
+		{
+			persistentExpireDay = ApplyPersistentGangRelationshipBuffMinimumExpireDay(buffId, persistentExpireDay);
+		}
+		gangRelationshipBuffState.AbsoluteExpireDay = persistentExpireDay;
+		if (persistentExpireDay >= 0 && (relationshipBuffState.expires.NeverHappens || relationshipBuffState.expires.days != persistentExpireDay))
+		{
+			relationshipBuffState.expires = new SimTime(persistentExpireDay);
+			MarkRelationshipBuffStateChanged();
+		}
 	}
 
 	private static void RemovePersistentGangRelationshipBuffRecord(int sourcePid, int targetPid, string buffId)
@@ -28970,6 +29300,16 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 
 		internal float WarHeat;
 
+		internal float EffectiveWarHeat;
+
+		internal int RelationshipScore;
+
+		internal float RelationshipHostility;
+
+		internal float RelationshipHeatBonus;
+
+		internal bool RelationshipHostileBuff;
+
 		internal GangRetaliationAction Action = GangRetaliationAction.StandDown;
 
 		internal int Score;
@@ -28980,6 +29320,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 
 		internal bool HasCloseTarget;
 
+		internal bool HasImportantBusinessTarget;
+
 		internal bool CanCallPactSupport;
 
 		internal bool CanTakeTerritory;
@@ -28989,14 +29331,83 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		internal bool ViolentAllowed;
 	}
 
+	private static void LogRobberyMeetingPreludeDryRun(
+		GangRetaliationOpportunity opportunity,
+		string sourceTag,
+		int attackerPower,
+		int defenderPower,
+		bool directAggro,
+		bool attackerStronger,
+		bool attackerCanOverrun,
+		bool aggressiveBoss,
+		bool robberySource,
+		float revengeThreshold,
+		float coordThreshold)
+	{
+		PlayerInfo attacker = opportunity?.Attacker;
+		PlayerInfo defender = opportunity?.Defender;
+		if (attacker?.PID.IsNotAnyPlayer != false || defender?.PID.IsHumanPlayer != true)
+		{
+			return;
+		}
+		int nowDay = G.GetNow().days;
+		string key = GetGangOpsChannelTag(opportunity.Channel) + ":" + MakeGangPairKey(attacker.PID.id, defender.PID.id);
+		if (_robberyMeetingDryRunLastDayByPair.TryGetValue(key, out int lastDay) && nowDay >= lastDay && nowDay - lastDay < ROBBERY_MEETING_DRYRUN_LOG_COOLDOWN_DAYS)
+		{
+			return;
+		}
+		_robberyMeetingDryRunLastDayByPair[key] = nowDay;
+
+		bool realConvoActive = TryGetActiveConvoInitiative(attacker, out NodeID convoMeetingPoint, out string convoTopic, out bool convoNeedsPeep);
+		bool eligible = false;
+		string reason = "not-hostile-enough";
+		if (robberySource)
+		{
+			reason = "active-robbery-source";
+		}
+		else if (realConvoActive)
+		{
+			reason = "real-convo-active";
+		}
+		else if (opportunity.RelationshipHostility >= 0.55f && opportunity.EffectiveWarHeat >= revengeThreshold * 0.45f)
+		{
+			eligible = true;
+			reason = "hostile-relation";
+		}
+		else if (directAggro && opportunity.EffectiveWarHeat >= revengeThreshold * 0.4f)
+		{
+			eligible = true;
+			reason = "direct-aggro";
+		}
+		else if (attackerCanOverrun && aggressiveBoss && opportunity.EffectiveWarHeat >= revengeThreshold * 0.35f)
+		{
+			eligible = true;
+			reason = "stronger-bluff";
+		}
+		else if (attackerStronger && opportunity.RelationshipHostileBuff && opportunity.EffectiveWarHeat >= revengeThreshold * 0.3f)
+		{
+			eligible = true;
+			reason = "hostile-buff-bluff";
+		}
+
+		VerificationLog("GangOps.RobberyMeeting", $"robbery-meeting-dryrun attacker={attacker.PID.id} defender={defender.PID.id} eligible={eligible} reason={reason} heat={opportunity.WarHeat:0.0} effectiveHeat={opportunity.EffectiveWarHeat:0.0} revengeThreshold={revengeThreshold:0.0} coordThreshold={coordThreshold:0.0} relScore={opportunity.RelationshipScore} relHostility={opportunity.RelationshipHostility:0.00} hostileBuff={opportunity.RelationshipHostileBuff} directAggro={directAggro} attackerPower={attackerPower} defenderPower={defenderPower} attackerStronger={attackerStronger} attackerCanOverrun={attackerCanOverrun} aggressiveBoss={aggressiveBoss} action={opportunity.Action} score={opportunity.Score} source={sourceTag} convoActive={realConvoActive} convoTopic={convoTopic} convoMeetingNode={convoMeetingPoint} convoNeedsPeep={convoNeedsPeep}");
+	}
+
 	private static GangRetaliationOpportunity ScoreGangRetaliationOpportunity(GangOpsChannel channel, PlayerInfo attacker, PlayerInfo defender, EntityID preferredTargetPeepId, string sourceTag, float warHeat)
 	{
+		float clampedWarHeat = Mathf.Clamp(warHeat, 0f, 100f);
+		float effectiveWarHeat = GetRelationshipAdjustedWarHeat(channel, attacker, defender, clampedWarHeat, out int relationshipScore, out float relationshipHostility, out float relationshipHeatBonus, out bool relationshipHostileBuff);
 		GangRetaliationOpportunity opportunity = new GangRetaliationOpportunity
 		{
 			Channel = channel,
 			Attacker = attacker,
 			Defender = defender,
-			WarHeat = Mathf.Clamp(warHeat, 0f, 100f)
+			WarHeat = clampedWarHeat,
+			EffectiveWarHeat = effectiveWarHeat,
+			RelationshipScore = relationshipScore,
+			RelationshipHostility = relationshipHostility,
+			RelationshipHeatBonus = relationshipHeatBonus,
+			RelationshipHostileBuff = relationshipHostileBuff
 		};
 		if (!IsGangEligibleForChannel(attacker, channel) || !IsGangOpsRetaliationTargetEligible(defender))
 		{
@@ -29023,10 +29434,13 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		int territoryAggro = Mathf.Clamp(settings?.TerritoryTakeoverAggressionPercent ?? 100, 10, 300);
 		float revengeThreshold = Mathf.Max(1f, GetEffectiveWarHeatThresholdForRevenge(channel));
 		float coordThreshold = Mathf.Max(1f, GetEffectiveWarHeatThresholdForCoordAttack(channel));
-		float heatRatio = Mathf.Clamp01(opportunity.WarHeat / revengeThreshold);
-		bool aggressiveBoss = HasGangBossAnyTraitForRetaliation(attacker, "trait-aggressive", "trait-confident", "trait-bold") || IsAiPersonalityAggressive(attacker);
+		float heatRatio = Mathf.Clamp01(opportunity.EffectiveWarHeat / revengeThreshold);
+		bool aggressivePersonality = IsAiPersonalityAggressive(attacker);
+		bool peacefulPersonality = IsAiPersonalityPeaceful(attacker);
 		bool expansionistPersonality = IsAiPersonalityExpansionist(attacker);
-		bool cautiousBoss = HasGangBossAnyTraitForRetaliation(attacker, "trait-cautious", "trait-nervous", "trait-upright", "trait-religious") || IsAiPersonalityPeaceful(attacker);
+		bool isolationistPersonality = IsAiPersonalityIsolationist(attacker);
+		bool aggressiveBoss = HasGangBossAnyTraitForRetaliation(attacker, "trait-aggressive", "trait-confident", "trait-bold") || aggressivePersonality;
+		bool cautiousBoss = HasGangBossAnyTraitForRetaliation(attacker, "trait-cautious", "trait-nervous", "trait-upright", "trait-religious");
 		bool severeSource = IsSevereRetaliationSource(sourceTag);
 		bool defenderIsHuman = defender?.PID.IsHumanPlayer == true;
 		bool aiVsAiPressure = IsAiVsAiGangPressure(attacker, defender);
@@ -29040,20 +29454,27 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		bool attackerCanOverrun = attackerPower >= defenderPower + 45 || attackerPower >= Mathf.RoundToInt(defenderPower * 1.35f);
 		bool directAggro = IsAggroWithoutTruceEitherWay(attacker, defender);
 		bool robberySource = IsRobberyRetaliationSource(sourceTag);
-		bool robberyRefusalRareAttack = ShouldAllowRareRobberyRefusalAttack(attacker, defender, sourceTag, opportunity.WarHeat, coordThreshold);
+		bool robberyRefusalRareAttack = ShouldAllowRareRobberyRefusalAttack(attacker, defender, sourceTag, opportunity.EffectiveWarHeat, coordThreshold);
 		bool frontPowerAllowed = IsAiVsAiFrontClosurePowerAllowed(attacker, defender, attackerPower, defenderPower, out string frontPowerReason);
 		if (!frontPowerAllowed)
 		{
 			VerificationLog("GangOps.FrontMovement", $"front-power-blocked attacker={attacker?.PID.id ?? 0} defender={defender?.PID.id ?? 0} attackerPower={attackerPower} defenderPower={defenderPower} reason={frontPowerReason} source={sourceTag}");
 		}
-		bool hasCloseTarget = frontPowerAllowed && (TryFindRetaliationFrontOrBackroomTarget(attacker, defender, null, out _, out _, out _) || TryFindRetaliationClosureTarget(attacker, defender, out _, out _));
+		bool hasFrontOrBackroomTarget = frontPowerAllowed && TryFindRetaliationFrontOrBackroomTarget(attacker, defender, null, out _, out _, out _);
+		Entity warHeatClosureTarget = null;
+		bool hasGenericClosureTarget = frontPowerAllowed && TryFindRetaliationClosureTarget(attacker, defender, out warHeatClosureTarget, out _);
+		bool hasImportantBusinessTarget = hasGenericClosureTarget && TryValidateRetaliationImportantShopTarget(warHeatClosureTarget, out _, out _);
+		bool hasCloseTarget = hasFrontOrBackroomTarget || hasImportantBusinessTarget || hasGenericClosureTarget;
 		bool canTakeTerritory = ShouldAllowGangTerritoryExpansion() && GetOwnedBuildings(attacker).Count > 0;
-		bool canHitHumanCrew = !defenderIsHuman || severeHumanSource || opportunity.WarHeat >= coordThreshold;
+		bool relationshipRevengePressure = opportunity.RelationshipHostility >= 0.45f && opportunity.EffectiveWarHeat >= revengeThreshold * 0.6f;
+		bool relationshipViolentPressure = opportunity.RelationshipHostility >= 0.55f && (directAggro || opportunity.EffectiveWarHeat >= revengeThreshold * 0.75f);
+		bool canHitHumanCrew = !defenderIsHuman || severeHumanSource || opportunity.EffectiveWarHeat >= coordThreshold || relationshipViolentPressure;
 		bool violentAllowed = bossOrKillEvent
-			|| (directAggro && opportunity.WarHeat >= revengeThreshold)
-			|| opportunity.WarHeat >= coordThreshold * 1.35f
-			|| (attackerCanOverrun && aggressiveBoss && opportunity.WarHeat >= revengeThreshold * 0.8f && territoryAggro >= 90);
-		if (weakAttacker && !bossOrKillEvent && opportunity.WarHeat < coordThreshold * 1.6f)
+			|| (directAggro && opportunity.EffectiveWarHeat >= revengeThreshold)
+			|| opportunity.EffectiveWarHeat >= coordThreshold * 1.35f
+			|| relationshipViolentPressure
+			|| (attackerCanOverrun && aggressiveBoss && opportunity.EffectiveWarHeat >= revengeThreshold * 0.8f && territoryAggro >= 90);
+		if (weakAttacker && !bossOrKillEvent && !relationshipRevengePressure && opportunity.EffectiveWarHeat < coordThreshold * 1.6f)
 		{
 			violentAllowed = false;
 		}
@@ -29067,14 +29488,15 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		}
 		bool canHitCrew = violentAllowed && attacker.crew?.LivingCrewCount > 0 && defender.crew != null && !defender.crew.IsCrewDefeated && canHitHumanCrew;
 		bool canCallPactSupport = channel == GangOpsChannel.Pact && HasAvailablePactRetaliationSupport(attacker, defender);
-		opportunity.Severe = bossOrKillEvent || opportunity.WarHeat >= coordThreshold || (channel == GangOpsChannel.Independent && opportunity.WarHeat >= revengeThreshold * 1.5f);
+		opportunity.Severe = bossOrKillEvent || opportunity.EffectiveWarHeat >= coordThreshold || (channel == GangOpsChannel.Independent && opportunity.EffectiveWarHeat >= revengeThreshold * 1.5f) || opportunity.RelationshipHostility >= 0.75f;
 		opportunity.HasCloseTarget = hasCloseTarget;
+		opportunity.HasImportantBusinessTarget = hasImportantBusinessTarget;
 		opportunity.CanCallPactSupport = canCallPactSupport;
 		opportunity.CanTakeTerritory = canTakeTerritory;
 		opportunity.CanHitCrew = canHitCrew;
 		opportunity.ViolentAllowed = violentAllowed;
 
-		if (opportunity.WarHeat < revengeThreshold * 0.4f && !opportunity.Severe && !directAggro)
+		if (opportunity.EffectiveWarHeat < revengeThreshold * 0.4f && !opportunity.Severe && !directAggro && opportunity.RelationshipHostility < 0.45f)
 		{
 			opportunity.Action = GangRetaliationAction.StandDown;
 			opportunity.Score = 10;
@@ -29089,24 +29511,36 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		int territoryPowerModifier = aiVsAiPressure
 			? (attackerCanOverrun ? 18 : (attackerStronger ? 8 : (weakAttacker ? -30 : 0)))
 			: ((weakAttacker ? 8 : 0) + (attackerCanOverrun ? 12 : 0));
+		int relationshipClosureBonus = Mathf.RoundToInt(opportunity.RelationshipHostility * 14f);
+		int relationshipAttackBonus = Mathf.RoundToInt(opportunity.RelationshipHostility * 34f) + (opportunity.RelationshipHostileBuff ? 8 : 0);
 		int closeScore = hasCloseTarget
-			? 55 + Mathf.RoundToInt(heatRatio * 25f) + frontAggro / 7 + (overallAggro < 125 ? 18 : 0) + (cautiousBoss ? 10 : 0) + (expansionistPersonality ? 16 : 0) + closePowerModifier + (!violentAllowed ? 18 : 0) + (robberySource ? (attackerStronger ? 22 : 14) : 0)
+			? 55 + Mathf.RoundToInt(heatRatio * 25f) + frontAggro / 7 + (overallAggro < 125 ? 18 : 0) + (cautiousBoss ? 10 : 0) + (expansionistPersonality ? 16 : 0) - (peacefulPersonality ? 12 : 0) - (isolationistPersonality ? 16 : 0) + closePowerModifier + (!violentAllowed ? 18 : 0) + (robberySource ? (attackerStronger ? 22 : 14) : 0) + relationshipClosureBonus
+			: -1;
+		float importantBusinessHeatThreshold = Mathf.Max(revengeThreshold, coordThreshold * 0.75f);
+		int importantBusinessScore = hasImportantBusinessTarget && !robberySource && opportunity.EffectiveWarHeat >= importantBusinessHeatThreshold
+			? 58 + Mathf.RoundToInt(heatRatio * 28f) + overallAggro / 7 + frontAggro / 10 + (opportunity.EffectiveWarHeat >= coordThreshold ? 10 : 0) + (aggressivePersonality ? 10 : 0) + (expansionistPersonality ? 4 : 0) - (peacefulPersonality ? 12 : 0) - (isolationistPersonality ? 8 : 0) + closePowerModifier + (!violentAllowed ? 10 : 0) + relationshipClosureBonus
 			: -1;
 		int hitScore = canHitCrew
-			? 14 + Mathf.RoundToInt(heatRatio * 20f) + overallAggro / 10 + (bossOrKillEvent ? 26 : 0) + (directAggro ? 12 : 0) + (attackerCanOverrun ? 18 : 0) + (aggressiveBoss ? 6 : 0) + (robberyRefusalRareAttack ? 70 : 0) - (weakAttacker ? 30 : 0) - (robberySource ? (robberyRefusalRareAttack ? 10 : 65) : 0)
+			? 14 + Mathf.RoundToInt(heatRatio * 20f) + overallAggro / 10 + (bossOrKillEvent ? 26 : 0) + (directAggro ? 12 : 0) + (attackerCanOverrun ? 18 : 0) + (aggressiveBoss ? 6 : 0) + (robberyRefusalRareAttack ? 70 : 0) + relationshipAttackBonus - (weakAttacker && !relationshipRevengePressure ? 30 : 0) - (robberySource ? (robberyRefusalRareAttack ? 10 : 65) : 0)
 			: -1;
 		int territoryScore = canTakeTerritory
-			? 28 + territoryAggro / 6 + (channel == GangOpsChannel.Independent ? 14 : 0) + (!hasCloseTarget ? 12 : 0) + territoryPowerModifier + (!violentAllowed ? 10 : 0) + (robberySource ? (attackerStronger ? 22 : 10) : 0)
+			? 28 + territoryAggro / 6 + (channel == GangOpsChannel.Independent ? 14 : 0) + (!hasCloseTarget ? 12 : 0) + (expansionistPersonality ? 16 : 0) - (peacefulPersonality ? 6 : 0) - (isolationistPersonality ? 18 : 0) + territoryPowerModifier + (!violentAllowed ? 10 : 0) + (robberySource ? (attackerStronger ? 22 : 10) : 0)
 			: -1;
 		int supportScore = canCallPactSupport && opportunity.Severe
 			? 40 + Mathf.RoundToInt(heatRatio * 24f) + (weakAttacker ? 16 : 0) + (bossOrKillEvent ? 18 : 0) + (!violentAllowed ? 12 : 0)
 			: -1;
 
-		if (supportScore >= 0 && supportScore >= hitScore && supportScore >= closeScore && supportScore >= territoryScore)
+		if (supportScore >= 0 && supportScore >= hitScore && supportScore >= closeScore && supportScore >= importantBusinessScore && supportScore >= territoryScore)
 		{
 			opportunity.Action = GangRetaliationAction.CallPactSupport;
 			opportunity.Score = supportScore;
 			opportunity.Reason = bossOrKillEvent ? "severe-pact-support" : "high-heat-pact-support";
+		}
+		else if (importantBusinessScore >= 0 && importantBusinessScore >= closeScore && importantBusinessScore >= hitScore && importantBusinessScore >= territoryScore)
+		{
+			opportunity.Action = GangRetaliationAction.AttackBuilding;
+			opportunity.Score = importantBusinessScore;
+			opportunity.Reason = "warheat-important-business";
 		}
 		else if (closeScore >= 0 && closeScore >= hitScore && closeScore >= territoryScore)
 		{
@@ -29133,6 +29567,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			opportunity.Reason = "no-action";
 		}
 
+		LogRobberyMeetingPreludeDryRun(opportunity, sourceTag, attackerPower, defenderPower, directAggro, attackerStronger, attackerCanOverrun, aggressiveBoss, robberySource, revengeThreshold, coordThreshold);
 		LogGangRetaliationScore(opportunity);
 		return opportunity;
 	}
@@ -29158,6 +29593,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 
 		GangOpsChannel channel = ResolveGangOpsChannelForGang(attacker.PID.id);
 		float warHeat = GetWarHeat(channel, attacker.PID.id, defender.PID.id);
+		float effectiveWarHeat = GetRelationshipAdjustedWarHeat(channel, attacker, defender, warHeat, out int relationshipScore, out float relationshipHostility, out float relationshipHeatBonus, out bool relationshipHostileBuff);
 		float revengeThreshold = Mathf.Max(1f, GetEffectiveWarHeatThresholdForRevenge(channel));
 		float coordThreshold = Mathf.Max(1f, GetEffectiveWarHeatThresholdForCoordAttack(channel));
 		bool directAggro = IsAggroWithoutTruceEitherWay(attacker, defender);
@@ -29165,30 +29601,29 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		int defenderPower = CalculateGangPower(defender);
 		bool attackerCanOverrun = attackerPower >= defenderPower + 60 || attackerPower >= Mathf.RoundToInt(defenderPower * 1.5f);
 		bool aggressiveBoss = HasGangBossAnyTraitForRetaliation(attacker, "trait-aggressive", "trait-confident", "trait-bold");
-		float relationshipBias = GetSignedGangRelationshipBias(attacker, defender);
 
-		if (warHeat >= coordThreshold * 1.2f)
+		if (effectiveWarHeat >= coordThreshold * 1.2f)
 		{
 			reason = "warheat-coord";
 			return true;
 		}
-		if (directAggro && warHeat >= revengeThreshold)
+		if (directAggro && effectiveWarHeat >= revengeThreshold * 0.85f)
 		{
 			reason = "existing-aggro";
 			return true;
 		}
-		if (relationshipBias <= -0.45f && warHeat >= revengeThreshold * 0.9f)
+		if (relationshipHostility >= 0.45f && effectiveWarHeat >= revengeThreshold * 0.6f)
 		{
-			reason = "hostile-relation";
+			reason = $"hostile-relation relScore={relationshipScore} relHostility={relationshipHostility:0.00} relHeatBonus={relationshipHeatBonus:0.0} hostileBuff={relationshipHostileBuff}";
 			return true;
 		}
-		if (attackerCanOverrun && aggressiveBoss && warHeat >= revengeThreshold * 0.8f && GetOwnedBuildings(defender).Count > 0)
+		if (attackerCanOverrun && aggressiveBoss && effectiveWarHeat >= revengeThreshold * 0.8f && GetOwnedBuildings(defender).Count > 0)
 		{
 			reason = "overrun-smaller-gang";
 			return true;
 		}
 
-		reason = $"nonviolent-options-preferred heat={warHeat:0.0} rel={relationshipBias:0.00} power={attackerPower}:{defenderPower}";
+		reason = $"nonviolent-options-preferred heat={warHeat:0.0} effectiveHeat={effectiveWarHeat:0.0} relScore={relationshipScore} relHostility={relationshipHostility:0.00} relHeatBonus={relationshipHeatBonus:0.0} hostileBuff={relationshipHostileBuff} power={attackerPower}:{defenderPower}";
 		return false;
 	}
 
@@ -29300,6 +29735,11 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		return HasAiPersonalityAspect(player, "expansionist", "aspect-expansionist", "personality-expansionist");
 	}
 
+	private static bool IsAiPersonalityIsolationist(PlayerInfo player)
+	{
+		return HasAiPersonalityAspect(player, "isolationist", "aspect-isolationist", "personality-isolationist");
+	}
+
 	private static bool DoesAiPersonalityLabelMatch(Label label, string[] ids)
 	{
 		if (label.IsNotSet)
@@ -29374,7 +29814,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		}
 		int attackerPid = opportunity.Attacker?.PID.id ?? -1;
 		int defenderPid = opportunity.Defender?.PID.id ?? -1;
-		VerificationLog("GangOps.RetaliationScore", $"attacker={attackerPid} defender={defenderPid} channel={GetGangOpsChannelTag(opportunity.Channel)} heat={opportunity.WarHeat:0.0} action={opportunity.Action} score={opportunity.Score} reason={opportunity.Reason} close={opportunity.HasCloseTarget} support={opportunity.CanCallPactSupport} territory={opportunity.CanTakeTerritory} hitCrew={opportunity.CanHitCrew} violentAllowed={opportunity.ViolentAllowed} severe={opportunity.Severe}");
+		VerificationLog("GangOps.RetaliationScore", $"attacker={attackerPid} defender={defenderPid} channel={GetGangOpsChannelTag(opportunity.Channel)} heat={opportunity.WarHeat:0.0} effectiveHeat={opportunity.EffectiveWarHeat:0.0} relScore={opportunity.RelationshipScore} relHostility={opportunity.RelationshipHostility:0.00} relHeatBonus={opportunity.RelationshipHeatBonus:0.0} relHostileBuff={opportunity.RelationshipHostileBuff} action={opportunity.Action} score={opportunity.Score} reason={opportunity.Reason} close={opportunity.HasCloseTarget} importantBusiness={opportunity.HasImportantBusinessTarget} support={opportunity.CanCallPactSupport} territory={opportunity.CanTakeTerritory} hitCrew={opportunity.CanHitCrew} violentAllowed={opportunity.ViolentAllowed} severe={opportunity.Severe}");
 	}
 
 	private static bool HasAvailablePactRetaliationSupport(PlayerInfo attacker, PlayerInfo defender)
@@ -29432,27 +29872,29 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 	private static void TryTriggerImmediateThresholdRetaliation(GangOpsChannel channel, int retaliationGangId, int targetGangId, float priorHeat, float currentHeat, long targetCrewPeepId, string reason)
 	{
 		float warHeatThresholdForRevenge = GetEffectiveWarHeatThresholdForRevenge(channel);
-		if (priorHeat >= warHeatThresholdForRevenge || currentHeat < warHeatThresholdForRevenge)
+		PlayerInfo playerInfo = G.FindPlayerById(retaliationGangId);
+		PlayerInfo playerInfo2 = G.FindPlayerById(targetGangId);
+		float priorEffectiveHeat = GetRelationshipAdjustedWarHeat(channel, playerInfo, playerInfo2, priorHeat, out _, out _, out _, out _);
+		float currentEffectiveHeat = GetRelationshipAdjustedWarHeat(channel, playerInfo, playerInfo2, currentHeat, out int relationshipScore, out float relationshipHostility, out float relationshipHeatBonus, out bool relationshipHostileBuff);
+		if (priorEffectiveHeat >= warHeatThresholdForRevenge || currentEffectiveHeat < warHeatThresholdForRevenge)
 		{
 			return;
 		}
-		PlayerInfo playerInfo = G.FindPlayerById(retaliationGangId);
-		PlayerInfo playerInfo2 = G.FindPlayerById(targetGangId);
 		if (!IsGangEligibleForChannel(playerInfo, channel) || !IsGangOpsRetaliationTargetEligible(playerInfo2))
 		{
-			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"Immediate threshold retaliation skipped attacker={retaliationGangId} defender={targetGangId} reason=ineligible before={priorHeat:0.0} after={currentHeat:0.0}");
+			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"Immediate threshold retaliation skipped attacker={retaliationGangId} defender={targetGangId} reason=ineligible before={priorHeat:0.0} after={currentHeat:0.0} beforeEffective={priorEffectiveHeat:0.0} afterEffective={currentEffectiveHeat:0.0} relScore={relationshipScore} relHostility={relationshipHostility:0.00} relHeatBonus={relationshipHeatBonus:0.0} hostileBuff={relationshipHostileBuff}");
 			return;
 		}
 		if (ArePlayersProtectedByPactAlliance(playerInfo, playerInfo2))
 		{
 			ClearWarBetweenPlayers(playerInfo, playerInfo2);
-			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"Immediate threshold retaliation skipped attacker={retaliationGangId} defender={targetGangId} reason=alliance before={priorHeat:0.0} after={currentHeat:0.0}");
+			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"Immediate threshold retaliation skipped attacker={retaliationGangId} defender={targetGangId} reason=alliance before={priorHeat:0.0} after={currentHeat:0.0} beforeEffective={priorEffectiveHeat:0.0} afterEffective={currentEffectiveHeat:0.0}");
 			return;
 		}
 		if (HasMutualTruce(playerInfo, playerInfo2))
 		{
 			ClearWarBetweenPlayers(playerInfo, playerInfo2);
-			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"Immediate threshold retaliation skipped attacker={retaliationGangId} defender={targetGangId} reason=truce before={priorHeat:0.0} after={currentHeat:0.0}");
+			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"Immediate threshold retaliation skipped attacker={retaliationGangId} defender={targetGangId} reason=truce before={priorHeat:0.0} after={currentHeat:0.0} beforeEffective={priorEffectiveHeat:0.0} afterEffective={currentEffectiveHeat:0.0}");
 			return;
 		}
 		EntityID preferredTargetPeepId = EntityID.INVALID;
@@ -29461,12 +29903,12 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			preferredTargetPeepId = EntityID.FromID((ulong)targetCrewPeepId);
 		}
 		ActivateWarBetweenPlayers(playerInfo, playerInfo2);
-		bool actionTaken = TryExecuteRetaliationResponse(channel, playerInfo, playerInfo2, preferredTargetPeepId, $"{GetGangOpsChannelTag(channel)}-threshold-immediate", currentHeat, out int dispatchedCount, out string actionSummary);
+		bool actionTaken = TryExecuteRetaliationResponse(channel, playerInfo, playerInfo2, preferredTargetPeepId, $"{GetGangOpsChannelTag(channel)}-threshold-immediate-{reason}", currentHeat, out int dispatchedCount, out string actionSummary);
 		if (actionTaken)
 		{
 			MarkQueuedRevengeSatisfied(channel, retaliationGangId, targetGangId, "threshold-immediate");
 		}
-		VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"Immediate threshold retaliation attacker={retaliationGangId} defender={targetGangId} action={actionSummary} crews={dispatchedCount} taken={actionTaken} reason={reason} before={priorHeat:0.0} after={currentHeat:0.0} threshold={warHeatThresholdForRevenge:0.0}");
+		VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"Immediate threshold retaliation attacker={retaliationGangId} defender={targetGangId} action={actionSummary} crews={dispatchedCount} taken={actionTaken} reason={reason} before={priorHeat:0.0} after={currentHeat:0.0} beforeEffective={priorEffectiveHeat:0.0} afterEffective={currentEffectiveHeat:0.0} threshold={warHeatThresholdForRevenge:0.0} relScore={relationshipScore} relHostility={relationshipHostility:0.00} relHeatBonus={relationshipHeatBonus:0.0} hostileBuff={relationshipHostileBuff}");
 	}
 
 	internal static void RegisterGangOpsHostileEvent(int attackerPid, int defenderPid, bool lethal, long attackerCrewPeepId)
@@ -29512,19 +29954,34 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		int heatDefenderPid = attackerIsAiGang ? defenderPid : attackerPid;
 		float warHeat = GetWarHeat(gangOpsChannel, heatAttackerPid, heatDefenderPid);
 		AddWarHeat(gangOpsChannel, heatAttackerPid, heatDefenderPid, amount, lethal ? (attackerIsHuman ? "human-crew-killed" : "crew-killed") : (attackerIsHuman ? "human-attack" : "attack"));
+		if (lethal && attackerIsHuman && defenderIsAiGang)
+		{
+			ApplyHumanCrewKillRelationshipBuff(playerInfo2, playerInfo, gangOpsChannel, "human-crew-killed");
+		}
 		float warHeat2 = GetWarHeat(gangOpsChannel, heatAttackerPid, heatDefenderPid);
 		if (attackerIsHuman && defenderIsAiGang)
 		{
 			QueueRevengeIfEligible(gangOpsChannel, defenderPid, attackerPid, attackerCrewPeepId, G.GetNow().days, lethal ? "human-kill-first-hit" : "human-attack-first-hit");
 		}
-		if (defenderIsAiGang && warHeat2 >= GetEffectiveWarHeatThresholdForRevenge(gangOpsChannel))
+		if (defenderIsAiGang)
 		{
 			GangOpsChannel gangOpsChannel2 = attackerIsAiGang ? ResolveGangOpsChannelForGang(defenderPid) : gangOpsChannel;
 			int retaliationGangId = attackerIsAiGang ? defenderPid : defenderPid;
 			int targetGangId = attackerIsAiGang ? attackerPid : attackerPid;
 			string text = lethal ? (attackerIsHuman ? "human-kill-threshold" : "kill-threshold") : (attackerIsHuman ? "human-attack-threshold" : "attack-threshold");
-			QueueRevengeIfEligible(gangOpsChannel2, retaliationGangId, targetGangId, attackerCrewPeepId, G.GetNow().days, text);
-			TryTriggerImmediateThresholdRetaliation(gangOpsChannel2, retaliationGangId, targetGangId, warHeat, warHeat2, attackerCrewPeepId, text);
+			PlayerInfo retaliationGang = G.FindPlayerById(retaliationGangId);
+			PlayerInfo targetGang = G.FindPlayerById(targetGangId);
+			float effectiveHeatAfter = GetRelationshipAdjustedWarHeat(gangOpsChannel2, retaliationGang, targetGang, warHeat2, out int relationshipScore, out float relationshipHostility, out float relationshipHeatBonus, out bool relationshipHostileBuff);
+			float threshold = GetEffectiveWarHeatThresholdForRevenge(gangOpsChannel2);
+			if (effectiveHeatAfter >= threshold)
+			{
+				QueueRevengeIfEligible(gangOpsChannel2, retaliationGangId, targetGangId, attackerCrewPeepId, G.GetNow().days, text);
+				TryTriggerImmediateThresholdRetaliation(gangOpsChannel2, retaliationGangId, targetGangId, warHeat, warHeat2, attackerCrewPeepId, text);
+			}
+			else if (relationshipHostility >= 0.35f)
+			{
+				VerificationLog($"GangOps.{GetGangOpsChannelTag(gangOpsChannel2)}.Revenge", $"Immediate relationship retaliation below threshold attacker={retaliationGangId} defender={targetGangId} reason={text} heat={warHeat2:0.0} effectiveHeat={effectiveHeatAfter:0.0} threshold={threshold:0.0} relScore={relationshipScore} relHostility={relationshipHostility:0.00} relHeatBonus={relationshipHeatBonus:0.0} hostileBuff={relationshipHostileBuff}");
+			}
 		}
 	}
 
@@ -29556,9 +30013,16 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		float amount = lethal ? pactOpsSettings.WarHeatKillGain : pactOpsSettings.WarHeatAttackGain;
 		AddWarHeat(GangOpsChannel.Pact, attackerPid, defenderPid, amount, lethal ? "crew-killed" : "attack");
 		float warHeat = GetWarHeat(GangOpsChannel.Pact, attackerPid, defenderPid);
-		if (warHeat >= GetEffectiveWarHeatThresholdForRevenge(GangOpsChannel.Pact))
+		PlayerInfo retaliationGang = G.FindPlayerById(defenderPid);
+		PlayerInfo targetGang = G.FindPlayerById(attackerPid);
+		float effectiveWarHeat = GetRelationshipAdjustedWarHeat(GangOpsChannel.Pact, retaliationGang, targetGang, warHeat, out int relationshipScore, out float relationshipHostility, out float relationshipHeatBonus, out bool relationshipHostileBuff);
+		if (effectiveWarHeat >= GetEffectiveWarHeatThresholdForRevenge(GangOpsChannel.Pact))
 		{
 			QueueRevengeIfEligible(GangOpsChannel.Pact, defenderPid, attackerPid, attackerCrewPeepId, G.GetNow().days, lethal ? "kill-threshold" : "attack-threshold");
+		}
+		else if (relationshipHostility >= 0.35f)
+		{
+			VerificationLog("GangOps.Pact.Revenge", $"Pact retaliation below threshold attacker={defenderPid} defender={attackerPid} heat={warHeat:0.0} effectiveHeat={effectiveWarHeat:0.0} threshold={GetEffectiveWarHeatThresholdForRevenge(GangOpsChannel.Pact):0.0} relScore={relationshipScore} relHostility={relationshipHostility:0.00} relHeatBonus={relationshipHeatBonus:0.0} hostileBuff={relationshipHostileBuff}");
 		}
 	}
 
@@ -29613,6 +30077,11 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 	{
 		if (!IsRuntimeGangCrewBaseAvailable(owner, crew))
 		{
+			return false;
+		}
+		if (TurnUpdatePatch.IsCrewReservedForPendingAiHumanRobberyMeeting(owner, crew))
+		{
+			VerificationLog("PactRetaliation", $"runtime-attack-skip-robbery-meeting attacker={owner.PID.id} peep={crew.peepId.id} vehicle={(crew.VehicleID.IsValid ? crew.VehicleID.id : 0UL)}");
 			return false;
 		}
 		if (crew.IsInVehicle
@@ -30042,6 +30511,489 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		}
 	}
 
+	private static Node ResolveFrontRouteCommandNode(Node finalTargetNode, PathData path, bool allowSegmentTarget, out NodeID routeNodeId, out string routeGoalMode)
+	{
+		routeNodeId = finalTargetNode?.id ?? NodeID.INVALID;
+		routeGoalMode = "target";
+		if (!allowSegmentTarget || finalTargetNode?.id.IsValid != true || path?.nodes == null || path.nodes.Count == 0)
+		{
+			return finalTargetNode;
+		}
+		Node segmentNode = path.nodes.LastOrDefault()?.node;
+		if (segmentNode?.id.IsValid == true && segmentNode.id != finalTargetNode.id)
+		{
+			routeNodeId = segmentNode.id;
+			routeGoalMode = "approach-segment";
+			return segmentNode;
+		}
+		return finalTargetNode;
+	}
+
+	private static void MarkPendingRetaliationRouteTarget(PendingRetaliationFrontTicker entry, NodeID routeNodeId, NodeID finalTargetNodeId, NodeID issuedFromNodeId)
+	{
+		if (entry == null)
+		{
+			return;
+		}
+		entry.DelayedRouteTargetNodeId = routeNodeId;
+		entry.DelayedFinalRouteIssuedFromNodeId = routeNodeId.IsValid
+			&& finalTargetNodeId.IsValid
+			&& routeNodeId == finalTargetNodeId
+			&& issuedFromNodeId.IsValid
+			? issuedFromNodeId
+			: NodeID.INVALID;
+	}
+
+	private static bool HasPendingRetaliationFinalRouteProgress(PendingRetaliationFrontTicker entry, NodeID currentNodeId, NodeID finalTargetNodeId)
+	{
+		return entry != null
+			&& currentNodeId.IsValid
+			&& finalTargetNodeId.IsValid
+			&& entry.DelayedFinalRouteIssuedFromNodeId.IsValid
+			&& entry.DelayedRouteTargetNodeId == finalTargetNodeId
+			&& currentNodeId != entry.DelayedFinalRouteIssuedFromNodeId;
+	}
+
+	private static bool ShouldAllowDelayedHumanFrontSegmentTarget(PendingRetaliationFrontTicker entry)
+	{
+		return entry == null
+			|| (!entry.DelayedFinalApproachGraceGranted
+				&& !entry.DelayedTerminalReassignmentGranted
+				&& entry.DelayedRouteRequeueCount < RETALIATION_FRONT_DELAYED_ACTION_SEGMENT_TARGET_MAX_REQUEUES);
+	}
+
+	private static bool ShouldCommitDelayedHumanFrontRoute(PendingRetaliationFrontTicker entry, int waitedDays)
+	{
+		return entry != null
+			&& entry.DefenderPid.IsHumanPlayer
+			&& string.Equals(GetPendingRetaliationTargetKind(entry), "outpost", StringComparison.Ordinal)
+			&& (entry.DelayedRouteRequeueCount >= RETALIATION_FRONT_DELAYED_ACTION_HUMAN_ROUTE_COMMIT_REQUEUES
+				|| waitedDays >= RETALIATION_FRONT_DELAYED_ACTION_HUMAN_ROUTE_COMMIT_DAYS);
+	}
+
+	private static bool IsActivePendingHumanOutpostFront(PendingRetaliationFrontTicker entry, PlayerID defenderPid)
+	{
+		if (entry == null || !defenderPid.IsHumanPlayer || entry.DefenderPid != defenderPid || entry.BuildingId.IsNotValid)
+		{
+			return false;
+		}
+		if (entry.DelayedPhysicalActionAbandoned || IsPendingRetaliationForcedBusinessClosureMode(entry.Mode))
+		{
+			return false;
+		}
+		if (!string.Equals(GetPendingRetaliationTargetKind(entry), "outpost", StringComparison.Ordinal))
+		{
+			return false;
+		}
+		Entity building = entry.BuildingId.FindEntity();
+		return building?.data?.building != null && building.data.building.outpost == defenderPid;
+	}
+
+	private static bool IsActivePendingHumanRetaliationAction(PendingRetaliationFrontTicker entry, PlayerID defenderPid)
+	{
+		if (entry == null || !defenderPid.IsHumanPlayer || entry.DefenderPid != defenderPid || entry.BuildingId.IsNotValid || entry.DelayedPhysicalActionAbandoned)
+		{
+			return false;
+		}
+		Entity building = entry.BuildingId.FindEntity();
+		if (building?.data?.building == null)
+		{
+			return false;
+		}
+		if (IsPendingRetaliationForcedBusinessClosureMode(entry.Mode))
+		{
+			return true;
+		}
+		return string.Equals(GetPendingRetaliationTargetKind(entry), "outpost", StringComparison.Ordinal)
+			&& building.data.building.outpost == defenderPid;
+	}
+
+	private static string GetPendingRetaliationActionKind(PendingRetaliationFrontTicker entry)
+	{
+		if (entry == null)
+		{
+			return "unknown";
+		}
+		if (IsPendingRetaliationForcedBusinessClosureMode(entry.Mode))
+		{
+			return "business-closure";
+		}
+		return GetPendingRetaliationTargetKind(entry);
+	}
+
+	private static bool IsCrewAssignedToOtherPendingRetaliationAction(PlayerID attackerPid, EntityID crewPeepId, EntityID allowedBuildingId, out PendingRetaliationFrontTicker pending)
+	{
+		pending = null;
+		if (attackerPid.IsNotAnyPlayer || crewPeepId.IsNotValid)
+		{
+			return false;
+		}
+		foreach (PendingRetaliationFrontTicker entry in _pendingRetaliationFrontTickersByBuilding.Values)
+		{
+			if (entry == null || entry.AttackerPid != attackerPid || entry.CrewPeepId != crewPeepId || entry.DelayedPhysicalActionAbandoned || entry.BuildingId.IsNotValid)
+			{
+				continue;
+			}
+			if (allowedBuildingId.IsValid && entry.BuildingId == allowedBuildingId)
+			{
+				continue;
+			}
+			pending = entry;
+			return true;
+		}
+		return false;
+	}
+
+	private static HashSet<ulong> GetOccupiedRetaliationVehicleIds(PlayerInfo attacker)
+	{
+		HashSet<ulong> occupiedVehicleIds = new HashSet<ulong>();
+		if (attacker?.crew == null)
+		{
+			return occupiedVehicleIds;
+		}
+		try
+		{
+			foreach (CrewAssignment crew in attacker.crew.GetLiving())
+			{
+				if (!crew.IsValid
+					|| !crew.IsInVehicle
+					|| crew.VehicleID.IsNotValid
+					|| crew.VehicleID.FindEntity() == null
+					|| MultiCrewVehicleHelper.IsAmbientTrafficVehicle(crew.VehicleID))
+				{
+					continue;
+				}
+				occupiedVehicleIds.Add(crew.VehicleID.id);
+			}
+		}
+		catch
+		{
+		}
+		return occupiedVehicleIds;
+	}
+
+	private static int GetPendingRetaliationActionUsage(PlayerInfo attacker, out HashSet<ulong> reservedVehicleIds)
+	{
+		reservedVehicleIds = new HashSet<ulong>();
+		if (attacker?.crew == null || attacker.PID.IsNotAnyPlayer)
+		{
+			return 0;
+		}
+		int pendingActionCount = 0;
+		try
+		{
+			foreach (PendingRetaliationFrontTicker entry in _pendingRetaliationFrontTickersByBuilding.Values)
+			{
+				if (entry == null
+					|| entry.AttackerPid != attacker.PID
+					|| entry.BuildingId.IsNotValid
+					|| entry.DelayedPhysicalActionAbandoned
+					|| entry.BuildingId.FindEntity() == null)
+				{
+					continue;
+				}
+				pendingActionCount++;
+				CrewAssignment pendingCrew = attacker.crew.GetCrewForPeep(entry.CrewPeepId);
+				if (pendingCrew.IsValid && pendingCrew.IsInVehicle && pendingCrew.VehicleID.IsValid)
+				{
+					reservedVehicleIds.Add(pendingCrew.VehicleID.id);
+				}
+			}
+			pendingActionCount += TurnUpdatePatch.AddPendingAiHumanRobberyMeetingReservations(attacker, reservedVehicleIds);
+		}
+		catch
+		{
+		}
+		return pendingActionCount;
+	}
+
+	private static bool TryGetActiveConvoInitiative(PlayerInfo owner, out NodeID meetingPoint, out string topic, out bool needsPeep)
+	{
+		meetingPoint = NodeID.INVALID;
+		topic = "none";
+		needsPeep = false;
+		try
+		{
+			ConvoInitiative initiative = owner?.ai?.social?.GetConvoInitiativeUnsafe();
+			if (initiative == null || !initiative.IsValid || initiative.IsExpired)
+			{
+				return false;
+			}
+			meetingPoint = initiative.meetingPoint;
+			topic = initiative.topic.ToString();
+			needsPeep = initiative.NeedToSendPeep();
+			return true;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static int GetRetaliationConvoInitiativeVehicleReserve(PlayerInfo attacker, out NodeID meetingPoint, out string topic, out bool needsPeep)
+	{
+		if (TryGetActiveConvoInitiative(attacker, out meetingPoint, out topic, out needsPeep))
+		{
+			return RETALIATION_CONVO_INITIATIVE_VEHICLE_RESERVE;
+		}
+		return 0;
+	}
+
+	private static bool HasActiveConvoMeetingCommand(PlayerInfo owner, EntityID peepId, out string commandTag)
+	{
+		commandTag = "none";
+		if (owner?.commands == null || peepId.IsNotValid)
+		{
+			return false;
+		}
+		try
+		{
+			foreach (Command command in owner.commands.EnumerateCommands(peepId))
+			{
+				if (command == null)
+				{
+					continue;
+				}
+				string typeName = command.GetType().Name;
+				if (command.type == CommandType.WaitAtMeetingPoint
+					|| typeName.IndexOf("WaitAtMeetingPoint", StringComparison.OrdinalIgnoreCase) >= 0)
+				{
+					commandTag = string.IsNullOrEmpty(typeName) ? command.type.ToString() : typeName;
+					return true;
+				}
+			}
+		}
+		catch
+		{
+		}
+		return false;
+	}
+
+	private static bool IsRetaliationConvoInitiativeCrewReserved(PlayerInfo attacker, CrewAssignment crew, out string reason, out NodeID meetingPoint, out string topic, out bool needsPeep)
+	{
+		reason = "none";
+		meetingPoint = NodeID.INVALID;
+		topic = "none";
+		needsPeep = false;
+		if (!crew.IsValid || crew.peepId.IsNotValid)
+		{
+			return false;
+		}
+		if (!TryGetActiveConvoInitiative(attacker, out meetingPoint, out topic, out needsPeep))
+		{
+			return false;
+		}
+		if (HasActiveConvoMeetingCommand(attacker, crew.peepId, out string commandTag))
+		{
+			reason = "meeting-command:" + commandTag;
+			return true;
+		}
+		if (needsPeep && attacker?.commands?.PeepHasTask(crew.peepId) == true)
+		{
+			reason = "busy-while-convo-unsent";
+			return true;
+		}
+		return false;
+	}
+
+	private static int GetRetaliationActionCapacity(PlayerInfo attacker, out int occupiedVehicleCount, out int pendingActionCount, out HashSet<ulong> reservedVehicleIds)
+	{
+		HashSet<ulong> occupiedVehicleIds = GetOccupiedRetaliationVehicleIds(attacker);
+		occupiedVehicleCount = occupiedVehicleIds.Count;
+		pendingActionCount = GetPendingRetaliationActionUsage(attacker, out reservedVehicleIds);
+		int convoReserve = GetRetaliationConvoInitiativeVehicleReserve(attacker, out _, out _, out _);
+		return Mathf.Max(0, occupiedVehicleCount - RETALIATION_NORMAL_DUTY_VEHICLE_RESERVE - convoReserve);
+	}
+
+	private static bool IsRetaliationVehicleAvailableForNewAction(PlayerInfo attacker, EntityID vehicleId, ISet<ulong> reservedVehicleIds)
+	{
+		if (attacker?.crew == null
+			|| vehicleId.IsNotValid
+			|| vehicleId.FindEntity() == null
+			|| MultiCrewVehicleHelper.IsAmbientTrafficVehicle(vehicleId)
+			|| (reservedVehicleIds != null && reservedVehicleIds.Contains(vehicleId.id)))
+		{
+			return false;
+		}
+		return true;
+	}
+
+	private static int GetRetaliationVehicleActiveTaskCount(PlayerInfo attacker, EntityID vehicleId)
+	{
+		if (attacker?.crew == null || attacker.commands == null || vehicleId.IsNotValid)
+		{
+			return 0;
+		}
+		int taskCount = 0;
+		try
+		{
+			foreach (CrewAssignment occupant in attacker.crew.GetLiving())
+			{
+				if (occupant.IsValid
+					&& occupant.IsInVehicle
+					&& occupant.VehicleID == vehicleId
+					&& attacker.commands.PeepHasTask(occupant.peepId))
+				{
+					taskCount++;
+				}
+			}
+		}
+		catch
+		{
+		}
+		return taskCount;
+	}
+
+	private static bool TryFindActivePendingHumanRetaliationAction(PlayerInfo defender, out PendingRetaliationFrontTicker pending)
+	{
+		pending = null;
+		if (defender?.PID.IsHumanPlayer != true)
+		{
+			return false;
+		}
+		pending = _pendingRetaliationFrontTickersByBuilding.Values
+			.Where(entry => IsActivePendingHumanRetaliationAction(entry, defender.PID))
+			.OrderBy(entry => entry.QueuedDay)
+			.ThenBy(entry => entry.BuildingId.id)
+			.FirstOrDefault();
+		return pending != null;
+	}
+
+	private static bool TryBlockNewHumanFrontTargetForExistingPending(PlayerInfo attacker, PlayerInfo defender, Entity requestedBuilding, string targetKind, string sourceTag, out string actionSummary)
+	{
+		actionSummary = "front-action:none";
+		if (!string.Equals(targetKind, "outpost", StringComparison.Ordinal) || defender?.PID.IsHumanPlayer != true)
+		{
+			return false;
+		}
+		int capacity = GetRetaliationActionCapacity(attacker, out int occupiedVehicles, out int pendingActions, out _);
+		if (pendingActions < capacity)
+		{
+			return false;
+		}
+		actionSummary = $"front-capacity-blocked:{pendingActions}/{capacity}";
+		VerificationLog("GangOps.FrontMovement", $"front-capacity-blocked attacker={attacker?.PID.id ?? 0} defender={defender.PID.id} requestedBuilding={requestedBuilding?.Id.id ?? 0UL} requestedTargetNode={requestedBuilding?.data?.board?.bead.nodeId ?? NodeID.INVALID} pendingActions={pendingActions} capacity={capacity} occupiedVehicles={occupiedVehicles} normalDutyReserve={RETALIATION_NORMAL_DUTY_VEHICLE_RESERVE} source={sourceTag}");
+		return true;
+	}
+
+	private static bool TryResolvePendingRetaliationOutpostClosureByRouteCommitment(PendingRetaliationFrontTicker entry, PlayerInfo attacker, PlayerInfo defender, CrewAssignment crew, Entity building, Node targetNode, NodeID currentNodeId, string currentNodeSource, int waitedDays, string sourceTag)
+	{
+		if (!ShouldCommitDelayedHumanFrontRoute(entry, waitedDays))
+		{
+			return false;
+		}
+		try
+		{
+			if (targetNode?.id.IsValid != true)
+			{
+				return false;
+			}
+			Entity peep = crew.GetPeep();
+			NodeID peepNodeId = peep?.data?.agent?.nid ?? NodeID.INVALID;
+			if (currentNodeId == targetNode.id || peepNodeId == targetNode.id)
+			{
+				return TryResolvePendingRetaliationOutpostClosureAtTarget(entry, attacker, defender, crew, building, targetNode.id, currentNodeId == targetNode.id ? currentNodeSource : "route-commitment-agent-at-target", sourceTag, "route-commitment-outpost-steal", "route-commitment-rival-blocking");
+			}
+			bool continuingFinalApproach = entry.DelayedFinalRouteIssuedFromNodeId.IsValid
+				&& entry.DelayedRouteTargetNodeId == targetNode.id;
+			bool madeFinalApproachProgress = HasPendingRetaliationFinalRouteProgress(entry, currentNodeId, targetNode.id);
+			if (madeFinalApproachProgress)
+			{
+				entry.DelayedFinalApproachProgressObserved = true;
+			}
+			bool stalledFinalApproach = continuingFinalApproach
+				&& currentNodeId.IsValid
+				&& currentNodeId == entry.DelayedFinalRouteIssuedFromNodeId;
+			bool routeLimitReached = entry.DelayedRouteRequeueCount >= RETALIATION_FRONT_DELAYED_ACTION_HUMAN_MAX_REQUEUES
+				&& !madeFinalApproachProgress;
+			bool waitLimitReached = waitedDays >= RETALIATION_FRONT_DELAYED_ACTION_MOVING_GIVE_UP_DAYS;
+			if ((routeLimitReached || waitLimitReached)
+				&& waitLimitReached
+				&& !routeLimitReached
+				&& !entry.DelayedFinalApproachGraceGranted
+				&& TryBuildRuntimeFrontReachableNextRoute(attacker.PID, peep, targetNode, out PathData gracePath, out string graceReason))
+			{
+				if (attacker?.commands != null && entry.CrewPeepId.IsValid)
+				{
+					attacker.commands.FlushQueue(entry.CrewPeepId, cancelActive: true);
+					attacker.commands.AddCommand(new CommandGoto(attacker.PID, entry.CrewPeepId, targetNode));
+				}
+				entry.Mode = "front-steal-route-commitment-final-approach-grace";
+				entry.DelayedRouteTargetNodeId = targetNode.id;
+				entry.DelayedRouteLastIssuedDay = G.GetNow().days;
+				entry.DelayedFinalRouteIssuedFromNodeId = currentNodeId;
+				entry.DelayedRouteRequeueCount++;
+				entry.DelayedFinalApproachGraceGranted = true;
+				VerificationLog("GangOps.FrontMovement", $"front-route-commitment-final-approach-grace attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} waitedDays={waitedDays} requeues={entry.DelayedRouteRequeueCount} route={graceReason} cost={gracePath.cost} graceTurns=1 source={sourceTag}");
+				return true;
+			}
+			if (routeLimitReached
+				&& !waitLimitReached
+				&& !entry.DelayedFinalApproachGraceGranted
+				&& TryBuildRuntimeFrontApproachRoute(attacker.PID, peep, targetNode, out PathData routeLimitPath, out string routeLimitReason))
+			{
+				if (attacker?.commands != null && entry.CrewPeepId.IsValid)
+				{
+					attacker.commands.FlushQueue(entry.CrewPeepId, cancelActive: true);
+					attacker.commands.AddCommand(new CommandGoto(attacker.PID, entry.CrewPeepId, targetNode));
+				}
+				int oldRequeues = entry.DelayedRouteRequeueCount;
+				entry.Mode = "front-steal-route-commitment-requeue-limit-grace";
+				entry.DelayedRouteTargetNodeId = targetNode.id;
+				entry.DelayedRouteLastIssuedDay = G.GetNow().days;
+				entry.DelayedFinalRouteIssuedFromNodeId = currentNodeId;
+				entry.DelayedRouteRequeueCount = Mathf.Min(entry.DelayedRouteRequeueCount, RETALIATION_FRONT_DELAYED_ACTION_HUMAN_ROUTE_COMMIT_REQUEUES);
+				entry.DelayedNoProgressChecks = 0;
+				entry.DelayedFinalApproachGraceGranted = true;
+				VerificationLog("GangOps.FrontMovement", $"front-route-commitment-requeue-limit-grace attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} waitedDays={waitedDays} oldRequeues={oldRequeues} requeues={entry.DelayedRouteRequeueCount} maxRequeues={RETALIATION_FRONT_DELAYED_ACTION_HUMAN_MAX_REQUEUES} maxWaitDays={RETALIATION_FRONT_DELAYED_ACTION_MOVING_GIVE_UP_DAYS} route={routeLimitReason} cost={routeLimitPath.cost} source={sourceTag}");
+				return true;
+			}
+			if (routeLimitReached || waitLimitReached)
+			{
+				return false;
+			}
+			int nowDay = G.GetNow().days;
+			bool finalRouteStillQueued = entry.DelayedRouteTargetNodeId == targetNode.id
+				&& entry.DelayedRouteLastIssuedDay != int.MinValue
+				&& nowDay - entry.DelayedRouteLastIssuedDay < RETALIATION_FRONT_DELAYED_ACTION_REQUEUE_COOLDOWN_DAYS
+				&& IsPendingRetaliationFrontActionStillQueued(entry, building);
+			if (finalRouteStillQueued)
+			{
+				return true;
+			}
+			if (attacker?.commands != null && entry.CrewPeepId.IsValid)
+			{
+				bool competingTaskCleared = attacker.commands.PeepHasTask(entry.CrewPeepId);
+				if (competingTaskCleared)
+				{
+					attacker.commands.FlushQueue(entry.CrewPeepId, cancelActive: true);
+				}
+				attacker.commands.AddCommand(new CommandGoto(attacker.PID, entry.CrewPeepId, targetNode));
+				entry.Mode = "front-steal-route-commitment-final-approach";
+				entry.DelayedRouteTargetNodeId = targetNode.id;
+				entry.DelayedRouteLastIssuedDay = nowDay;
+				entry.DelayedFinalRouteIssuedFromNodeId = currentNodeId;
+				bool retryIncremented = !madeFinalApproachProgress;
+				if (retryIncremented)
+				{
+					entry.DelayedRouteRequeueCount++;
+				}
+				if (madeFinalApproachProgress)
+				{
+					entry.DelayedNoProgressChecks = 0;
+				}
+				VerificationLog("GangOps.FrontMovement", $"front-route-commitment-final-approach attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} waitedDays={waitedDays} requeues={entry.DelayedRouteRequeueCount} progressed={madeFinalApproachProgress} stalled={stalledFinalApproach} retryIncremented={retryIncremented} competingTaskCleared={competingTaskCleared} commitRequeues={RETALIATION_FRONT_DELAYED_ACTION_HUMAN_ROUTE_COMMIT_REQUEUES} commitDays={RETALIATION_FRONT_DELAYED_ACTION_HUMAN_ROUTE_COMMIT_DAYS} source={sourceTag}");
+				return true;
+			}
+			return false;
+		}
+		catch (Exception ex)
+		{
+			VerificationLog("GangOps.FrontMovement", $"front-route-commitment-failed attacker={entry?.AttackerPid.id ?? 0} defender={entry?.DefenderPid.id ?? 0} peep={entry?.CrewPeepId.id ?? 0UL} building={entry?.BuildingId.id ?? 0UL} currentNode={currentNodeId} reason={ex.GetType().Name}:{ex.Message} source={sourceTag}");
+			return false;
+		}
+	}
+
 	private static bool TryBuildRuntimeSameTurnRoute(PlayerID pid, Entity peep, Node targetNode, out PathData path, out string reason)
 	{
 		path = null;
@@ -30107,6 +31059,26 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		public string NodeSource = "none";
 		public float Distance = float.MaxValue;
 		public bool HasNode;
+		public bool IsBoss;
+		public int ExistingVehicleTaskCount;
+		public bool RecentFrontActorUse;
+		public string RecentFrontActorUseReason = string.Empty;
+	}
+
+	private static bool IsRuntimeFrontActionBoss(PlayerInfo owner, Entity peep)
+	{
+		if (owner?.social == null || peep == null || peep.Id.IsNotValid)
+		{
+			return false;
+		}
+		try
+		{
+			return owner.social.PlayerPeepId.IsValid && owner.social.PlayerPeepId == peep.Id;
+		}
+		catch
+		{
+			return false;
+		}
 	}
 
 	private static bool TryResolveRuntimeFrontActionCrewNodeQuiet(CrewAssignment crew, Entity peep, out NodeID nodeId, out string nodeSource)
@@ -30146,14 +31118,137 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		}
 	}
 
-	private static CrewAssignment FindRuntimeFrontActionCrew(PlayerInfo attacker, Entity targetBuilding, Node targetNode, string sourceTag, string context, float maxDistance, out bool blockedByDistance)
+	private static bool IsRetaliationFrontActorUseReason(string reason)
+	{
+		return string.Equals(reason, "front-completed", StringComparison.Ordinal)
+			|| string.Equals(reason, "command-finished", StringComparison.Ordinal)
+			|| string.Equals(reason, "business-closure-completed", StringComparison.Ordinal)
+			|| string.Equals(reason, "business-closure-command-finished", StringComparison.Ordinal)
+			|| string.Equals(reason, "front-defended", StringComparison.Ordinal)
+			|| string.Equals(reason, "attacker-gave-up-too-far", StringComparison.Ordinal);
+	}
+
+	private static void PruneExpiredRecentRetaliationFrontActorUses(int nowDay)
+	{
+		if (_recentRetaliationFrontActorUseByPeep.Count != 0)
+		{
+			foreach (ulong key in _recentRetaliationFrontActorUseByPeep
+				.Where(item => item.Value == null || item.Value.UntilDay < nowDay)
+				.Select(item => item.Key)
+				.ToList())
+			{
+				_recentRetaliationFrontActorUseByPeep.Remove(key);
+			}
+		}
+		if (_recentRetaliationFrontActorUseByVehicle.Count != 0)
+		{
+			foreach (ulong key in _recentRetaliationFrontActorUseByVehicle
+				.Where(item => item.Value == null || item.Value.UntilDay < nowDay)
+				.Select(item => item.Key)
+				.ToList())
+			{
+				_recentRetaliationFrontActorUseByVehicle.Remove(key);
+			}
+		}
+	}
+
+	private static bool TryGetRecentRetaliationFrontActorUsePenalty(PlayerID attackerPid, CrewAssignment crew, int nowDay, out string reason)
+	{
+		reason = string.Empty;
+		if (attackerPid.IsNotAnyPlayer || !crew.IsValid || crew.peepId.IsNotValid)
+		{
+			return false;
+		}
+		PruneExpiredRecentRetaliationFrontActorUses(nowDay);
+		RecentRetaliationFrontActorUse actorUse = null;
+		if (_recentRetaliationFrontActorUseByPeep.TryGetValue(crew.peepId.id, out RecentRetaliationFrontActorUse peepUse)
+			&& peepUse != null
+			&& peepUse.AttackerPid == attackerPid.id
+			&& peepUse.UntilDay >= nowDay)
+		{
+			actorUse = peepUse;
+		}
+		if (actorUse == null
+			&& crew.VehicleID.IsValid
+			&& _recentRetaliationFrontActorUseByVehicle.TryGetValue(crew.VehicleID.id, out RecentRetaliationFrontActorUse vehicleUse)
+			&& vehicleUse != null
+			&& vehicleUse.AttackerPid == attackerPid.id
+			&& vehicleUse.UntilDay >= nowDay)
+		{
+			actorUse = vehicleUse;
+		}
+		if (actorUse == null)
+		{
+			return false;
+		}
+		reason = $"{actorUse.Reason ?? "front-action"}:building={actorUse.BuildingId}:until={actorUse.UntilDay}";
+		return true;
+	}
+
+	private static void MarkRecentRetaliationFrontActorUse(PendingRetaliationFrontTicker entry, string reason, string sourceTag)
+	{
+		if (entry == null || entry.AttackerPid.IsNotAnyPlayer || entry.CrewPeepId.IsNotValid || !IsRetaliationFrontActorUseReason(reason))
+		{
+			return;
+		}
+		try
+		{
+			int nowDay = G.GetNow().days;
+			PruneExpiredRecentRetaliationFrontActorUses(nowDay);
+			EntityID vehicleId = EntityID.INVALID;
+			try
+			{
+				PlayerInfo attacker = entry.AttackerPid.FindPlayer();
+				CrewAssignment crew = attacker?.crew?.GetCrewForPeep(entry.CrewPeepId) ?? default(CrewAssignment);
+				if (crew.IsValid && crew.VehicleID.IsValid)
+				{
+					vehicleId = crew.VehicleID;
+				}
+			}
+			catch
+			{
+			}
+
+			RecentRetaliationFrontActorUse actorUse = new RecentRetaliationFrontActorUse
+			{
+				AttackerPid = entry.AttackerPid.id,
+				PeepId = entry.CrewPeepId.id,
+				VehicleId = vehicleId.IsValid ? vehicleId.id : 0UL,
+				BuildingId = entry.BuildingId.id,
+				CreatedDay = nowDay,
+				UntilDay = nowDay + RETALIATION_FRONT_ACTOR_REUSE_PENALTY_DAYS,
+				Reason = reason ?? "front-action",
+				Source = sourceTag
+			};
+			_recentRetaliationFrontActorUseByPeep[actorUse.PeepId] = actorUse;
+			if (actorUse.VehicleId != 0UL)
+			{
+				_recentRetaliationFrontActorUseByVehicle[actorUse.VehicleId] = actorUse;
+			}
+			VerificationLog("GangOps.FrontMovement", $"front-actor-reuse-penalty attacker={actorUse.AttackerPid} peep={actorUse.PeepId} vehicle={actorUse.VehicleId} building={actorUse.BuildingId} reason={actorUse.Reason} untilDay={actorUse.UntilDay} duration={RETALIATION_FRONT_ACTOR_REUSE_PENALTY_DAYS} source={sourceTag}");
+		}
+		catch (Exception ex)
+		{
+			VerificationLog("GangOps.FrontMovement", $"front-actor-reuse-penalty-failed attacker={entry.AttackerPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} reason={reason} error={ex.GetType().Name}:{ex.Message} source={sourceTag}");
+		}
+	}
+
+	private static CrewAssignment FindRuntimeFrontActionCrew(PlayerInfo attacker, Entity targetBuilding, Node targetNode, string sourceTag, string context, float maxDistance, out bool blockedByDistance, bool allowCapacityOverflow = false)
 	{
 		blockedByDistance = false;
 		if (attacker?.crew == null || targetNode?.id.IsValid != true)
 		{
 			return default(CrewAssignment);
 		}
+		int actionCapacity = GetRetaliationActionCapacity(attacker, out int occupiedVehicles, out int pendingActions, out HashSet<ulong> reservedVehicleIds);
+		int convoReserve = GetRetaliationConvoInitiativeVehicleReserve(attacker, out NodeID convoMeetingPoint, out string convoTopic, out bool convoNeedsPeep);
+		if (pendingActions >= actionCapacity && !allowCapacityOverflow)
+		{
+			VerificationLog("GangOps.FrontMovement", $"front-crew-selection-capacity-blocked attacker={attacker.PID.id} building={targetBuilding?.Id.id ?? 0UL} targetNode={targetNode.id} pendingActions={pendingActions} capacity={actionCapacity} occupiedVehicles={occupiedVehicles} normalDutyReserve={RETALIATION_NORMAL_DUTY_VEHICLE_RESERVE} convoReserve={convoReserve} convoTopic={convoTopic} convoMeetingNode={convoMeetingPoint} convoNeedsPeep={convoNeedsPeep} capacityOverflowAllowed={allowCapacityOverflow} context={context} source={sourceTag}");
+			return default(CrewAssignment);
+		}
 
+		int nowDay = G.GetNow().days;
 		List<RuntimeFrontActionCrewCandidate> candidates = new List<RuntimeFrontActionCrewCandidate>();
 		HashSet<ulong> seenActionCrew = new HashSet<ulong>();
 		foreach (CrewAssignment rawCrew in attacker.crew.GetLiving())
@@ -30162,8 +31257,20 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			{
 				continue;
 			}
+			if (!crew.IsInVehicle
+				|| crew.VehicleID.IsNotValid
+				|| !IsRetaliationVehicleAvailableForNewAction(attacker, crew.VehicleID, reservedVehicleIds))
+			{
+				continue;
+			}
 			if (!seenActionCrew.Add(crew.peepId.id))
 			{
+				continue;
+			}
+			EntityID allowedBuildingId = targetBuilding?.Id ?? EntityID.INVALID;
+			if (IsCrewAssignedToOtherPendingRetaliationAction(attacker.PID, crew.peepId, allowedBuildingId, out PendingRetaliationFrontTicker busyPending))
+			{
+				VerificationLog("GangOps.FrontMovement", $"front-crew-busy-pending-action attacker={attacker.PID.id} peep={crew.peepId.id} busyBuilding={busyPending.BuildingId.id} busyKind={GetPendingRetaliationActionKind(busyPending)} requestedBuilding={targetBuilding?.Id.id ?? 0UL} context={context} source={sourceTag}");
 				continue;
 			}
 			if (ShouldRuntimeGangAttackerRetreat(attacker, crew, out _))
@@ -30175,10 +31282,19 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			{
 				continue;
 			}
+			if (IsRetaliationConvoInitiativeCrewReserved(attacker, crew, out string convoReserveReason, out NodeID reservedMeetingPoint, out string reservedTopic, out bool reservedNeedsPeep))
+			{
+				VerificationLog("GangOps.FrontMovement", $"front-crew-skip-convo-initiative attacker={attacker.PID.id} peep={crew.peepId.id} vehicle={(crew.VehicleID.IsValid ? crew.VehicleID.id : 0UL)} building={targetBuilding?.Id.id ?? 0UL} targetNode={targetNode.id} reason={convoReserveReason} convoTopic={reservedTopic} convoMeetingNode={reservedMeetingPoint} convoNeedsPeep={reservedNeedsPeep} context={context} source={sourceTag}");
+				continue;
+			}
 
 			RuntimeFrontActionCrewCandidate candidate = new RuntimeFrontActionCrewCandidate
 			{
-				Crew = crew
+				Crew = crew,
+				IsBoss = IsRuntimeFrontActionBoss(attacker, peep),
+				ExistingVehicleTaskCount = GetRetaliationVehicleActiveTaskCount(attacker, crew.VehicleID),
+				RecentFrontActorUse = TryGetRecentRetaliationFrontActorUsePenalty(attacker.PID, crew, nowDay, out string recentUseReason),
+				RecentFrontActorUseReason = recentUseReason ?? string.Empty
 			};
 			if (TryResolveRuntimeFrontActionCrewNodeQuiet(crew, peep, out NodeID currentNodeId, out string currentNodeSource)
 				&& currentNodeId.IsValid)
@@ -30195,24 +31311,53 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			candidates.Add(candidate);
 		}
 
-		RuntimeFrontActionCrewCandidate selected = candidates
-			.OrderBy(item => item.HasNode ? 0 : 1)
+		List<RuntimeFrontActionCrewCandidate> eligibleCandidates = candidates
+			.Where(item => item.HasNode && (maxDistance <= 0f || item.Distance <= maxDistance))
+			.ToList();
+		if (eligibleCandidates.Count == 0 && maxDistance <= 0f)
+		{
+			eligibleCandidates = candidates.ToList();
+		}
+		List<RuntimeFrontActionCrewCandidate> eligibleNonBossCandidates = eligibleCandidates
+			.Where(item => !item.IsBoss)
+			.ToList();
+		List<RuntimeFrontActionCrewCandidate> freshNonBossCandidates = eligibleNonBossCandidates
+			.Where(item => !item.RecentFrontActorUse)
+			.ToList();
+		List<RuntimeFrontActionCrewCandidate> freshEligibleCandidates = eligibleCandidates
+			.Where(item => !item.RecentFrontActorUse)
+			.ToList();
+		IEnumerable<RuntimeFrontActionCrewCandidate> selectionPool = freshNonBossCandidates.Count > 0
+			? freshNonBossCandidates
+			: (freshEligibleCandidates.Count > 0
+				? freshEligibleCandidates
+				: (eligibleNonBossCandidates.Count > 0 ? eligibleNonBossCandidates : eligibleCandidates));
+		RuntimeFrontActionCrewCandidate selected = selectionPool
+			.OrderBy(item => item.RecentFrontActorUse ? 1 : 0)
+			.ThenBy(item => item.ExistingVehicleTaskCount)
+			.ThenBy(item => item.HasNode ? 0 : 1)
 			.ThenBy(item => item.Distance)
 			.ThenByDescending(item => item.Crew.IsInVehicle)
 			.ThenBy(item => item.Crew.peepId.id)
 			.FirstOrDefault();
-		if (selected != null && maxDistance > 0f && (!selected.HasNode || selected.Distance > maxDistance))
+		if (selected == null && maxDistance > 0f && candidates.Count > 0)
 		{
 			blockedByDistance = true;
-			VerificationLog("GangOps.FrontMovement", $"front-crew-selection-too-far attacker={attacker.PID.id} peep={selected.Crew.peepId.id} vehicle={(selected.Crew.VehicleID.IsValid ? selected.Crew.VehicleID.id : 0UL)} building={targetBuilding?.Id.id ?? 0UL} targetNode={targetNode.id} currentNode={selected.NodeId} nodeSource={selected.NodeSource} distance={(selected.HasNode ? selected.Distance : -1f):0.0} maxDistance={maxDistance:0.0} candidates={candidates.Count} context={context} source={sourceTag}");
+			RuntimeFrontActionCrewCandidate nearest = candidates
+				.OrderBy(item => item.HasNode ? 0 : 1)
+				.ThenBy(item => item.Distance)
+				.ThenBy(item => item.IsBoss ? 1 : 0)
+				.ThenBy(item => item.Crew.peepId.id)
+				.FirstOrDefault();
+			VerificationLog("GangOps.FrontMovement", $"front-crew-selection-too-far attacker={attacker.PID.id} peep={nearest?.Crew.peepId.id ?? 0UL} boss={nearest?.IsBoss ?? false} vehicle={(nearest != null && nearest.Crew.VehicleID.IsValid ? nearest.Crew.VehicleID.id : 0UL)} building={targetBuilding?.Id.id ?? 0UL} targetNode={targetNode.id} currentNode={nearest?.NodeId ?? NodeID.INVALID} nodeSource={nearest?.NodeSource ?? "none"} distance={(nearest?.HasNode == true ? nearest.Distance : -1f):0.0} maxDistance={maxDistance:0.0} candidates={candidates.Count} eligible={eligibleCandidates.Count} nonBossEligible={eligibleNonBossCandidates.Count} pendingActions={pendingActions} capacity={actionCapacity} capacityOverflowAllowed={allowCapacityOverflow} context={context} source={sourceTag}");
 			return default(CrewAssignment);
 		}
 		if (selected == null || !selected.Crew.IsValid)
 		{
-			VerificationLog("GangOps.FrontMovement", $"front-crew-selection-unavailable attacker={attacker.PID.id} building={targetBuilding?.Id.id ?? 0UL} targetNode={targetNode.id} candidates={candidates.Count} context={context} source={sourceTag}");
+			VerificationLog("GangOps.FrontMovement", $"front-crew-selection-unavailable attacker={attacker.PID.id} building={targetBuilding?.Id.id ?? 0UL} targetNode={targetNode.id} candidates={candidates.Count} eligible={eligibleCandidates.Count} nonBossEligible={eligibleNonBossCandidates.Count} pendingActions={pendingActions} capacity={actionCapacity} capacityOverflowAllowed={allowCapacityOverflow} context={context} source={sourceTag}");
 			return default(CrewAssignment);
 		}
-		VerificationLog("GangOps.FrontMovement", $"front-crew-selected attacker={attacker.PID.id} peep={selected.Crew.peepId.id} vehicle={(selected.Crew.VehicleID.IsValid ? selected.Crew.VehicleID.id : 0UL)} building={targetBuilding?.Id.id ?? 0UL} targetNode={targetNode.id} currentNode={selected.NodeId} nodeSource={selected.NodeSource} distance={(selected.HasNode ? selected.Distance : -1f):0.0} candidates={candidates.Count} context={context} source={sourceTag}");
+		VerificationLog("GangOps.FrontMovement", $"front-crew-selected attacker={attacker.PID.id} peep={selected.Crew.peepId.id} boss={selected.IsBoss} vehicle={(selected.Crew.VehicleID.IsValid ? selected.Crew.VehicleID.id : 0UL)} building={targetBuilding?.Id.id ?? 0UL} targetNode={targetNode.id} currentNode={selected.NodeId} nodeSource={selected.NodeSource} distance={(selected.HasNode ? selected.Distance : -1f):0.0} candidates={candidates.Count} eligible={eligibleCandidates.Count} nonBossEligible={eligibleNonBossCandidates.Count} existingVehicleTasks={selected.ExistingVehicleTaskCount} recentUse={selected.RecentFrontActorUse} recentUseReason={(string.IsNullOrEmpty(selected.RecentFrontActorUseReason) ? "none" : selected.RecentFrontActorUseReason)} pendingActions={pendingActions} capacity={actionCapacity} capacityOverflowUsed={(allowCapacityOverflow && pendingActions >= actionCapacity)} occupiedVehicles={occupiedVehicles} normalDutyReserve={RETALIATION_NORMAL_DUTY_VEHICLE_RESERVE} convoReserve={convoReserve} convoTopic={convoTopic} convoMeetingNode={convoMeetingPoint} convoNeedsPeep={convoNeedsPeep} selection={(selected.IsBoss ? "boss-fallback" : "non-boss-preferred")} context={context} source={sourceTag}");
 		return selected.Crew;
 	}
 
@@ -30389,7 +31534,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		return entry != null
 			&& !string.IsNullOrEmpty(entry.SourceReason)
 			&& entry.SourceReason.IndexOf("ai-human-robbery-refused", StringComparison.OrdinalIgnoreCase) >= 0
-			&& entry.SourceReason.IndexOf("attack-next-turn", StringComparison.OrdinalIgnoreCase) >= 0;
+			&& (entry.SourceReason.IndexOf("attack-next-turn", StringComparison.OrdinalIgnoreCase) >= 0
+				|| entry.SourceReason.IndexOf("attack-delayed", StringComparison.OrdinalIgnoreCase) >= 0);
 	}
 
 	private static int ExecuteDueRevengeEntries(GangOpsChannel channel, SimTime now)
@@ -30517,7 +31663,6 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				}
 				break;
 			case GangRetaliationAction.CloseFront:
-			case GangRetaliationAction.AttackBuilding:
 				if (IsRobberyRetaliationSource(sourceTag)
 					? TryForceCloseRobberyRetaliationImportantBusiness(channel, attacker, defender, sourceTag, out actionSummary)
 					: TryForceCloseRetaliationBusiness(channel, attacker, defender, sourceTag, out actionSummary))
@@ -30539,6 +31684,18 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 						actionSummary = $"approach:{approachCount}";
 						return false;
 					}
+				}
+				break;
+			case GangRetaliationAction.AttackBuilding:
+				if (TryForceCloseWarHeatRetaliationImportantBusiness(channel, attacker, defender, sourceTag, out actionSummary))
+				{
+					TryLogAiFrontClosureGrapevine(attacker, defender, actionSummary, sourceTag);
+					return true;
+				}
+				if (TryForceCloseRetaliationBusiness(channel, attacker, defender, sourceTag, out actionSummary))
+				{
+					TryLogAiFrontClosureGrapevine(attacker, defender, actionSummary, sourceTag);
+					return true;
 				}
 				break;
 			case GangRetaliationAction.TakeTerritory:
@@ -30665,6 +31822,53 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		}
 	}
 
+	private static bool TryForceCloseWarHeatRetaliationImportantBusiness(GangOpsChannel channel, PlayerInfo attacker, PlayerInfo defender, string sourceTag, out string actionSummary)
+	{
+		actionSummary = "forced-close-warheat-important:none";
+		if (!IsAliveGangPlayer(attacker) || !IsGangOpsRetaliationTargetEligible(defender) || attacker.territory == null)
+		{
+			return false;
+		}
+		if (ArePlayersProtectedByPactAlliance(attacker, defender) || HasMutualTruce(attacker, defender))
+		{
+			return false;
+		}
+		if (defender.PID.IsHumanPlayer)
+		{
+			int capacity = GetRetaliationActionCapacity(attacker, out int occupiedVehicles, out int pendingActions, out _);
+			if (pendingActions >= capacity)
+			{
+				actionSummary = $"forced-close-warheat-important-capacity-blocked:{pendingActions}/{capacity}";
+				VerificationLog("GangOps.FrontMovement", $"business-capacity-blocked attacker={attacker.PID.id} defender={defender.PID.id} pendingActions={pendingActions} capacity={capacity} occupiedVehicles={occupiedVehicles} normalDutyReserve={RETALIATION_NORMAL_DUTY_VEHICLE_RESERVE} source={sourceTag}");
+				return true;
+			}
+		}
+		bool foundClosureTarget = TryFindRetaliationClosureTarget(attacker, defender, out Entity targetBuilding, out string reason);
+		string importantShopReason = "not-evaluated";
+		if (!foundClosureTarget
+			|| !TryValidateRetaliationImportantShopTarget(targetBuilding, out _, out importantShopReason))
+		{
+			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"War-heat important business closure unavailable attacker={attacker.PID.id} defender={defender.PID.id} reason={reason}+{importantShopReason} source={sourceTag}");
+			return false;
+		}
+		try
+		{
+			if (TryQueuePhysicalRetaliationBusinessForceClose(channel, attacker, defender, targetBuilding, sourceTag + "-warheat-business", out string queuedSummary))
+			{
+				actionSummary = "forced-close-warheat-important-" + queuedSummary;
+				VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"War-heat important business closure queued attacker={attacker.PID.id} defender={defender.PID.id} building={targetBuilding.Id.id} action={actionSummary} source={sourceTag}");
+				return true;
+			}
+			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"War-heat important business closure unavailable attacker={attacker.PID.id} defender={defender.PID.id} building={targetBuilding.Id.id} reason=no-physical-business-route source={sourceTag}");
+			return false;
+		}
+		catch (Exception ex)
+		{
+			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"War-heat important business closure failed attacker={attacker.PID.id} defender={defender.PID.id} building={targetBuilding?.Id.id ?? 0UL} reason={ex.GetType().Name}:{ex.Message} source={sourceTag}");
+			return false;
+		}
+	}
+
 	private static bool TryForceCloseRobberyRetaliationImportantBusiness(GangOpsChannel channel, PlayerInfo attacker, PlayerInfo defender, string sourceTag, out string actionSummary)
 	{
 		actionSummary = "robbery-important-business:none";
@@ -30707,6 +31911,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"Front/backroom retaliation unavailable attacker={attacker?.PID.id ?? 0} defender={defender?.PID.id ?? 0} reason={reason} source={sourceTag}");
 			return false;
 		}
+		if (TryBlockNewHumanFrontTargetForExistingPending(attacker, defender, targetBuilding, targetKind, sourceTag, out actionSummary))
+		{
+			return true;
+		}
 		try
 		{
 			if (TryQueuePhysicalRetaliationFrontOrBusinessAction(channel, attacker, defender, targetBuilding, targetKind, sourceTag, out actionSummary))
@@ -30735,6 +31943,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		if (targetNode?.id.IsValid != true)
 		{
 			return false;
+		}
+		if (TryBlockNewHumanFrontTargetForExistingPending(attacker, defender, targetBuilding, targetKind, sourceTag, out actionSummary))
+		{
+			return true;
 		}
 
 		float maxCrewDistance = defender?.PID.IsHumanPlayer == true ? AI_VS_HUMAN_FRONT_ACTION_MAX_CREW_DISTANCE : -1f;
@@ -30818,9 +32030,22 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				}
 				return false;
 			}
+			NodeID routeCommandNodeId = targetNode.id;
+			string routeGoalMode = "target";
 			if (delayHumanFrontAction)
 			{
-				attacker.commands.AddCommandImmediate(new CommandGoto(attacker.PID, crew.peepId, targetNode));
+				Node routeCommandNode = ResolveFrontRouteCommandNode(targetNode, approachPath, allowSegmentTarget: true, out routeCommandNodeId, out routeGoalMode);
+				if (routeCommandNode?.id.IsValid != true)
+				{
+					routeCommandNode = targetNode;
+					routeCommandNodeId = targetNode.id;
+					routeGoalMode = "target-fallback";
+				}
+				attacker.commands.AddCommandImmediate(new CommandGoto(attacker.PID, crew.peepId, routeCommandNode));
+				if (routeCommandNodeId.IsValid && routeCommandNodeId != targetNode.id)
+				{
+					VerificationLog("GangOps.FrontMovement", $"front-route-segment-queued attacker={attacker.PID.id} defender={defender?.PID.id ?? 0} peep={crew.peepId.id} building={targetBuilding.Id.id} routeTargetNode={routeCommandNodeId} finalTargetNode={targetNode.id} routeGoal={routeGoalMode} route={approachReason} cost={approachPath.cost} source={sourceTag}");
+				}
 			}
 			else
 			{
@@ -30831,12 +32056,16 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			if (delayHumanFrontAction)
 			{
 				MarkPendingRetaliationFrontDelayedPhysicalAction(targetBuilding.Id, targetKind, G.GetNow().days + 1, "travel-first");
+				if (_pendingRetaliationFrontTickersByBuilding.TryGetValue(targetBuilding.Id.id, out PendingRetaliationFrontTicker pendingRouteEntry) && pendingRouteEntry != null)
+				{
+					MarkPendingRetaliationRouteTarget(pendingRouteEntry, routeCommandNodeId, targetNode.id, currentNodeId);
+				}
 				if (acceptedLongHumanFrontRoute)
 				{
 					MarkPendingRetaliationFrontDelayedMultiTurnRoute(targetBuilding.Id, "front-route-long-accepted");
 				}
 			}
-			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"Physical front action queued attacker={attacker.PID.id} defender={defender?.PID.id ?? 0} peep={crew.peepId.id} building={targetBuilding.Id.id} targetNode={targetNode.id} currentNode={currentNodeId} currentSource={currentNodeSource} kind={targetKind} mode=goto-{actionMode}{(delayHumanFrontAction ? "-delayed" : string.Empty)} route={approachReason} cost={approachPath.cost} source={sourceTag}");
+			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"Physical front action queued attacker={attacker.PID.id} defender={defender?.PID.id ?? 0} peep={crew.peepId.id} building={targetBuilding.Id.id} targetNode={targetNode.id} currentNode={currentNodeId} currentSource={currentNodeSource} kind={targetKind} mode=goto-{actionMode}{(delayHumanFrontAction ? "-delayed" : string.Empty)} routeTargetNode={(delayHumanFrontAction ? routeCommandNodeId : targetNode.id)} routeGoal={(delayHumanFrontAction ? routeGoalMode : "target")} route={approachReason} cost={approachPath.cost} source={sourceTag}");
 			return true;
 		}
 		catch (Exception ex)
@@ -30867,14 +32096,14 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			{
 				attacker.commands.AddCommandImmediate(forceClose);
 				actionSummary = $"business-fallback-close-queued:{fallbackBuilding.Id.id}";
-				TrackPendingRetaliationForcedBusinessClosure(attacker, defender, fallbackBuilding, crew.peepId, fallbackNode.id, "business-fallback-close-now", sourceTag);
+				TrackPendingRetaliationForcedBusinessClosure(attacker, defender, fallbackBuilding, crew.peepId, fallbackNode.id, "business-fallback-close-now", sourceTag, NodeID.INVALID);
 				VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"front-route-fallback-business-queued attacker={attacker.PID.id} defender={defender.PID.id} peep={crew.peepId.id} failedBuilding={failedFrontBuilding?.Id.id ?? 0UL} building={fallbackBuilding.Id.id} targetNode={fallbackNode.id} currentNode={currentNodeId} currentSource={currentNodeSource} mode=force-close-business-now reason={targetReason} source={sourceTag}");
 				return true;
 			}
 
 			attacker.commands.AddCommandImmediate(new CommandGoto(attacker.PID, crew.peepId, fallbackNode), forceClose);
 			actionSummary = $"business-fallback-close-travel-queued:{fallbackBuilding.Id.id}";
-			TrackPendingRetaliationForcedBusinessClosure(attacker, defender, fallbackBuilding, crew.peepId, fallbackNode.id, "goto-business-fallback-close", sourceTag);
+			TrackPendingRetaliationForcedBusinessClosure(attacker, defender, fallbackBuilding, crew.peepId, fallbackNode.id, "goto-business-fallback-close", sourceTag, currentNodeId);
 			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"front-route-fallback-business-queued attacker={attacker.PID.id} defender={defender.PID.id} peep={crew.peepId.id} failedBuilding={failedFrontBuilding?.Id.id ?? 0UL} building={fallbackBuilding.Id.id} targetNode={fallbackNode.id} currentNode={currentNodeId} currentSource={currentNodeSource} mode=goto-force-close-business route={routeReason} cost={(fallbackPath != null ? fallbackPath.cost.ToString() : "0")} reason={targetReason} source={sourceTag}");
 			return true;
 		}
@@ -31163,6 +32392,11 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			reason = "failed-front";
 			return false;
 		}
+		if (IsRetaliationFrontAlreadyPending(defender, building, out _, out _))
+		{
+			reason = "pending-retaliation-action";
+			return false;
+		}
 		if (building.components.building.IsSafehouse
 			|| building.components.building.IsOutpost
 			|| building.data?.building?.controlled?.Get().IsAnyPlayer == true)
@@ -31330,6 +32564,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			entry.DelayedTargetKind = string.IsNullOrEmpty(targetKind) ? "outpost" : targetKind;
 			entry.DelayedRouteLastIssuedDay = G.GetNow().days;
 			entry.DelayedLastObservedNodeId = NodeID.INVALID;
+			entry.DelayedRouteTargetNodeId = NodeID.INVALID;
+			entry.DelayedFinalRouteIssuedFromNodeId = NodeID.INVALID;
 			entry.DelayedNoProgressChecks = 0;
 			entry.DelayedRouteRequeueCount = 0;
 			VerificationLog("GangOps.FrontMovement", $"front-delayed-action-marked attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={buildingId.id} kind={entry.DelayedTargetKind} notBeforeDay={notBeforeDay} reason={reason}");
@@ -31434,13 +32670,12 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				}
 				PlayerInfo attacker = PlayerField?.GetValue(__instance) as PlayerInfo;
 				PlayerInfo defender = targetBuilding.data.building.outpost.FindPlayer();
-				NodeID targetNodeId = targetBuilding.data?.board?.bead.nodeId ?? NodeID.INVALID;
 				if (attacker == null || defender == null)
 				{
 					return true;
 				}
-				ShowPendingRetaliationFrontTicker(attacker, defender, targetBuilding, EntityID.INVALID, targetNodeId, "vanilla-will-steal", "vanilla-read-callback");
-				return false;
+				VerificationLog("GangOps.FrontTicker", $"vanilla-will-steal-pass-through attacker={attacker.PID.id} defender={defender.PID.id} building={building.id} result=base-ticker-only");
+				return true;
 			}
 			catch (Exception ex)
 			{
@@ -31487,7 +32722,16 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				ticker = CreateRetaliationFrontWarningTicker(attacker, targetBuilding, sourceTag);
 				if (ticker != null)
 				{
-					global::Game.Game.ctx?.hud?.tickers?.AddTicker(ticker);
+					var tickerBar = global::Game.Game.ctx?.hud?.tickers;
+					if (tickerBar != null)
+					{
+						tickerBar.AddTicker(ticker);
+					}
+					else
+					{
+						ticker = null;
+						VerificationLog("GangOps.FrontTicker", $"warning-deferred attacker={attacker.PID.id} defender={defender.PID.id} peep={crewPeepId.id} building={targetBuilding.Id.id} reason=hud-ticker-unavailable source={sourceTag}");
+					}
 				}
 			}
 			_pendingRetaliationFrontTickersByBuilding[key] = new PendingRetaliationFrontTicker
@@ -31502,7 +32746,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				Mode = mode ?? string.Empty,
 				Source = sourceTag ?? string.Empty
 			};
-			string uiMode = ticker != null ? "shown" : (defender.PID.IsHumanPlayer ? "deferred-human-end-turn" : "hidden-ai-vs-ai");
+			string uiMode = ticker != null ? "shown" : (defender.PID.IsHumanPlayer ? (showImmediateTicker ? "deferred-hud-unavailable" : "deferred-human-end-turn") : "hidden-ai-vs-ai");
 			VerificationLog("GangOps.FrontTicker", $"{(ticker != null ? "shown" : "tracked")} attacker={attacker.PID.id} defender={defender.PID.id} peep={crewPeepId.id} building={targetBuilding.Id.id} node={targetNodeId} mode={mode} ui={uiMode} source={sourceTag}");
 		}
 		catch (Exception ex)
@@ -31511,7 +32755,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		}
 	}
 
-	private static void TrackPendingRetaliationForcedBusinessClosure(PlayerInfo attacker, PlayerInfo defender, Entity targetBuilding, EntityID crewPeepId, NodeID targetNodeId, string mode, string sourceTag)
+	private static void TrackPendingRetaliationForcedBusinessClosure(PlayerInfo attacker, PlayerInfo defender, Entity targetBuilding, EntityID crewPeepId, NodeID targetNodeId, string mode, string sourceTag, NodeID routeIssuedFromNodeId)
 	{
 		if (attacker == null || targetBuilding == null || targetBuilding.Id.IsNotValid || crewPeepId.IsNotValid)
 		{
@@ -31528,6 +32772,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				AttackerPid = attacker.PID,
 				DefenderPid = defender?.PID ?? PlayerID.System,
 				TargetNodeId = targetNodeId,
+				DelayedRouteTargetNodeId = routeIssuedFromNodeId.IsValid ? targetNodeId : NodeID.INVALID,
+				DelayedFinalRouteIssuedFromNodeId = routeIssuedFromNodeId.IsValid ? routeIssuedFromNodeId : NodeID.INVALID,
+				DelayedRouteLastIssuedDay = routeIssuedFromNodeId.IsValid ? G.GetNow().days : int.MinValue,
+				DelayedLastObservedNodeId = routeIssuedFromNodeId.IsValid ? routeIssuedFromNodeId : NodeID.INVALID,
 				Ticker = null,
 				QueuedDay = G.GetNow().days,
 				Mode = mode ?? "forced-business-close",
@@ -31546,6 +32794,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		if (defender?.PID.IsHumanPlayer != true)
 		{
 			return false;
+		}
+		if (IsModQueuedHumanFrontClosureMode(mode, sourceTag))
+		{
+			return true;
 		}
 		if (!IsHumanTurnStartFrontTickerFlushSource(sourceTag))
 		{
@@ -31687,7 +32939,13 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				{
 					continue;
 				}
-				global::Game.Game.ctx?.hud?.tickers?.AddTicker(ticker);
+				var tickerBar = global::Game.Game.ctx?.hud?.tickers;
+				if (tickerBar == null)
+				{
+					VerificationLog("GangOps.FrontTicker", $"deferred-retry-wait attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} day={nowDay} reason=hud-ticker-unavailable source={sourceTag}");
+					continue;
+				}
+				tickerBar.AddTicker(ticker);
 				entry.Ticker = ticker;
 				shown++;
 				VerificationLog("GangOps.FrontTicker", $"shown-deferred attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} queuedDay={entry.QueuedDay} day={nowDay} mode={entry.Mode} source={sourceTag}");
@@ -31700,6 +32958,28 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		catch (Exception ex)
 		{
 			VerificationLog("GangOps.FrontTicker", $"deferred-turn-start-flush-failed reason={ex.GetType().Name}:{ex.Message} source={sourceTag}");
+		}
+	}
+
+	private static void CleanupPendingRetaliationFrontTickersOnTurnStart(string sourceTag)
+	{
+		try
+		{
+			int pendingCount = _pendingRetaliationFrontTickersByBuilding.Count;
+			int nowDay = G.GetNow().days;
+			bool shouldLog = pendingCount > 0
+				|| _lastFrontTurnStartCleanupLogDay == int.MinValue
+				|| nowDay - _lastFrontTurnStartCleanupLogDay >= 28;
+			if (shouldLog)
+			{
+				_lastFrontTurnStartCleanupLogDay = nowDay;
+				VerificationLog("GangOps.FrontTicker", $"front-cleanup-turn-start pending={pendingCount} day={nowDay} source={sourceTag}");
+			}
+			CleanupPendingRetaliationFrontTickers(sourceTag);
+		}
+		catch (Exception ex)
+		{
+			VerificationLog("GangOps.FrontTicker", $"front-cleanup-turn-start-failed reason={ex.GetType().Name}:{ex.Message} source={sourceTag}");
 		}
 	}
 
@@ -31750,22 +33030,15 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				}
 				if (building.data?.building?.outpost != entry.DefenderPid)
 				{
+					int currentOwnerPid = building.data?.building != null ? building.data.building.outpost.id : 0;
+					VerificationLog("GangOps.FrontMovement", $"front-closure-completed attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentOwner={currentOwnerPid} reason=owner-changed-before-cleanup source={sourceTag}");
 					ClearPendingRetaliationFrontTicker(key, "front-completed", sourceTag);
 					continue;
 				}
 				if (entry.CrewPeepId.IsNotValid && IsVanillaWillStealTickerMode(entry.Mode))
 				{
-					PlayerInfo defender = entry.DefenderPid.IsAnyPlayer ? entry.DefenderPid.FindPlayer() : null;
-					if (defender?.PID.IsHumanPlayer == true && IsRetaliationFrontProtectedByHumanPhysicalPresence(defender, building, out EntityID protectorPeepId, out EntityID protectorVehicleId, out NodeID protectorNodeId, out string protectionReason))
-					{
-						VerificationLog("GangOps.FrontTicker", $"front-defense-vanilla-protected-clear attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} building={entry.BuildingId.id} protector={protectorPeepId.id} vehicle={protectorVehicleId.id} node={protectorNodeId} reason={protectionReason} source={sourceTag}");
-						ClearPendingRetaliationFrontTicker(key, "front-defended", sourceTag);
-						continue;
-					}
-					if (G.GetNow().days - entry.QueuedDay > 56)
-					{
-						ClearPendingRetaliationFrontTicker(key, "vanilla-stale", sourceTag);
-					}
+					VerificationLog("GangOps.FrontTicker", $"vanilla-passive-warning-cleared attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} building={entry.BuildingId.id} reason=no-physical-crew source={sourceTag}");
+					ClearPendingRetaliationFrontTicker(key, "vanilla-passive-warning", sourceTag);
 					continue;
 				}
 				if (entry.DelayedPhysicalActionRequired && !entry.DelayedPhysicalActionQueued)
@@ -31777,7 +33050,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 					}
 					if (entry.DelayedPhysicalActionAbandoned)
 					{
-						VerificationLog("GangOps.FrontMovement", $"front-delayed-action-give-up attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} waitedDays={Mathf.Max(0, G.GetNow().days - entry.QueuedDay)} maxDays=0 reason={entry.DelayedPhysicalActionAbandonedReason ?? "abandoned"} source={sourceTag}");
+						int abandonedMaxDays = entry.DefenderPid.IsHumanPlayer
+							? RETALIATION_FRONT_DELAYED_ACTION_MOVING_GIVE_UP_DAYS + ((entry.DelayedFinalApproachGraceGranted || entry.DelayedFinalApproachProgressObserved || entry.DelayedTerminalReassignmentGranted) ? RETALIATION_FRONT_DELAYED_ACTION_FINAL_GRACE_DAYS : 0)
+							: RETALIATION_FRONT_DELAYED_ACTION_GIVE_UP_DAYS;
+						VerificationLog("GangOps.FrontMovement", $"front-delayed-action-give-up attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} waitedDays={Mathf.Max(0, G.GetNow().days - entry.QueuedDay)} maxDays={abandonedMaxDays} reason={entry.DelayedPhysicalActionAbandonedReason ?? "abandoned"} source={sourceTag}");
 						ClearPendingRetaliationFrontTicker(key, "attacker-gave-up-too-far", sourceTag);
 						continue;
 					}
@@ -31827,6 +33103,13 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			+ buildingId.id.ToString(CultureInfo.InvariantCulture);
 	}
 
+	private static string MakeRetaliationFrontPairRetryKey(PlayerID attackerPid, PlayerID defenderPid)
+	{
+		return attackerPid.id.ToString(CultureInfo.InvariantCulture)
+			+ ":"
+			+ defenderPid.id.ToString(CultureInfo.InvariantCulture);
+	}
+
 	private static bool IsRetaliationFrontRetryBlocked(PlayerInfo attacker, PlayerInfo defender, Entity building, out int untilDay)
 	{
 		untilDay = int.MinValue;
@@ -31834,12 +33117,22 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		{
 			return false;
 		}
+		int today = G.GetNow().days;
+		string pairKey = MakeRetaliationFrontPairRetryKey(attacker.PID, defender.PID);
+		if (_retaliationFrontPairRetryBlockedUntilDayByKey.TryGetValue(pairKey, out int pairUntilDay))
+		{
+			if (pairUntilDay > today)
+			{
+				untilDay = pairUntilDay;
+				return true;
+			}
+			_retaliationFrontPairRetryBlockedUntilDayByKey.Remove(pairKey);
+		}
 		string key = MakeRetaliationFrontRetryKey(attacker.PID, defender.PID, building.Id);
 		if (!_retaliationFrontRetryBlockedUntilDayByKey.TryGetValue(key, out untilDay))
 		{
 			return false;
 		}
-		int today = G.GetNow().days;
 		if (untilDay > today)
 		{
 			return true;
@@ -31848,7 +33141,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		return false;
 	}
 
-	private static void BlockRetaliationFrontRetry(PlayerID attackerPid, PlayerID defenderPid, EntityID buildingId, EntityID crewPeepId, string reason, string sourceTag, int cooldownDays)
+	private static void BlockRetaliationFrontRetry(PlayerID attackerPid, PlayerID defenderPid, EntityID buildingId, EntityID crewPeepId, string reason, string sourceTag, int cooldownDays, string pacingDetails = null)
 	{
 		if (attackerPid.IsNotAnyPlayer || defenderPid.IsNotAnyPlayer || buildingId.IsNotValid)
 		{
@@ -31856,8 +33149,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		}
 		int untilDay = G.GetNow().days + Mathf.Max(1, cooldownDays);
 		string key = MakeRetaliationFrontRetryKey(attackerPid, defenderPid, buildingId);
+		string pairKey = MakeRetaliationFrontPairRetryKey(attackerPid, defenderPid);
 		_retaliationFrontRetryBlockedUntilDayByKey[key] = untilDay;
-		VerificationLog("GangOps.FrontMovement", $"front-retry-cooldown attacker={attackerPid.id} defender={defenderPid.id} peep={(crewPeepId.IsValid ? crewPeepId.id : 0UL)} building={buildingId.id} untilDay={untilDay} cooldownDays={Mathf.Max(1, cooldownDays)} reason={reason} source={sourceTag}");
+		_retaliationFrontPairRetryBlockedUntilDayByKey[pairKey] = untilDay;
+		VerificationLog("GangOps.FrontMovement", $"front-retry-cooldown attacker={attackerPid.id} defender={defenderPid.id} peep={(crewPeepId.IsValid ? crewPeepId.id : 0UL)} building={buildingId.id} untilDay={untilDay} cooldownDays={Mathf.Max(1, cooldownDays)} scope=building-and-pair reason={reason} source={sourceTag}{(string.IsNullOrWhiteSpace(pacingDetails) ? string.Empty : " " + pacingDetails)}");
 	}
 
 	private static void BlockRetaliationFrontRetry(PendingRetaliationFrontTicker entry, string reason, string sourceTag)
@@ -31866,7 +33161,49 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		{
 			return;
 		}
-		BlockRetaliationFrontRetry(entry.AttackerPid, entry.DefenderPid, entry.BuildingId, entry.CrewPeepId, reason, sourceTag, RETALIATION_FRONT_DEFENDED_RETRY_BLOCK_DAYS);
+		int cooldownDays = GetWarHeatBasedFrontPressureCooldownDays(entry.AttackerPid, entry.DefenderPid, out string pacingDetails);
+		BlockRetaliationFrontRetry(entry.AttackerPid, entry.DefenderPid, entry.BuildingId, entry.CrewPeepId, reason, sourceTag, cooldownDays, pacingDetails);
+	}
+
+	private static int GetWarHeatBasedFrontPressureCooldownDays(PlayerID attackerPid, PlayerID defenderPid, out string pacingDetails)
+	{
+		pacingDetails = "pacing=neutral-fallback";
+		if (attackerPid.IsNotAnyPlayer || defenderPid.IsNotAnyPlayer)
+		{
+			return 35;
+		}
+		try
+		{
+			GangOpsChannel channel = ResolveGangOpsChannelForPair(attackerPid.id, defenderPid.id);
+			PactOpsSettings settings = EnsureGangOpsSettings(channel);
+			int configuredBaseDays = Mathf.Clamp(settings?.CoordinatedAttackCooldownDays ?? 16, 1, 180);
+			int lowHeatDays = Mathf.Clamp(configuredBaseDays * 2, 28, 42);
+			int highHeatDays = Mathf.Clamp(configuredBaseDays, 14, 28);
+			float warHeat = GetWarHeat(channel, attackerPid.id, defenderPid.id);
+			float revengeThreshold = Mathf.Max(1f, GetEffectiveWarHeatThresholdForRevenge(channel));
+			PlayerInfo attacker = attackerPid.FindPlayer();
+			PlayerInfo defender = defenderPid.FindPlayer();
+			float effectiveWarHeat = GetRelationshipAdjustedWarHeat(channel, attacker, defender, warHeat, out int relationshipScore, out float relationshipHostility, out float relationshipHeatBonus, out bool relationshipHostileBuff);
+			float heatRatio = Mathf.Clamp01(effectiveWarHeat / revengeThreshold);
+			bool peaceful = IsAiPersonalityPeaceful(attacker);
+			bool isolationist = IsAiPersonalityIsolationist(attacker);
+			bool aggressive = IsAiPersonalityAggressive(attacker);
+			bool expansionist = IsAiPersonalityExpansionist(attacker);
+			int cooldownDays = Mathf.RoundToInt(Mathf.Lerp(lowHeatDays, highHeatDays, heatRatio));
+			cooldownDays += peaceful ? 14 : 0;
+			cooldownDays += isolationist ? 7 : 0;
+			cooldownDays -= aggressive ? 4 : 0;
+			cooldownDays -= expansionist ? 7 : 0;
+			cooldownDays -= relationshipHostility >= 0.55f ? 6 : (relationshipHostility >= 0.35f ? 3 : 0);
+			cooldownDays = Mathf.Clamp(cooldownDays, RETALIATION_FRONT_RETRY_MIN_DAYS, RETALIATION_FRONT_RETRY_MAX_DAYS);
+			pacingDetails = $"pacing=warheat heat={warHeat:0.0} effectiveHeat={effectiveWarHeat:0.0} threshold={revengeThreshold:0.0} heatRatio={heatRatio:0.00} relScore={relationshipScore} relHostility={relationshipHostility:0.00} relHeatBonus={relationshipHeatBonus:0.0} hostileBuff={relationshipHostileBuff} peaceful={peaceful} isolationist={isolationist} aggressive={aggressive} expansionist={expansionist}";
+			return cooldownDays;
+		}
+		catch (Exception ex)
+		{
+			pacingDetails = $"pacing=neutral-fallback reason={ex.GetType().Name}";
+			return 35;
+		}
 	}
 
 	private static bool IsVanillaWillStealTickerMode(string mode)
@@ -31886,29 +33223,45 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		waitedDays = Mathf.Max(0, G.GetNow().days - entry.QueuedDay);
 		if (entry.DefenderPid.IsHumanPlayer)
 		{
-			maxDays = RETALIATION_FRONT_DELAYED_ACTION_MOVING_GIVE_UP_DAYS;
+			bool extendedFinalWindow = entry.DelayedFinalApproachGraceGranted
+				|| entry.DelayedFinalApproachProgressObserved
+				|| entry.DelayedTerminalReassignmentGranted;
+			maxDays = RETALIATION_FRONT_DELAYED_ACTION_MOVING_GIVE_UP_DAYS
+				+ (extendedFinalWindow ? RETALIATION_FRONT_DELAYED_ACTION_FINAL_GRACE_DAYS : 0);
 			reason = entry.DelayedMultiTurnHumanFrontRoute ? "human-multiturn-front-commitment" : "human-front-commitment";
 		}
 		bool recentlyIssuedRoute = entry.DelayedRouteLastIssuedDay != int.MinValue
 			&& G.GetNow().days - entry.DelayedRouteLastIssuedDay <= RETALIATION_FRONT_DELAYED_ACTION_REQUEUE_COOLDOWN_DAYS;
-		if (IsPendingRetaliationFrontActionStillQueued(entry, building) || recentlyIssuedRoute)
+		if (recentlyIssuedRoute)
 		{
-			maxDays = RETALIATION_FRONT_DELAYED_ACTION_MOVING_GIVE_UP_DAYS;
-			reason = recentlyIssuedRoute ? "route-recently-issued" : "still-traveling";
+			if (!entry.DefenderPid.IsHumanPlayer)
+			{
+				maxDays = RETALIATION_FRONT_DELAYED_ACTION_MOVING_GIVE_UP_DAYS;
+			}
+			reason = "route-recently-issued";
+			return false;
+		}
+		if (IsPendingRetaliationFrontActionStillQueued(entry, building))
+		{
+			if (!entry.DefenderPid.IsHumanPlayer)
+			{
+				maxDays = RETALIATION_FRONT_DELAYED_ACTION_MOVING_GIVE_UP_DAYS;
+			}
+			reason = "still-traveling";
 		}
 		return waitedDays >= maxDays;
 	}
 
-	private static bool TryReassignLostPendingRetaliationFrontAction(PendingRetaliationFrontTicker entry, PlayerInfo attacker, PlayerInfo defender, Entity building, Node targetNode, string sourceTag)
+	private static bool TryReassignLostPendingRetaliationFrontAction(PendingRetaliationFrontTicker entry, PlayerInfo attacker, PlayerInfo defender, Entity building, Node targetNode, string sourceTag, float maxCrewDistance = AI_VS_HUMAN_FRONT_ACTION_MAX_CREW_DISTANCE, bool allowCapacityOverflow = false, bool forceTargetRoute = false)
 	{
 		if (entry == null || attacker?.commands == null || attacker.crew == null || defender?.PID.IsHumanPlayer != true || building == null || targetNode?.id.IsValid != true)
 		{
 			return false;
 		}
-		CrewAssignment replacement = FindRuntimeFrontActionCrew(attacker, building, targetNode, sourceTag, "front-lost-node-reassign", AI_VS_HUMAN_FRONT_ACTION_MAX_CREW_DISTANCE, out bool blockedByDistance);
+		CrewAssignment replacement = FindRuntimeFrontActionCrew(attacker, building, targetNode, sourceTag, "front-lost-node-reassign", maxCrewDistance, out bool blockedByDistance, allowCapacityOverflow);
 		if (!replacement.IsValid || replacement.peepId.IsNotValid || replacement.peepId == entry.CrewPeepId)
 		{
-			VerificationLog("GangOps.FrontMovement", $"front-delayed-action-reassign-unavailable attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} oldPeep={entry.CrewPeepId.id} building={entry.BuildingId.id} targetNode={targetNode.id} blockedByDistance={blockedByDistance} source={sourceTag}");
+			VerificationLog("GangOps.FrontMovement", $"front-delayed-action-reassign-unavailable attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} oldPeep={entry.CrewPeepId.id} building={entry.BuildingId.id} targetNode={targetNode.id} blockedByDistance={blockedByDistance} maxDistance={maxCrewDistance:0.0} capacityOverflowAllowed={allowCapacityOverflow} source={sourceTag}");
 			return false;
 		}
 		Entity replacementPeep = replacement.GetPeep();
@@ -31930,9 +33283,17 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			attacker.commands.FlushQueue(oldPeepId, cancelActive: true);
 		}
 		attacker.commands.FlushQueue(replacement.peepId, cancelActive: true);
-		attacker.commands.AddCommand(new CommandGoto(attacker.PID, replacement.peepId, targetNode));
+		Node replacementRouteNode = ResolveFrontRouteCommandNode(targetNode, replacementPath, allowSegmentTarget: !forceTargetRoute, out NodeID replacementRouteNodeId, out string replacementRouteGoal);
+		if (replacementRouteNode?.id.IsValid != true)
+		{
+			replacementRouteNode = targetNode;
+			replacementRouteNodeId = targetNode.id;
+			replacementRouteGoal = "target-fallback";
+		}
+		attacker.commands.AddCommand(new CommandGoto(attacker.PID, replacement.peepId, replacementRouteNode));
 		entry.CrewPeepId = replacement.peepId;
 		entry.TargetNodeId = targetNode.id;
+		MarkPendingRetaliationRouteTarget(entry, replacementRouteNodeId, targetNode.id, replacementNodeId);
 		entry.DelayedPhysicalActionQueued = false;
 		entry.DelayedPhysicalActionRequired = true;
 		entry.DelayedPhysicalActionNotBeforeDay = G.GetNow().days + 1;
@@ -31942,8 +33303,306 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		entry.DelayedLastObservedNodeId = replacementNodeId;
 		entry.DelayedPhysicalActionAbandoned = false;
 		entry.DelayedPhysicalActionAbandonedReason = null;
-		VerificationLog("GangOps.FrontMovement", $"front-delayed-action-reassigned-lost-node attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} oldPeep={oldPeepId.id} newPeep={replacement.peepId.id} building={entry.BuildingId.id} currentNode={replacementNodeId} currentSource={replacementNodeSource} targetNode={targetNode.id} route={replacementRouteReason} cost={(replacementPath != null ? replacementPath.cost.ToString() : "0")} source={sourceTag}");
+		VerificationLog("GangOps.FrontMovement", $"front-delayed-action-reassigned-lost-node attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} oldPeep={oldPeepId.id} newPeep={replacement.peepId.id} building={entry.BuildingId.id} currentNode={replacementNodeId} currentSource={replacementNodeSource} targetNode={targetNode.id} routeTargetNode={replacementRouteNodeId} routeGoal={replacementRouteGoal} forceTargetRoute={forceTargetRoute} route={replacementRouteReason} cost={(replacementPath != null ? replacementPath.cost.ToString() : "0")} capacityOverflowAllowed={allowCapacityOverflow} source={sourceTag}");
 		return true;
+	}
+
+	private static void PruneExpiredHumanFrontDefenseCombatSuppressions(int nowDay)
+	{
+		if (_humanFrontDefenseCombatSuppressionsByPair.Count == 0)
+		{
+			return;
+		}
+		foreach (string key in _humanFrontDefenseCombatSuppressionsByPair
+			.Where(pair => pair.Value == null || pair.Value.UntilDay < nowDay)
+			.Select(pair => pair.Key)
+			.ToList())
+		{
+			_humanFrontDefenseCombatSuppressionsByPair.Remove(key);
+		}
+	}
+
+	private static void RegisterHumanFrontDefenseCombatSuppression(PendingRetaliationFrontTicker entry, PlayerInfo defender, CrewAssignment frontCloserCrew, IEnumerable<EntityID> blockers, Entity building, NodeID currentNodeId, string sourceTag)
+	{
+		if (entry == null || entry.AttackerPid.IsNotAnyPlayer || entry.DefenderPid.IsHumanPlayer != true || entry.DefenderPid != defender?.PID)
+		{
+			return;
+		}
+		try
+		{
+			int nowDay = G.GetNow().days;
+			PruneExpiredHumanFrontDefenseCombatSuppressions(nowDay);
+			ulong defenderVehicleId = 0UL;
+			string blockerIds = string.Empty;
+			if (blockers != null)
+			{
+				List<EntityID> blockerList = blockers.Where(blockerId => blockerId.IsValid).ToList();
+				blockerIds = string.Join(",", blockerList.Select(blockerId => blockerId.id.ToString(CultureInfo.InvariantCulture)));
+				if (defender?.crew != null)
+				{
+					foreach (EntityID blockerId in blockerList)
+					{
+						CrewAssignment blockerCrew = defender.crew.GetCrewForPeep(blockerId);
+						if (blockerCrew.IsValid && blockerCrew.VehicleID.IsValid)
+						{
+							defenderVehicleId = blockerCrew.VehicleID.id;
+							break;
+						}
+					}
+				}
+			}
+			HumanFrontDefenseCombatSuppression suppression = new HumanFrontDefenseCombatSuppression
+			{
+				AttackerPid = entry.AttackerPid.id,
+				DefenderPid = entry.DefenderPid.id,
+				CreatedDay = nowDay,
+				UntilDay = nowDay + HUMAN_FRONT_DEFENSE_COMBAT_SUPPRESSION_DAYS,
+				BuildingId = building?.Id.id ?? entry.BuildingId.id,
+				FrontCloserPeepId = entry.CrewPeepId.IsValid ? entry.CrewPeepId.id : (frontCloserCrew.IsValid ? frontCloserCrew.peepId.id : 0UL),
+				FrontCloserVehicleId = frontCloserCrew.IsValid && frontCloserCrew.VehicleID.IsValid ? frontCloserCrew.VehicleID.id : 0UL,
+				DefenderVehicleId = defenderVehicleId,
+				BlockerIds = blockerIds,
+				Source = sourceTag ?? string.Empty
+			};
+			_humanFrontDefenseCombatSuppressionsByPair[MakeGangPairKey(suppression.AttackerPid, suppression.DefenderPid)] = suppression;
+			VerificationLog("VehicleGroupCombat.AI", $"front-defense-suppression-registered attacker={suppression.AttackerPid} defender={suppression.DefenderPid} peep={suppression.FrontCloserPeepId} attackerVehicle={suppression.FrontCloserVehicleId} defenderVehicle={suppression.DefenderVehicleId} building={suppression.BuildingId} node={currentNodeId} untilDay={suppression.UntilDay} blockers={suppression.BlockerIds} source={sourceTag}");
+		}
+		catch (Exception ex)
+		{
+			VerificationLog("VehicleGroupCombat.AI", $"front-defense-suppression-register-failed attacker={entry?.AttackerPid.id ?? 0} defender={entry?.DefenderPid.id ?? 0} reason={ex.GetType().Name}:{ex.Message} source={sourceTag}");
+		}
+	}
+
+	internal static bool ShouldSuppressIncomingAiCombatAfterRecentHumanFrontDefense(PlayerID attackerPid, PlayerID targetPid, EntityID attackerVehicleId, EntityID targetVehicleId, out string reason)
+	{
+		reason = null;
+		if (attackerPid.IsNotAnyPlayer || targetPid.IsHumanPlayer != true)
+		{
+			return false;
+		}
+		try
+		{
+			PlayerID currentPlayer = global::Game.Game.ctx?.clock?.CurrentPlayer ?? PlayerID.INVALID;
+			if (!currentPlayer.IsHumanPlayer)
+			{
+				return false;
+			}
+			int nowDay = G.GetNow().days;
+			PruneExpiredHumanFrontDefenseCombatSuppressions(nowDay);
+			string key = MakeGangPairKey(attackerPid.id, targetPid.id);
+			if (!_humanFrontDefenseCombatSuppressionsByPair.TryGetValue(key, out HumanFrontDefenseCombatSuppression suppression) || suppression == null)
+			{
+				return false;
+			}
+			if (suppression.UntilDay < nowDay)
+			{
+				_humanFrontDefenseCombatSuppressionsByPair.Remove(key);
+				return false;
+			}
+			bool sameFrontCloserVehicle = suppression.FrontCloserVehicleId != 0UL
+				&& attackerVehicleId.IsValid
+				&& suppression.FrontCloserVehicleId == attackerVehicleId.id;
+			bool sameDefenderVehicle = suppression.DefenderVehicleId != 0UL
+				&& targetVehicleId.IsValid
+				&& suppression.DefenderVehicleId == targetVehicleId.id;
+			if (!sameFrontCloserVehicle && !sameDefenderVehicle)
+			{
+				return false;
+			}
+			reason = $"front-defense-human-turn-cooldown untilDay={suppression.UntilDay} createdDay={suppression.CreatedDay} currentPlayer={currentPlayer.id} frontCloser={suppression.FrontCloserPeepId} frontCloserVehicle={suppression.FrontCloserVehicleId} defenderVehicle={suppression.DefenderVehicleId} attackerVehicle={attackerVehicleId.id} targetVehicle={targetVehicleId.id} building={suppression.BuildingId} sameFrontCloserVehicle={sameFrontCloserVehicle} sameDefenderVehicle={sameDefenderVehicle}";
+			return true;
+		}
+		catch (Exception ex)
+		{
+			VerificationLog("VehicleGroupCombat.AI", $"front-defense-suppression-check-failed attacker={attackerPid.id} defender={targetPid.id} reason={ex.GetType().Name}:{ex.Message}");
+			return false;
+		}
+	}
+
+	internal static bool ShouldSuppressIncomingAiCombatDuringPendingHumanRetaliationRoute(PlayerID attackerPid, PlayerID targetPid, EntityID attackerPeepId, EntityID attackerVehicleId, EntityID targetVehicleId, out string reason)
+	{
+		reason = null;
+		if (attackerPid.IsNotAnyPlayer || targetPid.IsHumanPlayer != true)
+		{
+			return false;
+		}
+		try
+		{
+			PlayerID currentPlayer = global::Game.Game.ctx?.clock?.CurrentPlayer ?? PlayerID.INVALID;
+			if (!currentPlayer.IsHumanPlayer)
+			{
+				return false;
+			}
+			foreach (PendingRetaliationFrontTicker entry in _pendingRetaliationFrontTickersByBuilding.Values.ToList())
+			{
+				if (entry == null
+					|| entry.AttackerPid != attackerPid
+					|| entry.DefenderPid != targetPid
+					|| entry.CrewPeepId.IsNotValid
+					|| entry.DelayedPhysicalActionAbandoned)
+				{
+					continue;
+				}
+				bool pendingFrontClosure = string.Equals(GetPendingRetaliationTargetKind(entry), "outpost", StringComparison.Ordinal)
+					|| IsPendingRetaliationGotoFrontMode(entry.Mode);
+				bool pendingBusinessClosure = IsPendingRetaliationForcedBusinessClosureMode(entry.Mode);
+				if (!pendingFrontClosure && !pendingBusinessClosure)
+				{
+					continue;
+				}
+				PlayerInfo attacker = attackerPid.FindPlayer();
+				CrewAssignment routeCrew = attacker?.crew != null ? attacker.crew.GetCrewForPeep(entry.CrewPeepId) : CrewAssignment.EMPTY;
+				bool samePeep = attackerPeepId.IsValid && attackerPeepId == entry.CrewPeepId;
+				bool sameVehicle = attackerVehicleId.IsValid && routeCrew.IsValid && routeCrew.VehicleID == attackerVehicleId;
+				if (!samePeep && !sameVehicle)
+				{
+					continue;
+				}
+				string actionKind = pendingBusinessClosure ? "business-closure" : "front-closure";
+				reason = $"pending-retaliation-route-human-turn kind={actionKind} building={entry.BuildingId.id} peep={entry.CrewPeepId.id} mode={entry.Mode} currentPlayer={currentPlayer.id} targetNode={entry.TargetNodeId} routeNode={entry.DelayedRouteTargetNodeId} routeIssuedDay={entry.DelayedRouteLastIssuedDay} attackerVehicle={attackerVehicleId.id} targetVehicle={targetVehicleId.id}";
+				return true;
+			}
+		}
+		catch (Exception ex)
+		{
+			VerificationLog("VehicleGroupCombat.AI", $"pending-route-suppression-check-failed attacker={attackerPid.id} defender={targetPid.id} peep={attackerPeepId.id} vehicle={attackerVehicleId.id} reason={ex.GetType().Name}:{ex.Message}");
+		}
+		return false;
+	}
+
+	private static bool TryTriggerHumanFrontDefenseAggroAttack(PendingRetaliationFrontTicker entry, PlayerInfo attacker, PlayerInfo defender, CrewAssignment frontCloserCrew, Entity building, NodeID currentNodeId, string sourceTag)
+	{
+		if (entry == null || defender?.PID.IsHumanPlayer != true || attacker?.ai?.attack == null || !frontCloserCrew.IsValid || frontCloserCrew.peepId.IsNotValid)
+		{
+			return false;
+		}
+		try
+		{
+			Node attackNode = currentNodeId.IsValid ? currentNodeId.FindNode() : null;
+			if (attackNode?.id.IsValid != true)
+			{
+				NodeID buildingNodeId = building?.data?.board?.bead.nodeId ?? NodeID.INVALID;
+				attackNode = buildingNodeId.IsValid ? buildingNodeId.FindNode() : null;
+			}
+			if (attackNode?.id.IsValid != true)
+			{
+				VerificationLog("GangOps.FrontMovement", $"front-defended-aggro-skip attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} reason=no-node source={sourceTag}");
+				return false;
+			}
+
+			AttackAdvisor attackAdvisor = attacker.ai.attack;
+			Entity target = attackAdvisor.FindFirstAggroTargetAt(attackNode, attackNode);
+			if (target == null || target.Id.IsNotValid || !attackAdvisor.CanAttackForAggro(target))
+			{
+				VerificationLog("GangOps.FrontMovement", $"front-defended-aggro-skip attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} node={attackNode.id} reason=no-aggro-target source={sourceTag}");
+				return false;
+			}
+
+			PlayerInfo targetPlayer = target.data?.agent?.pid.IsAnyPlayer == true ? target.data.agent.pid.FindPlayer() : null;
+			CrewAssignment targetCrew = targetPlayer?.crew != null ? targetPlayer.crew.GetCrewForPeep(target.Id) : CrewAssignment.EMPTY;
+			if (!targetCrew.IsValid || targetCrew.peepId.IsNotValid)
+			{
+				VerificationLog("GangOps.FrontMovement", $"front-defended-aggro-skip attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} node={attackNode.id} target={target.Id.id} reason=invalid-target-crew source={sourceTag}");
+				return false;
+			}
+
+			CombatManager combat = global::Game.Game.ctx?.simman?.combat;
+			if (combat == null)
+			{
+				VerificationLog("GangOps.FrontMovement", $"front-defended-aggro-skip attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} node={attackNode.id} target={target.Id.id} reason=no-combat-manager source={sourceTag}");
+				return false;
+			}
+
+			bool previousBypass = _frontDefenseAggroCombatBypassActive;
+			_frontDefenseAggroCombatBypassActive = true;
+			try
+			{
+				combat.PerformAICombat(frontCloserCrew, targetCrew);
+			}
+			finally
+			{
+				_frontDefenseAggroCombatBypassActive = previousBypass;
+			}
+			VerificationLog("GangOps.FrontMovement", $"front-defended-aggro-attack attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={frontCloserCrew.peepId.id} vehicle={(frontCloserCrew.VehicleID.IsValid ? frontCloserCrew.VehicleID.id : 0UL)} building={entry.BuildingId.id} node={attackNode.id} targetPeep={targetCrew.peepId.id} targetVehicle={(targetCrew.VehicleID.IsValid ? targetCrew.VehicleID.id : 0UL)} source={sourceTag}");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			_frontDefenseAggroCombatBypassActive = false;
+			VerificationLog("GangOps.FrontMovement", $"front-defended-aggro-failed attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} reason={ex.GetType().Name}:{ex.Message} source={sourceTag}");
+			return false;
+		}
+	}
+
+	private static bool TryResolvePendingRetaliationOutpostClosureAtTarget(PendingRetaliationFrontTicker entry, PlayerInfo attacker, PlayerInfo defender, CrewAssignment crew, Entity building, NodeID currentNodeId, string currentNodeSource, string sourceTag, string completionReason = "arrival-direct-outpost-steal", string defendedReason = "rival-blocking")
+	{
+		if (entry == null || attacker == null || defender?.outposts == null || !crew.IsValid || crew.peepId.IsNotValid || building?.data?.building == null || building.components?.building == null)
+		{
+			return false;
+		}
+		if (!string.Equals(GetPendingRetaliationTargetKind(entry), "outpost", StringComparison.Ordinal))
+		{
+			return false;
+		}
+		try
+		{
+			OutpostID outpostId = new OutpostID(building);
+			if (building.data.building.outpost != defender.PID || defender.outposts.GetOutpostEntryUnsafe(outpostId) == null)
+			{
+				entry.Mode = "front-steal-direct-already-resolved";
+				VerificationLog("GangOps.FrontMovement", $"front-closure-completed attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} reason=outpost-entry-already-missing source={sourceTag}");
+				ClearPendingRetaliationFrontTicker(building.Id.id, "front-completed", sourceTag);
+				return true;
+			}
+
+			BuildingAndBusinessData buildingData = BuildingUtil.FindDataForBuilding(building);
+			if (buildingData.building == null)
+			{
+				VerificationLog("GangOps.FrontMovement", $"front-closure-direct-failed attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} reason=no-building-data source={sourceTag}");
+				return false;
+			}
+
+			VisitState visitState = new VisitState(CrewAssignment.EMPTY, buildingData, G.GetNow(), attacker.PID);
+			List<EntityID> blockers = BoardUtil.RivalBlocking(visitState);
+			if (blockers != null && blockers.Count != 0)
+			{
+				foreach (EntityID blockerId in blockers)
+				{
+					try
+					{
+						blockerId.FindEntity()?.components?.agent?.IncrementStat(CrewStats.FrontsProtected, 1);
+					}
+					catch
+					{
+					}
+				}
+				entry.Mode = "front-steal-direct-defended";
+				string blockerList = string.Join(",", blockers.Select(blockerId => blockerId.id.ToString(CultureInfo.InvariantCulture)));
+				VerificationLog("GangOps.FrontMovement", $"front-defended attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} blockers={blockers.Count} blockerIds={blockerList} reason={defendedReason} source={sourceTag}");
+				RegisterHumanFrontDefenseCombatSuppression(entry, defender, crew, blockers, building, currentNodeId, sourceTag);
+				TryTriggerHumanFrontDefenseAggroAttack(entry, attacker, defender, crew, building, currentNodeId, sourceTag);
+				ClearPendingRetaliationFrontTicker(building.Id.id, "front-defended", sourceTag);
+				return true;
+			}
+
+			defender.outposts.RemoveOutpost(outpostId, PlayerOutposts.RemovalReason.Stolen, attacker.PID, crew.peepId, removeMeAsNodeOwner: true);
+			bool stillOwned = building.data?.building?.outpost == defender.PID && defender.outposts.GetOutpostEntryUnsafe(outpostId) != null;
+			if (!stillOwned)
+			{
+				entry.Mode = "front-steal-direct-completed";
+				VerificationLog("GangOps.FrontMovement", $"front-closure-completed attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} reason={completionReason} source={sourceTag}");
+				ClearPendingRetaliationFrontTicker(building.Id.id, "front-completed", sourceTag);
+				return true;
+			}
+
+			VerificationLog("GangOps.FrontMovement", $"front-closure-direct-failed attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} reason=outpost-still-owned source={sourceTag}");
+			return false;
+		}
+		catch (Exception ex)
+		{
+			VerificationLog("GangOps.FrontMovement", $"front-closure-direct-failed attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} reason={ex.GetType().Name}:{ex.Message} source={sourceTag}");
+			return false;
+		}
 	}
 
 	private static bool TryQueueDelayedRetaliationFrontPhysicalAction(PendingRetaliationFrontTicker entry, Entity building, string sourceTag)
@@ -32011,12 +33670,81 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				bool longHumanFrontRoute = defenderIsHuman;
 				int maxNoProgressChecks = longHumanFrontRoute ? int.MaxValue : 2;
 				int maxRouteRequeues = longHumanFrontRoute ? RETALIATION_FRONT_DELAYED_ACTION_HUMAN_MAX_REQUEUES : 2;
-				int maxWaitDays = longHumanFrontRoute ? RETALIATION_FRONT_DELAYED_ACTION_MOVING_GIVE_UP_DAYS : RETALIATION_FRONT_DELAYED_ACTION_GIVE_UP_DAYS;
-				if (defenderIsHuman && (entry.DelayedNoProgressChecks >= maxNoProgressChecks || entry.DelayedRouteRequeueCount >= maxRouteRequeues || waitedDays >= maxWaitDays))
+				if (TryResolvePendingRetaliationOutpostClosureByRouteCommitment(entry, attacker, defender, crew, building, targetNode, currentNodeId, currentNodeSource, waitedDays, sourceTag))
+				{
+					return true;
+				}
+				bool extendedFinalWindow = entry.DelayedFinalApproachGraceGranted
+					|| entry.DelayedFinalApproachProgressObserved
+					|| entry.DelayedTerminalReassignmentGranted;
+				int maxWaitDays = longHumanFrontRoute
+					? RETALIATION_FRONT_DELAYED_ACTION_MOVING_GIVE_UP_DAYS + (extendedFinalWindow ? RETALIATION_FRONT_DELAYED_ACTION_FINAL_GRACE_DAYS : 0)
+					: RETALIATION_FRONT_DELAYED_ACTION_GIVE_UP_DAYS;
+				bool humanRouteLimitReached = defenderIsHuman && entry.DelayedRouteRequeueCount >= maxRouteRequeues;
+				bool humanWaitLimitReached = defenderIsHuman && waitedDays >= maxWaitDays;
+				bool lostPhysicalNodeAtLimit = defenderIsHuman && !currentNodeId.IsValid && !peepNodeId.IsValid && (humanRouteLimitReached || humanWaitLimitReached);
+				if ((humanRouteLimitReached || humanWaitLimitReached)
+					&& !entry.DelayedFinalApproachGraceGranted
+					&& TryBuildRuntimeFrontApproachRoute(attacker.PID, peep, targetNode, out PathData limitGracePath, out string limitGraceReason))
+				{
+					attacker.commands.FlushQueue(entry.CrewPeepId, cancelActive: true);
+					Node limitGraceRouteNode = ResolveFrontRouteCommandNode(targetNode, limitGracePath, allowSegmentTarget: false, out NodeID limitGraceRouteNodeId, out string limitGraceRouteGoal);
+					if (limitGraceRouteNode?.id.IsValid != true)
+					{
+						limitGraceRouteNode = targetNode;
+						limitGraceRouteNodeId = targetNode.id;
+						limitGraceRouteGoal = "target-fallback";
+					}
+					attacker.commands.AddCommand(new CommandGoto(attacker.PID, entry.CrewPeepId, limitGraceRouteNode));
+					int oldRequeues = entry.DelayedRouteRequeueCount;
+					MarkPendingRetaliationRouteTarget(entry, limitGraceRouteNodeId, targetNode.id, currentNodeId);
+					entry.Mode = humanWaitLimitReached ? "front-delayed-action-wait-limit-grace" : "front-delayed-action-requeue-limit-grace";
+					entry.DelayedRouteLastIssuedDay = nowDay;
+					entry.DelayedRouteRequeueCount = Mathf.Min(entry.DelayedRouteRequeueCount, RETALIATION_FRONT_DELAYED_ACTION_HUMAN_ROUTE_COMMIT_REQUEUES);
+					entry.DelayedNoProgressChecks = 0;
+					entry.DelayedLastObservedNodeId = currentNodeId;
+					entry.DelayedFinalApproachGraceGranted = true;
+					VerificationLog("GangOps.FrontMovement", $"front-delayed-action-limit-grace attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} routeTargetNode={limitGraceRouteNodeId} routeGoal={limitGraceRouteGoal} waitedDays={waitedDays} oldRequeues={oldRequeues} requeues={entry.DelayedRouteRequeueCount} maxRequeues={maxRouteRequeues} maxWaitDays={maxWaitDays} graceDays={RETALIATION_FRONT_DELAYED_ACTION_FINAL_GRACE_DAYS} reason={(humanWaitLimitReached ? "wait-limit" : "requeue-limit")} route={limitGraceReason} cost={limitGracePath.cost} source={sourceTag}");
+					return true;
+				}
+				bool terminalReassignmentAvailable = humanWaitLimitReached && !entry.DelayedTerminalReassignmentGranted;
+				float reassignmentMaxCrewDistance = terminalReassignmentAvailable
+					? AI_VS_HUMAN_FRONT_ACTION_TERMINAL_REASSIGN_MAX_CREW_DISTANCE
+					: AI_VS_HUMAN_FRONT_ACTION_MAX_CREW_DISTANCE;
+				if ((terminalReassignmentAvailable || lostPhysicalNodeAtLimit)
+					&& TryReassignLostPendingRetaliationFrontAction(entry, attacker, defender, building, targetNode, sourceTag, reassignmentMaxCrewDistance, allowCapacityOverflow: terminalReassignmentAvailable, forceTargetRoute: terminalReassignmentAvailable))
+				{
+					if (humanWaitLimitReached)
+					{
+						entry.DelayedTerminalReassignmentGranted = true;
+						entry.QueuedDay = nowDay - RETALIATION_FRONT_DELAYED_ACTION_MOVING_GIVE_UP_DAYS;
+						if (TryBuildRuntimeFrontApproachRoute(attacker.PID, entry.CrewPeepId.FindEntity(), targetNode, out PathData terminalPath, out string terminalReason))
+						{
+							attacker.commands.FlushQueue(entry.CrewPeepId, cancelActive: true);
+							Node terminalRouteNode = ResolveFrontRouteCommandNode(targetNode, terminalPath, allowSegmentTarget: false, out NodeID terminalRouteNodeId, out string terminalRouteGoal);
+							if (terminalRouteNode?.id.IsValid != true)
+							{
+								terminalRouteNode = targetNode;
+								terminalRouteNodeId = targetNode.id;
+								terminalRouteGoal = "target-fallback";
+							}
+							attacker.commands.AddCommand(new CommandGoto(attacker.PID, entry.CrewPeepId, terminalRouteNode));
+							MarkPendingRetaliationRouteTarget(entry, terminalRouteNodeId, targetNode.id, entry.DelayedLastObservedNodeId);
+							entry.DelayedRouteLastIssuedDay = nowDay;
+							VerificationLog("GangOps.FrontMovement", $"front-delayed-action-terminal-target-route attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} targetNode={targetNode.id} routeTargetNode={terminalRouteNodeId} routeGoal={terminalRouteGoal} route={terminalReason} cost={(terminalPath != null ? terminalPath.cost.ToString() : "0")} source={sourceTag}");
+						}
+					}
+					VerificationLog("GangOps.FrontMovement", $"front-delayed-action-limit-reassigned attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} waitedDays={waitedDays} requeues={entry.DelayedRouteRequeueCount} maxRequeues={maxRouteRequeues} maxWaitDays={maxWaitDays} maxCrewDistance={reassignmentMaxCrewDistance:0.0} capacityOverflowAllowed={terminalReassignmentAvailable} terminalWindowDays={(humanWaitLimitReached ? RETALIATION_FRONT_DELAYED_ACTION_FINAL_GRACE_DAYS : 0)} reason={(humanWaitLimitReached ? (lostPhysicalNodeAtLimit ? "wait-limit-lost-node" : "wait-limit-stalled-actor") : "requeue-limit-lost-node")} source={sourceTag}");
+					return true;
+				}
+				bool humanRequeueAbandonReached = humanRouteLimitReached && !entry.DelayedFinalApproachGraceGranted;
+				bool humanAbandonReached = defenderIsHuman
+					&& (entry.DelayedNoProgressChecks >= maxNoProgressChecks || humanRequeueAbandonReached || waitedDays >= maxWaitDays);
+				if (humanAbandonReached)
 				{
 					attacker.commands.FlushQueue(entry.CrewPeepId, cancelActive: true);
 					entry.DelayedPhysicalActionAbandoned = true;
-					entry.DelayedPhysicalActionAbandonedReason = entry.DelayedNoProgressChecks >= maxNoProgressChecks ? "human-front-route-stalled" : (entry.DelayedRouteRequeueCount >= maxRouteRequeues ? "human-front-route-requeue-limit" : "human-front-route-timeout");
+					entry.DelayedPhysicalActionAbandonedReason = entry.DelayedNoProgressChecks >= maxNoProgressChecks ? "human-front-route-stalled" : (humanRequeueAbandonReached ? "human-front-route-requeue-limit" : "human-front-route-timeout");
 					VerificationLog("GangOps.FrontMovement", $"front-delayed-action-abandoned attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} waitedDays={waitedDays} noProgressChecks={entry.DelayedNoProgressChecks} requeues={entry.DelayedRouteRequeueCount} maxNoProgress={maxNoProgressChecks} maxRequeues={maxRouteRequeues} maxWaitDays={maxWaitDays} multiTurn={entry.DelayedMultiTurnHumanFrontRoute} longHuman={longHumanFrontRoute} reason={entry.DelayedPhysicalActionAbandonedReason} source={sourceTag}");
 					return false;
 				}
@@ -32038,12 +33766,20 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 					{
 						int stalledNoProgressChecks = entry.DelayedNoProgressChecks;
 						attacker.commands.FlushQueue(entry.CrewPeepId, cancelActive: true);
-						attacker.commands.AddCommand(new CommandGoto(attacker.PID, entry.CrewPeepId, targetNode));
+						Node stalledRouteNode = ResolveFrontRouteCommandNode(targetNode, stalledRetryPath, allowSegmentTarget: defenderIsHuman && ShouldAllowDelayedHumanFrontSegmentTarget(entry), out NodeID stalledRouteNodeId, out string stalledRouteGoal);
+						if (stalledRouteNode?.id.IsValid != true)
+						{
+							stalledRouteNode = targetNode;
+							stalledRouteNodeId = targetNode.id;
+							stalledRouteGoal = "target-fallback";
+						}
+						attacker.commands.AddCommand(new CommandGoto(attacker.PID, entry.CrewPeepId, stalledRouteNode));
+						MarkPendingRetaliationRouteTarget(entry, stalledRouteNodeId, targetNode.id, currentNodeId);
 						entry.DelayedRouteLastIssuedDay = nowDay;
 						entry.DelayedRouteRequeueCount++;
 						entry.DelayedNoProgressChecks = 0;
 						entry.DelayedLastObservedNodeId = currentNodeId;
-						VerificationLog("GangOps.FrontMovement", $"front-delayed-action-reissued-stalled-human attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} targetNode={targetNode.id} route={stalledRetryReason} cost={stalledRetryPath.cost} cooldownDays={RETALIATION_FRONT_DELAYED_ACTION_REQUEUE_COOLDOWN_DAYS} requeues={entry.DelayedRouteRequeueCount} noProgressChecks={stalledNoProgressChecks} multiTurn={entry.DelayedMultiTurnHumanFrontRoute} source={sourceTag}");
+						VerificationLog("GangOps.FrontMovement", $"front-delayed-action-reissued-stalled-human attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} targetNode={targetNode.id} routeTargetNode={stalledRouteNodeId} routeGoal={stalledRouteGoal} route={stalledRetryReason} cost={stalledRetryPath.cost} cooldownDays={RETALIATION_FRONT_DELAYED_ACTION_REQUEUE_COOLDOWN_DAYS} requeues={entry.DelayedRouteRequeueCount} noProgressChecks={stalledNoProgressChecks} multiTurn={entry.DelayedMultiTurnHumanFrontRoute} source={sourceTag}");
 						return true;
 					}
 					VerificationLog("GangOps.FrontMovement", $"front-delayed-action-stalled-route-unavailable attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} targetNode={targetNode.id} reason={stalledRetryReason} noProgressChecks={entry.DelayedNoProgressChecks} requeues={entry.DelayedRouteRequeueCount} source={sourceTag}");
@@ -32056,10 +33792,18 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				bool routeReady = TryBuildRuntimeFrontApproachRoute(attacker.PID, peep, targetNode, out PathData retryPath, out string retryReason);
 				if (routeReady)
 				{
-					attacker.commands.AddCommand(new CommandGoto(attacker.PID, entry.CrewPeepId, targetNode));
+					Node retryRouteNode = ResolveFrontRouteCommandNode(targetNode, retryPath, allowSegmentTarget: defenderIsHuman && ShouldAllowDelayedHumanFrontSegmentTarget(entry), out NodeID retryRouteNodeId, out string retryRouteGoal);
+					if (retryRouteNode?.id.IsValid != true)
+					{
+						retryRouteNode = targetNode;
+						retryRouteNodeId = targetNode.id;
+						retryRouteGoal = "target-fallback";
+					}
+					attacker.commands.AddCommand(new CommandGoto(attacker.PID, entry.CrewPeepId, retryRouteNode));
+					MarkPendingRetaliationRouteTarget(entry, retryRouteNodeId, targetNode.id, currentNodeId);
 					entry.DelayedRouteLastIssuedDay = nowDay;
 					entry.DelayedRouteRequeueCount++;
-					VerificationLog("GangOps.FrontMovement", $"front-delayed-action-requeued attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} targetNode={targetNode.id} route={retryReason} cost={retryPath.cost} cooldownDays={RETALIATION_FRONT_DELAYED_ACTION_REQUEUE_COOLDOWN_DAYS} requeues={entry.DelayedRouteRequeueCount} source={sourceTag}");
+					VerificationLog("GangOps.FrontMovement", $"front-delayed-action-requeued attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} targetNode={targetNode.id} routeTargetNode={retryRouteNodeId} routeGoal={retryRouteGoal} route={retryReason} cost={retryPath.cost} cooldownDays={RETALIATION_FRONT_DELAYED_ACTION_REQUEUE_COOLDOWN_DAYS} requeues={entry.DelayedRouteRequeueCount} source={sourceTag}");
 					return true;
 				}
 				if (defenderIsHuman)
@@ -32089,6 +33833,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		string actionMode;
 		if (string.Equals(targetKind, "outpost", StringComparison.Ordinal))
 		{
+			if (TryResolvePendingRetaliationOutpostClosureAtTarget(entry, attacker, defender, crew, building, currentNodeId, currentNodeSource, sourceTag))
+			{
+				return true;
+			}
 			OutpostID outpostId = new OutpostID(building);
 			if (defender.outposts?.GetOutpostEntryUnsafe(outpostId) == null)
 			{
@@ -32141,6 +33889,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				{
 					NodeID targetNodeId = entry.TargetNodeId.IsValid ? entry.TargetNodeId : (building?.data?.board?.bead.nodeId ?? NodeID.INVALID);
 					if (targetNodeId.IsValid && goTo.goalID == targetNodeId)
+					{
+						return true;
+					}
+					if (entry.DelayedRouteTargetNodeId.IsValid && goTo.goalID == entry.DelayedRouteTargetNodeId)
 					{
 						return true;
 					}
@@ -32260,18 +34012,29 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			{
 				return false;
 			}
-			CrewAssignment crew = attacker.crew.GetCrewForPeep(entry.CrewPeepId);
-			if (!crew.IsValid || crew.peepId.IsNotValid || crew.IsDead)
-			{
-				return false;
-			}
-			Entity peep = crew.GetPeep();
 			NodeID targetNodeId = entry.TargetNodeId.IsValid ? entry.TargetNodeId : (building.data?.board?.bead.nodeId ?? NodeID.INVALID);
 			Node targetNode = targetNodeId.IsValid ? targetNodeId.FindNode() : null;
 			if (targetNode?.id.IsValid != true)
 			{
 				return false;
 			}
+			CrewAssignment crew = attacker.crew.GetCrewForPeep(entry.CrewPeepId);
+			if (!crew.IsValid || crew.peepId.IsNotValid || crew.IsDead)
+			{
+				EntityID oldPeepId = entry.CrewPeepId;
+				int priorRouteRequeueCount = entry.DelayedRouteRequeueCount;
+				if (!entry.DelayedBusinessActorReassignmentGranted
+					&& TryReassignLostPendingRetaliationFrontAction(entry, attacker, defender, building, targetNode, sourceTag))
+				{
+					entry.DelayedBusinessActorReassignmentGranted = true;
+					entry.DelayedRouteRequeueCount = Mathf.Max(priorRouteRequeueCount, entry.DelayedRouteRequeueCount);
+					VerificationLog("GangOps.FrontMovement", $"business-closure-actor-reassigned attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} oldPeep={oldPeepId.id} newPeep={entry.CrewPeepId.id} building={entry.BuildingId.id} targetNode={targetNode.id} waitedDays={Mathf.Max(0, G.GetNow().days - entry.QueuedDay)} requeues={entry.DelayedRouteRequeueCount} progressObserved={entry.DelayedFinalApproachProgressObserved} reason=missing-or-dead-actor source={sourceTag}");
+					return true;
+				}
+				VerificationLog("GangOps.FrontMovement", $"business-closure-actor-reassign-unavailable attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} oldPeep={oldPeepId.id} building={entry.BuildingId.id} targetNode={targetNode.id} alreadyGranted={entry.DelayedBusinessActorReassignmentGranted} reason=missing-or-dead-actor source={sourceTag}");
+				return false;
+			}
+			Entity peep = crew.GetPeep();
 			TryResolveRuntimeCrewPhysicalNode(attacker, crew, peep, out NodeID currentNodeId, out string currentNodeSource, sourceTag, "business-closure-recover");
 			NodeID peepNodeId = peep?.data?.agent?.nid ?? NodeID.INVALID;
 			int nowDay = G.GetNow().days;
@@ -32294,7 +34057,16 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				}
 				if (string.Equals(directReason, "no-attack-cost", StringComparison.Ordinal))
 				{
-					int waitedAtTargetDays = Mathf.Max(0, nowDay - entry.QueuedDay);
+					bool alreadyWaitingAtTarget = string.Equals(entry.Mode, "business-closure-waiting-attack-cost", StringComparison.Ordinal)
+						&& entry.DelayedRouteLastIssuedDay != int.MinValue;
+					if (!alreadyWaitingAtTarget)
+					{
+						entry.Mode = "business-closure-waiting-attack-cost";
+						entry.DelayedRouteLastIssuedDay = nowDay;
+						VerificationLog("GangOps.FrontMovement", $"business-closure-wait-at-target attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} reason=no-attack-cost-arrived waitDay={nowDay} queuedDay={entry.QueuedDay} source={sourceTag}");
+						return true;
+					}
+					int waitedAtTargetDays = Mathf.Max(0, nowDay - entry.DelayedRouteLastIssuedDay);
 					int maxNoAttackCostWaitDays = defender?.PID.IsHumanPlayer == true ? RETALIATION_BUSINESS_CLOSURE_HUMAN_GIVE_UP_DAYS : RETALIATION_FRONT_DELAYED_ACTION_GIVE_UP_DAYS;
 					if (waitedAtTargetDays >= maxNoAttackCostWaitDays)
 					{
@@ -32311,33 +34083,104 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				VerificationLog("GangOps.FrontMovement", $"business-closure-recovered-action attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} mode={entry.Mode} directReason={directReason} source={sourceTag}");
 				return true;
 			}
-			if (entry.DelayedRouteLastIssuedDay != int.MinValue
-				&& nowDay - entry.DelayedRouteLastIssuedDay < RETALIATION_FRONT_DELAYED_ACTION_REQUEUE_COOLDOWN_DAYS)
-			{
-				VerificationLog("GangOps.FrontMovement", $"business-closure-recover-wait attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} reason=route-recently-issued lastIssuedDay={entry.DelayedRouteLastIssuedDay} source={sourceTag}");
-				return true;
-			}
 			int waitedDays = Mathf.Max(0, nowDay - entry.QueuedDay);
 			bool defenderIsHuman = defender?.PID.IsHumanPlayer == true;
-			int maxRouteRequeues = defenderIsHuman ? RETALIATION_BUSINESS_CLOSURE_HUMAN_MAX_REQUEUES : 3;
-			int maxWaitDays = defenderIsHuman ? RETALIATION_BUSINESS_CLOSURE_HUMAN_GIVE_UP_DAYS : RETALIATION_FRONT_DELAYED_ACTION_GIVE_UP_DAYS;
 			bool robberyBusinessClosure = IsRobberyRetaliationSource(entry.Source) || IsRobberyRetaliationSource(sourceTag);
+			int maxRouteRequeues = defenderIsHuman || robberyBusinessClosure ? RETALIATION_BUSINESS_CLOSURE_HUMAN_MAX_REQUEUES : 3;
+			int maxWaitDays = defenderIsHuman || robberyBusinessClosure ? RETALIATION_BUSINESS_CLOSURE_HUMAN_GIVE_UP_DAYS : RETALIATION_FRONT_DELAYED_ACTION_GIVE_UP_DAYS;
+			bool madeFinalApproachProgress = HasPendingRetaliationFinalRouteProgress(entry, currentNodeId, targetNode.id);
+			if (madeFinalApproachProgress)
+			{
+				entry.DelayedFinalApproachProgressObserved = true;
+				entry.DelayedNoProgressChecks = 0;
+			}
+			bool finalApproachProgressObserved = madeFinalApproachProgress
+				|| entry.DelayedFinalApproachProgressObserved
+				|| entry.DelayedFinalApproachGraceGranted;
+			int effectiveMaxWaitDays = finalApproachProgressObserved
+				? RETALIATION_BUSINESS_CLOSURE_PROGRESS_GIVE_UP_DAYS
+				: maxWaitDays;
+			if (finalApproachProgressObserved && effectiveMaxWaitDays > maxWaitDays && waitedDays >= maxWaitDays)
+			{
+				VerificationLog("GangOps.FrontMovement", $"business-closure-progress-wait-extended attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} waitedDays={waitedDays} maxWaitDays={effectiveMaxWaitDays} baseMaxWaitDays={maxWaitDays} requeues={entry.DelayedRouteRequeueCount} maxRequeues={maxRouteRequeues} progressed={madeFinalApproachProgress} progressObserved={finalApproachProgressObserved} graceGranted={entry.DelayedFinalApproachGraceGranted} source={sourceTag}");
+			}
+			bool routeLimitReached = entry.DelayedRouteRequeueCount >= maxRouteRequeues
+				&& !finalApproachProgressObserved;
+			bool waitLimitReached = waitedDays >= effectiveMaxWaitDays;
+			bool routeReissueCooldownActive = entry.DelayedRouteLastIssuedDay != int.MinValue
+				&& nowDay - entry.DelayedRouteLastIssuedDay < RETALIATION_FRONT_DELAYED_ACTION_REQUEUE_COOLDOWN_DAYS;
+			if (routeReissueCooldownActive)
+			{
+				VerificationLog("GangOps.FrontMovement", $"business-closure-recover-wait attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} reason=route-recently-issued lastIssuedDay={entry.DelayedRouteLastIssuedDay} maxWaitDays={effectiveMaxWaitDays} baseMaxWaitDays={maxWaitDays} maxRequeues={maxRouteRequeues} source={sourceTag}");
+				return true;
+			}
+			if ((routeLimitReached || waitLimitReached)
+				&& waitLimitReached
+				&& !routeLimitReached
+				&& !entry.DelayedFinalApproachGraceGranted
+				&& TryBuildRuntimeFrontReachableNextRoute(attacker.PID, peep, targetNode, out PathData gracePath, out string graceReason))
+			{
+				PlayerID graceDefenderPid = entry.DefenderPid.IsAnyPlayer ? entry.DefenderPid : PlayerID.System;
+				AICommandAttackBuilding graceForceClose = new AICommandAttackBuilding(attacker.PID, entry.CrewPeepId, building.Id, graceDefenderPid, "npcbiz");
+				attacker.commands.FlushQueue(entry.CrewPeepId, cancelActive: true);
+				attacker.commands.AddCommandImmediate(new CommandGoto(attacker.PID, entry.CrewPeepId, targetNode), graceForceClose);
+				entry.Mode = "business-closure-route-commitment-final-approach-grace";
+				entry.DelayedRouteTargetNodeId = targetNode.id;
+				entry.DelayedRouteLastIssuedDay = nowDay;
+				entry.DelayedFinalRouteIssuedFromNodeId = currentNodeId;
+				entry.DelayedLastObservedNodeId = currentNodeId;
+				entry.DelayedRouteRequeueCount++;
+				entry.DelayedFinalApproachGraceGranted = true;
+				entry.DelayedFinalApproachProgressObserved = true;
+				VerificationLog("GangOps.FrontMovement", $"business-closure-route-commitment-final-approach-grace attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} waitedDays={waitedDays} requeues={entry.DelayedRouteRequeueCount} route={graceReason} cost={gracePath.cost} graceTurns=1 source={sourceTag}");
+				return true;
+			}
+			if (waitLimitReached
+				&& !routeLimitReached
+				&& finalApproachProgressObserved
+				&& !entry.DelayedTerminalReassignmentGranted)
+			{
+				if (TryBuildRuntimeFrontApproachRoute(attacker.PID, peep, targetNode, out PathData terminalPath, out string terminalReason))
+				{
+					PlayerID terminalDefenderPid = entry.DefenderPid.IsAnyPlayer ? entry.DefenderPid : PlayerID.System;
+					AICommandAttackBuilding terminalForceClose = new AICommandAttackBuilding(attacker.PID, entry.CrewPeepId, building.Id, terminalDefenderPid, "npcbiz");
+					attacker.commands.FlushQueue(entry.CrewPeepId, cancelActive: true);
+					attacker.commands.AddCommandImmediate(new CommandGoto(attacker.PID, entry.CrewPeepId, targetNode), terminalForceClose);
+					entry.Mode = "business-closure-terminal-target-route";
+					MarkPendingRetaliationRouteTarget(entry, targetNode.id, targetNode.id, currentNodeId);
+					entry.DelayedRouteLastIssuedDay = nowDay;
+					entry.DelayedLastObservedNodeId = currentNodeId;
+					entry.DelayedFinalApproachGraceGranted = true;
+					entry.DelayedFinalApproachProgressObserved = true;
+					entry.DelayedTerminalReassignmentGranted = true;
+					entry.QueuedDay = nowDay - Mathf.Max(0, RETALIATION_BUSINESS_CLOSURE_PROGRESS_GIVE_UP_DAYS - RETALIATION_FRONT_DELAYED_ACTION_FINAL_GRACE_DAYS);
+					VerificationLog("GangOps.FrontMovement", $"business-closure-terminal-target-route attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} waitedDays={waitedDays} maxWaitDays={effectiveMaxWaitDays} baseMaxWaitDays={maxWaitDays} terminalWindowDays={RETALIATION_FRONT_DELAYED_ACTION_FINAL_GRACE_DAYS} route={terminalReason} cost={(terminalPath != null ? terminalPath.cost.ToString() : "0")} source={sourceTag}");
+					return true;
+				}
+				VerificationLog("GangOps.FrontMovement", $"business-closure-terminal-route-unavailable attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} waitedDays={waitedDays} maxWaitDays={effectiveMaxWaitDays} baseMaxWaitDays={maxWaitDays} reason={terminalReason} source={sourceTag}");
+			}
+			if (routeLimitReached || waitLimitReached)
+			{
+				VerificationLog("GangOps.FrontMovement", $"business-closure-give-up attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} waitedDays={waitedDays} maxWaitDays={effectiveMaxWaitDays} baseMaxWaitDays={maxWaitDays} requeues={entry.DelayedRouteRequeueCount} maxRequeues={maxRouteRequeues} progressed={madeFinalApproachProgress} progressObserved={finalApproachProgressObserved} reason={(entry.DelayedRouteRequeueCount >= maxRouteRequeues && !finalApproachProgressObserved ? "requeue-limit" : "timeout")} source={sourceTag}");
+				return false;
+			}
 			if (robberyBusinessClosure
 				&& (entry.DelayedRouteRequeueCount >= RETALIATION_ROBBERY_BUSINESS_CLOSURE_FORCE_REQUEUES || waitedDays >= RETALIATION_ROBBERY_BUSINESS_CLOSURE_FORCE_DAYS))
 			{
 				PlayerID defenderPid = entry.DefenderPid.IsAnyPlayer ? entry.DefenderPid : PlayerID.System;
-				if (TryExecuteRetaliationBusinessClosureNow(attacker, defenderPid, entry.CrewPeepId, peep, building, allowNoAttackCostAfterWait: true, sourceTag + "-route-commitment", out string committedReason))
+				AICommandAttackBuilding forceClose = new AICommandAttackBuilding(attacker.PID, entry.CrewPeepId, building.Id, defenderPid, "npcbiz");
+				attacker.commands.FlushQueue(entry.CrewPeepId, cancelActive: true);
+				attacker.commands.AddCommandImmediate(new CommandGoto(attacker.PID, entry.CrewPeepId, targetNode), forceClose);
+				entry.Mode = "business-closure-route-commitment-final-approach";
+				MarkPendingRetaliationRouteTarget(entry, targetNode.id, targetNode.id, currentNodeId);
+				entry.DelayedRouteLastIssuedDay = nowDay;
+				bool retryIncremented = !finalApproachProgressObserved;
+				if (retryIncremented)
 				{
-					entry.Mode = "business-closure-route-commitment-completed";
-					VerificationLog("GangOps.FrontMovement", $"business-closure-route-commitment-completed attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} waitedDays={waitedDays} requeues={entry.DelayedRouteRequeueCount} reason={committedReason} source={sourceTag}");
-					return true;
+					entry.DelayedRouteRequeueCount++;
 				}
-				VerificationLog("GangOps.FrontMovement", $"business-closure-route-commitment-failed attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} waitedDays={waitedDays} requeues={entry.DelayedRouteRequeueCount} reason={committedReason} source={sourceTag}");
-			}
-			if (entry.DelayedRouteRequeueCount >= maxRouteRequeues || waitedDays >= maxWaitDays)
-			{
-				VerificationLog("GangOps.FrontMovement", $"business-closure-give-up attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} waitedDays={waitedDays} maxWaitDays={maxWaitDays} requeues={entry.DelayedRouteRequeueCount} maxRequeues={maxRouteRequeues} reason={(entry.DelayedRouteRequeueCount >= maxRouteRequeues ? "requeue-limit" : "timeout")} source={sourceTag}");
-				return false;
+				VerificationLog("GangOps.FrontMovement", $"business-closure-route-commitment-final-approach attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} waitedDays={waitedDays} requeues={entry.DelayedRouteRequeueCount} progressed={madeFinalApproachProgress} progressObserved={finalApproachProgressObserved} retryIncremented={retryIncremented} source={sourceTag}");
+				return true;
 			}
 			bool routeReady = TryBuildRuntimeFrontApproachRoute(attacker.PID, peep, targetNode, out PathData retryPath, out string retryReason);
 			if (routeReady)
@@ -32347,9 +34190,14 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				attacker.commands.FlushQueue(entry.CrewPeepId, cancelActive: true);
 				attacker.commands.AddCommandImmediate(new CommandGoto(attacker.PID, entry.CrewPeepId, targetNode), forceClose);
 				entry.Mode = "goto-forced-business-close";
+				MarkPendingRetaliationRouteTarget(entry, targetNode.id, targetNode.id, currentNodeId);
 				entry.DelayedRouteLastIssuedDay = nowDay;
-				entry.DelayedRouteRequeueCount++;
-				VerificationLog("GangOps.FrontMovement", $"business-closure-requeued attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} mode=goto-force-close route={retryReason} cost={retryPath.cost} requeues={entry.DelayedRouteRequeueCount} maxRequeues={maxRouteRequeues} source={sourceTag}");
+				bool retryIncremented = !finalApproachProgressObserved;
+				if (retryIncremented)
+				{
+					entry.DelayedRouteRequeueCount++;
+				}
+				VerificationLog("GangOps.FrontMovement", $"business-closure-requeued attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} mode=goto-force-close route={retryReason} cost={retryPath.cost} requeues={entry.DelayedRouteRequeueCount} maxRequeues={maxRouteRequeues} progressed={madeFinalApproachProgress} progressObserved={finalApproachProgressObserved} retryIncremented={retryIncremented} source={sourceTag}");
 				return true;
 			}
 			if (defenderIsHuman)
@@ -32403,6 +34251,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			{
 				if (string.Equals(GetPendingRetaliationTargetKind(entry), "outpost", StringComparison.Ordinal))
 				{
+					if (TryResolvePendingRetaliationOutpostClosureAtTarget(entry, attacker, defender, crew, building, currentNodeId, currentNodeSource, sourceTag))
+					{
+						return true;
+					}
 					OutpostID outpostId = new OutpostID(building);
 					if (defender.outposts?.GetOutpostEntryUnsafe(outpostId) == null)
 					{
@@ -32420,6 +34272,11 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				return true;
 			}
 			int nowDay = G.GetNow().days;
+			int waitedDays = Mathf.Max(0, nowDay - entry.QueuedDay);
+			if (TryResolvePendingRetaliationOutpostClosureByRouteCommitment(entry, attacker, defender, crew, building, targetNode, currentNodeId, currentNodeSource, waitedDays, sourceTag))
+			{
+				return true;
+			}
 			if (entry.DelayedRouteLastIssuedDay != int.MinValue
 				&& nowDay - entry.DelayedRouteLastIssuedDay < RETALIATION_FRONT_DELAYED_ACTION_REQUEUE_COOLDOWN_DAYS)
 			{
@@ -32433,10 +34290,19 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			}
 			if (TryBuildRuntimeFrontApproachRoute(attacker.PID, peep, targetNode, out PathData retryPath, out string retryReason))
 			{
-				attacker.commands.AddCommand(new CommandGoto(attacker.PID, entry.CrewPeepId, targetNode));
+				bool defenderIsHuman = defender.PID.IsHumanPlayer == true;
+				Node retryRouteNode = ResolveFrontRouteCommandNode(targetNode, retryPath, allowSegmentTarget: defenderIsHuman && ShouldAllowDelayedHumanFrontSegmentTarget(entry), out NodeID retryRouteNodeId, out string retryRouteGoal);
+				if (retryRouteNode?.id.IsValid != true)
+				{
+					retryRouteNode = targetNode;
+					retryRouteNodeId = targetNode.id;
+					retryRouteGoal = "target-fallback";
+				}
+				attacker.commands.AddCommand(new CommandGoto(attacker.PID, entry.CrewPeepId, retryRouteNode));
+				MarkPendingRetaliationRouteTarget(entry, retryRouteNodeId, targetNode.id, currentNodeId);
 				entry.DelayedRouteLastIssuedDay = nowDay;
 				entry.DelayedRouteRequeueCount++;
-				VerificationLog("GangOps.FrontMovement", $"front-travel-requeued attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} route={retryReason} cost={retryPath.cost} requeues={entry.DelayedRouteRequeueCount} source={sourceTag}");
+				VerificationLog("GangOps.FrontMovement", $"front-travel-requeued attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} routeTargetNode={retryRouteNodeId} routeGoal={retryRouteGoal} route={retryReason} cost={retryPath.cost} requeues={entry.DelayedRouteRequeueCount} source={sourceTag}");
 				return true;
 			}
 			VerificationLog("GangOps.FrontMovement", $"front-travel-recover-failed attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} currentNode={currentNodeId} currentSource={currentNodeSource} peepNode={peepNodeId} targetNode={targetNode.id} reason={retryReason} source={sourceTag}");
@@ -32504,10 +34370,12 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				&& (string.Equals(reason, "front-completed", StringComparison.Ordinal)
 					|| string.Equals(reason, "command-finished", StringComparison.Ordinal)
 					|| string.Equals(reason, "business-closure-completed", StringComparison.Ordinal)
-					|| string.Equals(reason, "business-closure-command-finished", StringComparison.Ordinal));
-			if (entry != null && (string.Equals(reason, "command-finished", StringComparison.Ordinal) || string.Equals(reason, "business-closure-command-finished", StringComparison.Ordinal) || string.Equals(reason, "attacker-gave-up-too-far", StringComparison.Ordinal) || string.Equals(reason, "front-defended", StringComparison.Ordinal)))
+					|| string.Equals(reason, "business-closure-command-finished", StringComparison.Ordinal)
+					|| string.Equals(reason, "front-defended", StringComparison.Ordinal));
+			if (entry != null && IsRetaliationFrontActorUseReason(reason))
 			{
 				BlockRetaliationFrontRetry(entry, reason, sourceTag);
+				MarkRecentRetaliationFrontActorUse(entry, reason, sourceTag);
 			}
 			if (shouldMoveAway)
 			{
@@ -32531,9 +34399,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 	private static bool IsRetaliationFrontDefenseResultReason(string reason)
 	{
 		return string.Equals(reason, "command-finished", StringComparison.Ordinal)
-			|| string.Equals(reason, "attacker-gave-up-too-far", StringComparison.Ordinal)
-			|| string.Equals(reason, "front-defended", StringComparison.Ordinal)
-			|| string.Equals(reason, "vanilla-stale", StringComparison.Ordinal);
+			|| string.Equals(reason, "front-defended", StringComparison.Ordinal);
 	}
 
 	private static void TryShowRetaliationFrontDefenseResult(PendingRetaliationFrontTicker entry, string reason, string sourceTag)
@@ -32557,24 +34423,12 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				return;
 			}
 			string attackerName = GetGangDisplayName(entry.AttackerPid.id);
-			string message = string.Equals(reason, "attacker-gave-up-too-far", StringComparison.Ordinal)
-				? $"{attackerName} could not reach this front and backed off. Your outfit held the corner."
-				: (string.Equals(reason, "front-defended", StringComparison.Ordinal)
-					? $"{attackerName} could not close this front. Your outfit defended the corner."
-					: $"{attackerName} failed to close this front. Your outfit held the corner.");
-			TickerData ticker = new TickerData
-			{
-				type = TickerType.TextPopup,
-				icon = TickerIcon.COMBAT_RESULTS,
-				title = TickerTitle.COMBAT_RESULTS,
-				message = message,
-				target = entry.BuildingId,
-				date = G.GetNow(),
-				persisted = TickerPersistType.Persist
-			};
-			global::Game.Game.ctx?.hud?.tickers?.AddTicker(ticker);
+			global::Game.Game.ctx?.hud?.tickers?.AddTextTicker(
+				TickerIcon.OUTPOST_START,
+				TickerTitle.DEFAULT,
+				Loc.Get("ui.tickers.outpost.steal-protected"));
 			LogGrapevine($"TURF: Your outfit held a front against {attackerName}.");
-			VerificationLog("GangOps.FrontTicker", $"defense-result-shown attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} reason={reason} source={sourceTag}");
+			VerificationLog("GangOps.FrontTicker", $"defense-result-shown attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} reason={reason} style=vanilla-outpost-protected source={sourceTag}");
 		}
 		catch (Exception ex)
 		{
@@ -32598,6 +34452,11 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			CrewAssignment crew = attacker.crew.GetCrewForPeep(entry.CrewPeepId);
 			if (!crew.IsValid || crew.IsDead)
 			{
+				return false;
+			}
+			if (IsCrewAssignedToOtherPendingRetaliationAction(entry.AttackerPid, entry.CrewPeepId, entry.BuildingId, out PendingRetaliationFrontTicker otherPending))
+			{
+				VerificationLog("GangOps.FrontMovement", $"post-front-return-skip attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} otherBuilding={otherPending.BuildingId.id} otherKind={GetPendingRetaliationActionKind(otherPending)} reason=crew-has-other-pending-action clearReason={reason} source={sourceTag}");
 				return false;
 			}
 			Entity peep = crew.GetPeep();
@@ -32687,10 +34546,15 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			return false;
 		}
 		if (defender?.PID.IsHumanPlayer == true
-			&& IsRetaliationFrontAlreadyPending(defender, targetBuilding, out PlayerID pendingAttackerPid, out string pendingMode)
-			&& pendingAttackerPid != attacker.PID)
+			&& IsRetaliationFrontAlreadyPending(defender, targetBuilding, out PlayerID pendingAttackerPid, out string pendingMode))
 		{
 			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"Physical front action unavailable attacker={attacker.PID.id} defender={defender.PID.id} building={targetBuilding.Id.id} reason=front-already-pending pendingAttacker={pendingAttackerPid.id} pendingMode={pendingMode} source={sourceTag}");
+			return false;
+		}
+		if (defender?.PID.IsHumanPlayer == true
+			&& IsRetaliationFrontRetryBlocked(attacker, defender, targetBuilding, out int blockedUntilDay))
+		{
+			VerificationLog("GangOps.FrontMovement", $"forced-business-retry-blocked attacker={attacker.PID.id} defender={defender.PID.id} building={targetBuilding.Id.id} untilDay={blockedUntilDay} source={sourceTag}");
 			return false;
 		}
 		float maxCrewDistance = defender?.PID.IsHumanPlayer == true ? AI_VS_HUMAN_FRONT_ACTION_MAX_CREW_DISTANCE : -1f;
@@ -32714,7 +34578,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			{
 				attacker.commands.AddCommandImmediate(forceClose);
 				actionSummary = $"forced-close-queued:{targetBuilding.Id.id}";
-				TrackPendingRetaliationForcedBusinessClosure(attacker, defender, targetBuilding, crew.peepId, targetNode.id, "forced-business-close-now", sourceTag);
+				TrackPendingRetaliationForcedBusinessClosure(attacker, defender, targetBuilding, crew.peepId, targetNode.id, "forced-business-close-now", sourceTag, NodeID.INVALID);
 				VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"Physical forced closure queued attacker={attacker.PID.id} defender={defender?.PID.id ?? 0} peep={crew.peepId.id} building={targetBuilding.Id.id} targetNode={targetNode.id} currentNode={currentNodeId} currentSource={currentNodeSource} mode=force-close-now source={sourceTag}");
 				return true;
 			}
@@ -32726,7 +34590,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			}
 			attacker.commands.AddCommandImmediate(new CommandGoto(attacker.PID, crew.peepId, targetNode), forceClose);
 			actionSummary = $"forced-close-travel-queued:{targetBuilding.Id.id}";
-			TrackPendingRetaliationForcedBusinessClosure(attacker, defender, targetBuilding, crew.peepId, targetNode.id, "goto-forced-business-close", sourceTag);
+			TrackPendingRetaliationForcedBusinessClosure(attacker, defender, targetBuilding, crew.peepId, targetNode.id, "goto-forced-business-close", sourceTag, currentNodeId);
 			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.Revenge", $"Physical forced closure queued attacker={attacker.PID.id} defender={defender?.PID.id ?? 0} peep={crew.peepId.id} building={targetBuilding.Id.id} targetNode={targetNode.id} currentNode={currentNodeId} currentSource={currentNodeSource} mode=goto-force-close route={approachReason} cost={approachPath.cost} source={sourceTag}");
 			return true;
 		}
@@ -32873,7 +34737,15 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		{
 			return;
 		}
+		if (entry.CrewPeepId.IsNotValid && IsVanillaWillStealTickerMode(entry.Mode))
+		{
+			VerificationLog("GangOps.FrontTicker", $"vanilla-passive-warning-cleared attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} building={building.Id.id} protector={protectorPeepId.id} reason={protectionReason ?? "protected"} source={sourceTag}");
+			ClearPendingRetaliationFrontTicker(building.Id.id, "vanilla-passive-warning", sourceTag);
+			return;
+		}
 		VerificationLog("GangOps.FrontTicker", $"front-defense-protected-clear attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} building={building.Id.id} protector={protectorPeepId.id} reason={protectionReason ?? "protected"} source={sourceTag}");
+		CrewAssignment frontCloserCrew = attacker?.crew != null && entry.CrewPeepId.IsValid ? attacker.crew.GetCrewForPeep(entry.CrewPeepId) : CrewAssignment.EMPTY;
+		RegisterHumanFrontDefenseCombatSuppression(entry, defender, frontCloserCrew, new[] { protectorPeepId }, building, building.data?.board?.bead.nodeId ?? NodeID.INVALID, sourceTag);
 		ClearPendingRetaliationFrontTicker(building.Id.id, "front-defended", sourceTag);
 	}
 
@@ -33567,6 +35439,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 					{
 						continue;
 					}
+					if (IsRetaliationFrontAlreadyPending(defender, building, out _, out _))
+					{
+						continue;
+					}
 					if (!TryValidateRetaliationImportantShopTarget(building, out Entity validatedBizEntity, out _))
 					{
 						invalidShop++;
@@ -33702,6 +35578,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 					{
 						continue;
 					}
+					if (IsRetaliationFrontAlreadyPending(defender, building, out _, out _))
+					{
+						continue;
+					}
 					if (!TryValidateRetaliationImportantShopTarget(building, out Entity validatedBizEntity, out _))
 					{
 						invalidShopCount++;
@@ -33815,6 +35695,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		try
 		{
 			if (building.components?.building == null || building.components.building.IsSafehouse)
+			{
+				return false;
+			}
+			if (IsRetaliationFrontAlreadyPending(defender, building, out _, out _))
 			{
 				return false;
 			}
@@ -33938,7 +35822,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				$"auto-protect-day-{nowDay}",
 				out int outpostCount,
 				out int targetNodeCount,
-				out int supportResets);
+				out int supportResets,
+				out int advisorDeferred);
 			if (outpostCount <= 0)
 			{
 				continue;
@@ -33949,7 +35834,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			protectedNodeCount += targetNodeCount;
 			supportResetCount += supportResets;
 			ownershipActionCount += ownershipActions;
-			if (supportResets > 0 || ownershipActions > 0)
+			if (supportResets > 0 || ownershipActions > 0 || advisorDeferred > 0)
 			{
 				List<Entity> ownedBuildings = GetOwnedBuildings(playerInfo);
 				int businessCount = 0;
@@ -33960,7 +35845,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 						businessCount++;
 					}
 				}
-				VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.AutoProtect", $"Gang {item} protected fronts={outpostCount} businesses={businessCount} nodes={targetNodeCount} supportResets={supportResets} ownershipActions={ownershipActions} range={pactOpsSettings.AutoProtectRange}");
+				VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.AutoProtect", $"Gang {item} advisor-preserved fronts={outpostCount} businesses={businessCount} nodes={targetNodeCount} advisorDeferred={advisorDeferred} supportResets={supportResets} ownershipActions={ownershipActions} requestedRange={pactOpsSettings.AutoProtectRange}");
 			}
 			else
 			{
@@ -33980,12 +35865,13 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		{
 			return null;
 		}
+		GangOpsChannel channel = ResolveGangOpsChannelForGang(attacker.PID.id);
 		PlayerInfo playerInfo = null;
 		float num = 0f;
 		foreach (KeyValuePair<string, WarHeatEntry> item in warHeatStore)
 		{
 			WarHeatEntry value = item.Value;
-			if (value == null || value.AttackerPid != attacker.PID.id || value.Heat <= num)
+			if (value == null || value.AttackerPid != attacker.PID.id)
 			{
 				continue;
 			}
@@ -33994,10 +35880,15 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				continue;
 			}
 			PlayerInfo playerInfo2 = G.FindPlayerById(value.DefenderPid);
+			float effectiveHeat = GetRelationshipAdjustedWarHeat(channel, attacker, playerInfo2, value.Heat, out _, out _, out _, out _);
+			if (effectiveHeat <= num)
+			{
+				continue;
+			}
 			if (playerInfo2 != null && playerInfo2.crew != null && !playerInfo2.crew.IsCrewDefeated && !ArePlayersProtectedByPactAlliance(attacker, playerInfo2) && !HasMutualTruce(attacker, playerInfo2))
 			{
 				playerInfo = playerInfo2;
-				num = value.Heat;
+				num = effectiveHeat;
 			}
 		}
 		if (playerInfo != null)
@@ -34036,9 +35927,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			reason = "no-territory";
 			return false;
 		}
-		if (warHeat >= GetEffectiveWarHeatThresholdForRevenge(GangOpsChannel.Independent))
+		float effectiveWarHeat = GetRelationshipAdjustedWarHeat(GangOpsChannel.Independent, attacker, defender, warHeat, out int relationshipScore, out float relationshipHostility, out float relationshipHeatBonus, out bool relationshipHostileBuff);
+		if (effectiveWarHeat >= GetEffectiveWarHeatThresholdForRevenge(GangOpsChannel.Independent))
 		{
-			reason = "warheat-revenge-threshold";
+			reason = $"warheat-revenge-threshold heat={warHeat:0.0} effectiveHeat={effectiveWarHeat:0.0} relScore={relationshipScore} relHostility={relationshipHostility:0.00} relHeatBonus={relationshipHeatBonus:0.0} hostileBuff={relationshipHostileBuff}";
 			return true;
 		}
 		if (IsAggroWithoutTruceEitherWay(attacker, defender))
@@ -34065,8 +35957,11 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			return false;
 		}
 
+		float warHeat = GetWarHeat(GangOpsChannel.Independent, attacker.PID.id, humanPlayer.PID.id);
+		float effectiveWarHeat = GetRelationshipAdjustedWarHeat(GangOpsChannel.Independent, attacker, humanPlayer, warHeat, out int relationshipScore, out float relationshipHostility, out float relationshipHeatBonus, out bool relationshipHostileBuff);
+		float revengeThreshold = Mathf.Max(1f, GetEffectiveWarHeatThresholdForRevenge(GangOpsChannel.Independent));
 		int cooldownKey = MakeIndependentHumanPressureDayKey(attacker.PID.id);
-		int cooldownDays = GetIndependentHumanPressureCooldownDays(settings);
+		int cooldownDays = GetWarHeatBasedFrontPressureCooldownDays(attacker.PID, humanPlayer.PID, out string cooldownPacing);
 		if (coordAttackDayStore != null
 			&& coordAttackDayStore.TryGetValue(cooldownKey, out int lastDay)
 			&& days - lastDay < cooldownDays)
@@ -34074,29 +35969,31 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			return false;
 		}
 
-		float warHeat = GetWarHeat(GangOpsChannel.Independent, attacker.PID.id, humanPlayer.PID.id);
-		float revengeThreshold = Mathf.Max(1f, GetEffectiveWarHeatThresholdForRevenge(GangOpsChannel.Independent));
 		bool directAggro = IsAggroWithoutTruceEitherWay(attacker, humanPlayer);
-		if (HasBlockingPendingHumanRetaliationFrontPressure(humanPlayer.PID, attacker.PID, out int pendingHumanFrontPressureCount, out int blockingHumanFrontPressureCount, out int staleIgnoredHumanFrontPressureCount))
+		if (HasBlockingPendingHumanRetaliationFrontPressure(humanPlayer.PID, attacker.PID, out int pendingHumanFrontPressureCount, out int usedActionSlots, out int actionCapacity, out int occupiedVehicles))
 		{
-			VerificationLog("GangOps.Independent.CoordAttack", $"Human pressure skipped attacker={attacker.PID.id} defender={humanPlayer.PID.id} reason=pending-human-front-pressure pending={pendingHumanFrontPressureCount} blocking={blockingHumanFrontPressureCount} staleIgnored={staleIgnoredHumanFrontPressureCount} blockDays={INDEPENDENT_HUMAN_FRONT_PRESSURE_PENDING_BLOCK_DAYS} cap={INDEPENDENT_HUMAN_FRONT_PRESSURE_PENDING_GLOBAL_CAP} source={sourceTag}");
+			VerificationLog("GangOps.Independent.CoordAttack", $"Human pressure skipped attacker={attacker.PID.id} defender={humanPlayer.PID.id} reason=retaliation-vehicle-capacity pendingHuman={pendingHumanFrontPressureCount} usedSlots={usedActionSlots} capacity={actionCapacity} occupiedVehicles={occupiedVehicles} normalDutyReserve={RETALIATION_NORMAL_DUTY_VEHICLE_RESERVE} source={sourceTag}");
 			return false;
 		}
-		if (staleIgnoredHumanFrontPressureCount > 0)
+		bool peacefulPersonality = IsAiPersonalityPeaceful(attacker);
+		bool isolationistPersonality = IsAiPersonalityIsolationist(attacker);
+		bool aggressivePersonality = IsAiPersonalityAggressive(attacker);
+		bool expansionistPersonality = IsAiPersonalityExpansionist(attacker);
+		float personalityHeatMultiplier = 1f;
+		personalityHeatMultiplier *= peacefulPersonality ? 1.35f : 1f;
+		personalityHeatMultiplier *= isolationistPersonality ? 1.2f : 1f;
+		personalityHeatMultiplier *= aggressivePersonality ? 0.85f : 1f;
+		personalityHeatMultiplier *= expansionistPersonality ? 0.8f : 1f;
+		float minimumPressureHeat = Mathf.Max(6f, Mathf.Max(INDEPENDENT_HUMAN_FRONT_PRESSURE_MIN_HEAT_FLOOR, revengeThreshold * INDEPENDENT_HUMAN_FRONT_PRESSURE_MIN_HEAT_RATIO) * personalityHeatMultiplier);
+		if (effectiveWarHeat < minimumPressureHeat)
 		{
-			VerificationLog("GangOps.Independent.CoordAttack", $"Human pressure continuing attacker={attacker.PID.id} defender={humanPlayer.PID.id} reason=stale-pending-front-ignored pending={pendingHumanFrontPressureCount} staleIgnored={staleIgnoredHumanFrontPressureCount} blockDays={INDEPENDENT_HUMAN_FRONT_PRESSURE_PENDING_BLOCK_DAYS} cap={INDEPENDENT_HUMAN_FRONT_PRESSURE_PENDING_GLOBAL_CAP} source={sourceTag}");
-		}
-		float minimumPressureHeat = Mathf.Max(INDEPENDENT_HUMAN_FRONT_PRESSURE_MIN_HEAT_FLOOR, revengeThreshold * INDEPENDENT_HUMAN_FRONT_PRESSURE_MIN_HEAT_RATIO);
-		if (!directAggro && warHeat < minimumPressureHeat)
-		{
-			VerificationLog("GangOps.Independent.CoordAttack", $"Human pressure skipped attacker={attacker.PID.id} defender={humanPlayer.PID.id} reason=heat-below-orderly-threshold heat={warHeat:0.0} minHeat={minimumPressureHeat:0.0} source={sourceTag}");
+			VerificationLog("GangOps.Independent.CoordAttack", $"Human pressure skipped attacker={attacker.PID.id} defender={humanPlayer.PID.id} reason=heat-below-orderly-threshold heat={warHeat:0.0} effectiveHeat={effectiveWarHeat:0.0} minHeat={minimumPressureHeat:0.0} relScore={relationshipScore} relHostility={relationshipHostility:0.00} relHeatBonus={relationshipHeatBonus:0.0} hostileBuff={relationshipHostileBuff} peaceful={peacefulPersonality} isolationist={isolationistPersonality} aggressive={aggressivePersonality} expansionist={expansionistPersonality} source={sourceTag}");
 			return false;
 		}
 		bool hasHumanFrontTarget = TryFindRetaliationFrontOrBackroomTarget(attacker, humanPlayer, null, out _, out _, out _)
 			|| TryFindRetaliationClosureTarget(attacker, humanPlayer, out _, out _);
 		if (!hasHumanFrontTarget
-			&& !directAggro
-			&& warHeat < Mathf.Max(4f, revengeThreshold * 0.25f))
+			&& effectiveWarHeat < Mathf.Max(4f, revengeThreshold * 0.25f))
 		{
 			return false;
 		}
@@ -34112,14 +36009,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		{
 			coordAttackDayStore[cooldownKey] = days;
 		}
-		VerificationLog("GangOps.Independent.CoordAttack", $"Human pressure scored attacker={attacker.PID.id} defender={humanPlayer.PID.id} action={actionSummary} crews={dispatchedCount} heat={warHeat:0.0} pressureHeat={pressureHeat:0.0} cooldownDays={cooldownDays} source={sourceTag}");
+		VerificationLog("GangOps.Independent.CoordAttack", $"Human pressure scored attacker={attacker.PID.id} defender={humanPlayer.PID.id} action={actionSummary} crews={dispatchedCount} heat={warHeat:0.0} effectiveHeat={effectiveWarHeat:0.0} pressureHeat={pressureHeat:0.0} relScore={relationshipScore} relHostility={relationshipHostility:0.00} relHeatBonus={relationshipHeatBonus:0.0} hostileBuff={relationshipHostileBuff} cooldownDays={cooldownDays} {cooldownPacing} source={sourceTag}");
 		return true;
-	}
-
-	private static int GetIndependentHumanPressureCooldownDays(PactOpsSettings settings)
-	{
-		int baseCooldown = Mathf.Clamp(settings?.CoordinatedAttackCooldownDays ?? 16, 1, 180);
-		return Mathf.Clamp(Mathf.RoundToInt(baseCooldown * 1.75f), 21, 42);
 	}
 
 	private static int MakeIndependentHumanPressureDayKey(int attackerPid)
@@ -34127,42 +36018,35 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		return -1000000 - Mathf.Abs(attackerPid);
 	}
 
-	private static bool HasBlockingPendingHumanRetaliationFrontPressure(PlayerID humanPid, PlayerID candidateAttackerPid, out int pendingCount, out int blockingCount, out int staleIgnoredCount)
+	private static bool HasBlockingPendingHumanRetaliationFrontPressure(PlayerID humanPid, PlayerID candidateAttackerPid, out int pendingCount, out int usedActionSlots, out int actionCapacity, out int occupiedVehicleCount)
 	{
 		pendingCount = 0;
-		blockingCount = 0;
-		staleIgnoredCount = 0;
-		if (!humanPid.IsHumanPlayer || _pendingRetaliationFrontTickersByBuilding.Count == 0)
+		usedActionSlots = 0;
+		actionCapacity = 0;
+		occupiedVehicleCount = 0;
+		PlayerInfo attacker = candidateAttackerPid.IsAnyPlayer ? G.FindPlayerById(candidateAttackerPid.id) : null;
+		if (!humanPid.IsHumanPlayer || !IsAliveGangPlayer(attacker))
 		{
-			return false;
+			return true;
 		}
+		actionCapacity = GetRetaliationActionCapacity(attacker, out occupiedVehicleCount, out usedActionSlots, out _);
 		try
 		{
 			foreach (PendingRetaliationFrontTicker entry in _pendingRetaliationFrontTickersByBuilding.Values)
 			{
 				if (entry == null
 					|| entry.DefenderPid != humanPid
-					|| IsPendingRetaliationForcedBusinessClosureMode(entry.Mode))
+					|| entry.DelayedPhysicalActionAbandoned)
 				{
 					continue;
 				}
 				pendingCount++;
-				int ageDays = Mathf.Max(0, G.GetNow().days - entry.QueuedDay);
-				bool sameAttacker = candidateAttackerPid.IsAnyPlayer && entry.AttackerPid == candidateAttackerPid;
-				if (sameAttacker || ageDays <= INDEPENDENT_HUMAN_FRONT_PRESSURE_PENDING_BLOCK_DAYS)
-				{
-					blockingCount++;
-				}
-				else
-				{
-					staleIgnoredCount++;
-				}
 			}
 		}
 		catch
 		{
 		}
-		return blockingCount > 0 || pendingCount >= INDEPENDENT_HUMAN_FRONT_PRESSURE_PENDING_GLOBAL_CAP;
+		return usedActionSlots >= actionCapacity;
 	}
 
 	internal static int TriggerCoordinatedAttacksNow(GangOpsChannel channel, string sourceTag, bool autoMode)
@@ -34231,32 +36115,33 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				continue;
 			}
 			float warHeat = GetWarHeat(channel, playerInfo.PID.id, playerInfo2.PID.id);
-			if (autoMode && warHeat < GetEffectiveWarHeatThresholdForCoordAttack(channel))
+			float effectiveWarHeat = GetRelationshipAdjustedWarHeat(channel, playerInfo, playerInfo2, warHeat, out int relationshipScore, out float relationshipHostility, out float relationshipHeatBonus, out bool relationshipHostileBuff);
+			if (autoMode && effectiveWarHeat < GetEffectiveWarHeatThresholdForCoordAttack(channel))
 			{
 				if (channel != GangOpsChannel.Independent || !ShouldBootstrapIndependentCoordAttack(playerInfo, playerInfo2, warHeat, out string bootstrapReason))
 				{
 					continue;
 				}
-				VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Bootstrap coordinated attack attacker={playerInfo.PID.id} defender={playerInfo2.PID.id} heat={warHeat:0.0} reason={bootstrapReason} source={sourceTag}");
+				VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Bootstrap coordinated attack attacker={playerInfo.PID.id} defender={playerInfo2.PID.id} heat={warHeat:0.0} effectiveHeat={effectiveWarHeat:0.0} relScore={relationshipScore} relHostility={relationshipHostility:0.00} relHeatBonus={relationshipHeatBonus:0.0} hostileBuff={relationshipHostileBuff} reason={bootstrapReason} source={sourceTag}");
 			}
-			if (autoMode && warHeat > 0f)
+			if (autoMode && effectiveWarHeat > 0f)
 			{
 				ActivateWarBetweenPlayers(playerInfo, playerInfo2);
 				if (TryExecuteRetaliationResponse(channel, playerInfo, playerInfo2, EntityID.INVALID, $"{GetGangOpsChannelTag(channel)}-{sourceTag}-coord-retaliation", warHeat, out int retaliationDispatched, out string retaliationAction))
 				{
 					coordAttackDayStore[item] = days;
 					num++;
-					VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Retaliation scored coordinated response attacker={playerInfo.PID.id} defender={playerInfo2.PID.id} action={retaliationAction} crews={retaliationDispatched} heat={warHeat:0.0} source={sourceTag}");
+					VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Retaliation scored coordinated response attacker={playerInfo.PID.id} defender={playerInfo2.PID.id} action={retaliationAction} crews={retaliationDispatched} heat={warHeat:0.0} effectiveHeat={effectiveWarHeat:0.0} relScore={relationshipScore} relHostility={relationshipHostility:0.00} relHeatBonus={relationshipHeatBonus:0.0} hostileBuff={relationshipHostileBuff} source={sourceTag}");
 					continue;
 				}
 				if (!string.IsNullOrEmpty(retaliationAction) && retaliationAction.StartsWith("approach:", StringComparison.Ordinal))
 				{
-					VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Retaliation approached coordinated response attacker={playerInfo.PID.id} defender={playerInfo2.PID.id} action={retaliationAction} heat={warHeat:0.0} source={sourceTag}");
+					VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Retaliation approached coordinated response attacker={playerInfo.PID.id} defender={playerInfo2.PID.id} action={retaliationAction} heat={warHeat:0.0} effectiveHeat={effectiveWarHeat:0.0} source={sourceTag}");
 					continue;
 				}
 				if (string.Equals(retaliationAction, "attack-unavailable", StringComparison.Ordinal))
 				{
-					VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Retaliation attack unavailable attacker={playerInfo.PID.id} defender={playerInfo2.PID.id} heat={warHeat:0.0} source={sourceTag}");
+					VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Retaliation attack unavailable attacker={playerInfo.PID.id} defender={playerInfo2.PID.id} heat={warHeat:0.0} effectiveHeat={effectiveWarHeat:0.0} source={sourceTag}");
 					continue;
 				}
 			}
@@ -34266,17 +36151,17 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 				{
 					coordAttackDayStore[item] = days;
 					num++;
-					VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Coordinated attack converted to closure attacker={playerInfo.PID.id} defender={playerInfo2.PID.id} action={closureAction} heat={warHeat:0.0} reason={coordGateReason} source={sourceTag}");
+					VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Coordinated attack converted to closure attacker={playerInfo.PID.id} defender={playerInfo2.PID.id} action={closureAction} heat={warHeat:0.0} effectiveHeat={effectiveWarHeat:0.0} reason={coordGateReason} source={sourceTag}");
 					continue;
 				}
 				if (TryRunRetaliationTerritoryPressure(channel, playerInfo, $"{GetGangOpsChannelTag(channel)}-{sourceTag}-coord-gated", out int territoryActions))
 				{
 					coordAttackDayStore[item] = days;
 					num++;
-					VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Coordinated attack converted to territory pressure attacker={playerInfo.PID.id} defender={playerInfo2.PID.id} actions={territoryActions} heat={warHeat:0.0} reason={coordGateReason} source={sourceTag}");
+					VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Coordinated attack converted to territory pressure attacker={playerInfo.PID.id} defender={playerInfo2.PID.id} actions={territoryActions} heat={warHeat:0.0} effectiveHeat={effectiveWarHeat:0.0} reason={coordGateReason} source={sourceTag}");
 					continue;
 				}
-				VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Skipped forced coordinated attack attacker={playerInfo.PID.id} defender={playerInfo2.PID.id} heat={warHeat:0.0} reason={coordGateReason} source={sourceTag}");
+				VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Skipped forced coordinated attack attacker={playerInfo.PID.id} defender={playerInfo2.PID.id} heat={warHeat:0.0} effectiveHeat={effectiveWarHeat:0.0} reason={coordGateReason} source={sourceTag}");
 				continue;
 			}
 			int num2 = Mathf.Clamp(playerInfo.crew.LivingCrewCount, 1, 12);
@@ -34297,7 +36182,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			}
 			coordAttackDayStore[item] = days;
 			num++;
-			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Forced coordinated attack: [PID_{playerInfo.PID.id}] -> [PID_{playerInfo2.PID.id}], requested={num3}, crews={dispatchedCount}, approachCrews={approachCount}, source={sourceTag}, heat={warHeat:0.0}");
+			VerificationLog($"GangOps.{GetGangOpsChannelTag(channel)}.CoordAttack", $"Forced coordinated attack: [PID_{playerInfo.PID.id}] -> [PID_{playerInfo2.PID.id}], requested={num3}, crews={dispatchedCount}, approachCrews={approachCount}, source={sourceTag}, heat={warHeat:0.0}, effectiveHeat={effectiveWarHeat:0.0}, relScore={relationshipScore}, relHostility={relationshipHostility:0.00}, relHeatBonus={relationshipHeatBonus:0.0}, hostileBuff={relationshipHostileBuff}");
 		}
 		if (num > 0)
 		{
@@ -34892,13 +36777,18 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 		int considered = 0;
 		foreach (WarHeatEntry entry in store.Values.ToList())
 		{
-			if (entry == null || entry.AttackerPid < 0 || entry.DefenderPid < 0 || entry.AttackerPid == entry.DefenderPid || entry.Heat < warmThreshold)
+			if (entry == null || entry.AttackerPid < 0 || entry.DefenderPid < 0 || entry.AttackerPid == entry.DefenderPid)
+			{
+				continue;
+			}
+			PlayerInfo attacker = G.FindPlayerById(entry.AttackerPid);
+			PlayerInfo defender = G.FindPlayerById(entry.DefenderPid);
+			float effectiveHeat = GetRelationshipAdjustedWarHeat(channel, attacker, defender, entry.Heat, out int relationshipScore, out float relationshipHostility, out float relationshipHeatBonus, out bool relationshipHostileBuff);
+			if (effectiveHeat < warmThreshold)
 			{
 				continue;
 			}
 			considered++;
-			PlayerInfo attacker = G.FindPlayerById(entry.AttackerPid);
-			PlayerInfo defender = G.FindPlayerById(entry.DefenderPid);
 			if (!IsGangEligibleForChannel(attacker, channel) || !IsGangOpsRetaliationTargetEligible(defender))
 			{
 				skipped++;
@@ -34933,7 +36823,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[38]
 			MarkCrewPickAggroDirty(attacker.PID, "warheat-aggro-reconcile");
 			MarkCrewPickAggroDirty(defender.PID, "warheat-aggro-reconcile");
 			restored++;
-			VerificationLog("GangOps.Aggro", $"aggro-restored channel={GetGangOpsChannelTag(channel)} attacker={entry.AttackerPid} defender={entry.DefenderPid} heat={entry.Heat:0.0} threshold={warmThreshold:0.0} attackerHadAggro={attackerAggro} defenderHadAggro={defenderAggro} lastUpdatedDay={entry.LastUpdatedDay} day={nowDay}");
+			VerificationLog("GangOps.Aggro", $"aggro-restored channel={GetGangOpsChannelTag(channel)} attacker={entry.AttackerPid} defender={entry.DefenderPid} heat={entry.Heat:0.0} effectiveHeat={effectiveHeat:0.0} threshold={warmThreshold:0.0} relScore={relationshipScore} relHostility={relationshipHostility:0.00} relHeatBonus={relationshipHeatBonus:0.0} hostileBuff={relationshipHostileBuff} attackerHadAggro={attackerAggro} defenderHadAggro={defenderAggro} lastUpdatedDay={entry.LastUpdatedDay} day={nowDay}");
 		}
 		if (restored > 0)
 		{

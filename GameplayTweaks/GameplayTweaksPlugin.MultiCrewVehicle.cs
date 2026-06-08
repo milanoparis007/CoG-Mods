@@ -3836,6 +3836,13 @@ namespace GameplayTweaks
 			{
 				return false;
 			}
+			if (!CanAiAssignCrewToVehicleAtSafehouse(player, currentAssignment.peepId, desiredVehicleId, out string assignmentReason))
+			{
+				GameplayTweaksPlugin.VerificationLog(
+					"VehicleNodeAuthority",
+					$"ai-vehicle-transfer-blocked gang={player.PID.id} peep={currentAssignment.peepId.id} from={currentAssignment.VehicleID.id} to={desiredVehicleId.id} reason={assignmentReason}");
+				return false;
+			}
 
 			Entity peep = currentAssignment.GetPeep();
 			bool aliveBefore = peep?.data?.person?.IsAlive ?? currentAssignment.IsNotDead;
@@ -3880,6 +3887,67 @@ namespace GameplayTweaks
 				Debug.LogWarning("[GameplayTweaks] TryAssignAiCrewToVehicleAtomic: " + ex.Message);
 				return false;
 			}
+		}
+
+		internal static bool CanAiAssignCrewToVehicleAtSafehouse(PlayerInfo player, EntityID peepId, EntityID desiredVehicleId, out string reason)
+		{
+			reason = "invalid";
+			if (player == null || player.crew == null || player.territory == null || !peepId.IsValid || !desiredVehicleId.IsValid)
+			{
+				return false;
+			}
+			if (player.PID.IsHumanPlayer || player.IsJustCop || player.IsCopOrFed || global::Game.Game.ctx?.IsInteractive != true)
+			{
+				reason = "exempt";
+				return true;
+			}
+
+			Node headquartersNode = player.territory.GetHeadquartersNode();
+			NodeID headquartersNodeId = headquartersNode?.id ?? NodeID.INVALID;
+			if (!headquartersNodeId.IsValid)
+			{
+				reason = "headquarters-node-unavailable";
+				return false;
+			}
+			if (!TryGetAuthoritativeVehicleNodeId(desiredVehicleId, out NodeID desiredVehicleNodeId, out string desiredVehicleSource)
+				|| desiredVehicleNodeId != headquartersNodeId)
+			{
+				reason = $"destination-not-at-safehouse:{desiredVehicleNodeId}:{desiredVehicleSource}";
+				return false;
+			}
+
+			CrewAssignment currentAssignment = player.crew.GetCrewForPeep(peepId);
+			if (!currentAssignment.IsValid)
+			{
+				reason = "crew-assignment-unavailable";
+				return false;
+			}
+			if (currentAssignment.IsInVehicle && currentAssignment.VehicleID.IsValid)
+			{
+				if (currentAssignment.VehicleID == desiredVehicleId)
+				{
+					reason = "already-assigned";
+					return true;
+				}
+				if (!TryGetAuthoritativeVehicleNodeId(currentAssignment.VehicleID, out NodeID currentVehicleNodeId, out string currentVehicleSource)
+					|| currentVehicleNodeId != headquartersNodeId)
+				{
+					reason = $"current-vehicle-not-at-safehouse:{currentVehicleNodeId}:{currentVehicleSource}";
+					return false;
+				}
+			}
+			else
+			{
+				NodeID peepNodeId = currentAssignment.GetPeep()?.data?.agent?.nid ?? NodeID.INVALID;
+				if (peepNodeId != headquartersNodeId)
+				{
+					reason = $"crew-not-at-safehouse:{peepNodeId}";
+					return false;
+				}
+			}
+
+			reason = $"safehouse:{headquartersNodeId}";
+			return true;
 		}
 
 		internal static void PushPendingPresenceSelectionScope()
@@ -6057,6 +6125,10 @@ namespace GameplayTweaks
 					activeState.GoalNodeID = activeState.ExpectedNodeID;
 					activeState.ResumeQueued = false;
 					_pendingVehicleTravelByVehicleId[(long)vehicleId.id] = activeState;
+					bool stopSynced = TrySyncVehicleOccupantsToNode(player.crew, vehicleId, activeState.ExpectedNodeID, "user-stop-route-preserved", syncVehicle: true);
+					_queuedArrivalCommittedNodeByVehicleId[(long)vehicleId.id] = activeState.ExpectedNodeID;
+					SetRecentFinalizedNode(vehicleId, activeState.ExpectedNodeID);
+					RecordObservedHumanVehicleReachedNode(vehicleId, activeState.ExpectedNodeID, "user-stop-route-preserved");
 					GameplayTweaksPlugin.ClearSelectedVehicleUiFinalNode(vehicleId, "user-stop-route-preserved");
 					Node stopStartNode = activeState.StartNodeID.FindNode();
 					Node stopExpectedNode = activeState.ExpectedNodeID.FindNode();
@@ -6078,7 +6150,7 @@ namespace GameplayTweaks
 					LogVehicleAuthority(
 						"user-stop-route-preserved",
 						$"{vehicleId.id}:{activeState.ExpectedNodeID}:{peepId.id}",
-						$"user-stop-route-preserved vehicle={vehicleId.id} peep={peepId.id} expectedNode={activeState.ExpectedNodeID} abandonedGoal={abandonedGoalNodeId} moves={movesRemaining} actions={actionsRemaining} reason=active-travel-finalize-pending",
+						$"user-stop-route-preserved vehicle={vehicleId.id} peep={peepId.id} expectedNode={activeState.ExpectedNodeID} abandonedGoal={abandonedGoalNodeId} moves={movesRemaining} actions={actionsRemaining} synced={stopSynced} reason=active-travel-finalize-pending",
 						dedupe: false);
 					return;
 				}

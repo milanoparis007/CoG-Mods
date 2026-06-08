@@ -1799,11 +1799,13 @@ public partial class GameplayTweaksPlugin
 			string source,
 			out int outpostCount,
 			out int protectedNodeCount,
-			out int supportResetCount)
+			out int supportResetCount,
+			out int advisorDeferredCount)
 		{
 			outpostCount = 0;
 			protectedNodeCount = 0;
 			supportResetCount = 0;
+			advisorDeferredCount = 0;
 			if (!IsGangEligibleForChannel(player, channel))
 			{
 				return 0;
@@ -1811,9 +1813,6 @@ public partial class GameplayTweaksPlugin
 
 			System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
 			long repairMs = 0L;
-			long recomputeMs = 0L;
-			long ownershipMs = 0L;
-			long refreshMs = 0L;
 			global::Game.Services.RespectSettings respectSettings = global::Game.Game.serv?.globals?.settings?.people?.social?.respect;
 			List<OutpostEntry> outposts = player?.outposts?.GetOutpostEntriesUnsafe();
 			if (respectSettings == null || outposts == null || outposts.Count == 0)
@@ -1824,7 +1823,6 @@ public partial class GameplayTweaksPlugin
 			outpostCount = outposts.Count;
 			HashSet<int> seenNodeIds = new HashSet<int>();
 			List<Node> targetNodes = new List<Node>();
-			int clampedRange = Mathf.Clamp(range, 1, 6);
 			for (int outpostIndex = 0; outpostIndex < outposts.Count; outpostIndex++)
 			{
 				OutpostEntry outpost = outposts[outpostIndex];
@@ -1836,8 +1834,7 @@ public partial class GameplayTweaksPlugin
 				MoneyStatus money = outpost.money;
 				if (money != null && (money.NeedsSupport || (money.months >= 2 && money.Delta <= Fixnum.ZERO)))
 				{
-					money.Reset();
-					supportResetCount++;
+					advisorDeferredCount++;
 				}
 
 				List<NodeEntry> targetNodeEntries = outpost.targetNodes;
@@ -1852,8 +1849,6 @@ public partial class GameplayTweaksPlugin
 					AddGangOpsAutoProtectNode(node, seenNodeIds, targetNodes);
 				}
 
-				Node outpostNode = targetNodeEntries.Count > 0 ? targetNodeEntries[0]?.nodeId.FindNode() : null;
-				AddGangOpsAutoProtectNodeRange(outpostNode, clampedRange, seenNodeIds, targetNodes);
 			}
 
 			protectedNodeCount = targetNodes.Count;
@@ -1866,47 +1861,12 @@ public partial class GameplayTweaksPlugin
 			TryRepairStackedGangOpsTerritoryRespect(targetNodes, source);
 			repairMs = stopwatch.ElapsedMilliseconds - phaseStartMs;
 
-			int recomputedNodeCount = 0;
-			bool shouldRecomputeRespect = supportResetCount > 0;
-			phaseStartMs = stopwatch.ElapsedMilliseconds;
-			if (shouldRecomputeRespect)
-			{
-				for (int i = 0; i < targetNodes.Count; i++)
-				{
-					HeatAndRespect.RecomputeRespectForAllPlayers(targetNodes[i], false);
-					recomputedNodeCount++;
-				}
-			}
-			recomputeMs = stopwatch.ElapsedMilliseconds - phaseStartMs;
-
-			HashSet<PlayerID> affectedPlayers = new HashSet<PlayerID>();
-			phaseStartMs = stopwatch.ElapsedMilliseconds;
-			int claimedNeutralNodes = ClaimNeutralNodesFromCurrentRespect(targetNodes, respectSettings, affectedPlayers, allowRelaxedUnownedClaim: true);
-			int ownershipSwitches = ReconcileTerritoryOwnershipFromCurrentRespectPass(targetNodes, respectSettings, affectedPlayers, allowRelaxedUnownedClaim: true);
-			ownershipMs = stopwatch.ElapsedMilliseconds - phaseStartMs;
-			int totalSwitches = claimedNeutralNodes + ownershipSwitches;
-			bool humanAffected = AffectedPlayersIncludeHuman(affectedPlayers);
-			bool deferredVisualRefresh = affectedPlayers.Count > 0;
-			if (affectedPlayers.Count > 0)
-			{
-				phaseStartMs = stopwatch.ElapsedMilliseconds;
-				RefreshLateForcedDirtyCashTerritoryState(
-					affectedPlayers,
-					source,
-					deferHumanVisualsIfNpcOnly: true,
-					deferHumanVisualsAlways: true,
-					lightweightDeferredVisuals: true,
-					deferredVisualDelayFrames: 12);
-				refreshMs = stopwatch.ElapsedMilliseconds - phaseStartMs;
-			}
-
 			stopwatch.Stop();
-			if (totalSwitches > 0 || supportResetCount > 0 || stopwatch.ElapsedMilliseconds >= 40L)
+			if (advisorDeferredCount > 0 || stopwatch.ElapsedMilliseconds >= 40L)
 			{
-				string visualMode = deferredVisualRefresh ? (humanAffected ? "deferred-human-light" : "deferred") : "none";
-				VerificationLog("Compat", $"gangops-auto-protect source={source} channel={GetGangOpsChannelTag(channel)} pid={player.PID.id} outposts={outpostCount} nodes={protectedNodeCount} neutralClaims={claimedNeutralNodes} ownershipSwitches={ownershipSwitches} supportResets={supportResetCount} range={clampedRange} recomputedNodes={recomputedNodeCount} visual={visualMode} ms={stopwatch.ElapsedMilliseconds} repairMs={repairMs} recomputeMs={recomputeMs} ownershipMs={ownershipMs} refreshMs={refreshMs}");
+				VerificationLog("Compat", $"gangops-auto-protect-advisor-preserved source={source} channel={GetGangOpsChannelTag(channel)} pid={player.PID.id} outposts={outpostCount} nodes={protectedNodeCount} advisorDeferred={advisorDeferredCount} supportResets=0 ownershipSwitches=0 requestedRange={range} ms={stopwatch.ElapsedMilliseconds} repairMs={repairMs}");
 			}
-			return totalSwitches;
+			return 0;
 		}
 
 		private static void AddGangOpsAutoProtectNode(Node node, HashSet<int> seenNodeIds, List<Node> targetNodes)

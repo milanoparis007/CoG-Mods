@@ -7826,7 +7826,11 @@ namespace GameplayTweaks
 				}
 
 				if (TryGetVisitTradeRestrictions(visit, out BizComponent.TradeRestrictions restrictions, out Entity lockedBiz)
-					&& restrictions.IsLocked)
+					&& restrictions.IsLocked
+					&& !(visit.pid.IsHumanPlayer
+						&& restrictions.IsTerritoryLocked
+						&& !restrictions.IsTiedHouseLocked
+						&& !restrictions.IsForcedClosed))
 				{
 					__result = EvaluateCanBuySell(__instance.playercan, canBuy: false, canSell: false);
 					_canBuySellAvailabilityLockedBlocks++;

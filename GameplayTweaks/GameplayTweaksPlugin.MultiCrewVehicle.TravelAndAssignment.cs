@@ -551,9 +551,42 @@ internal static class AssignCrewToVehiclePatch
 	[HarmonyPrefix]
 	internal static bool Prefix(PlayerCrew __instance, EntityID peepId, EntityID vehicleId)
 		{
-			// During map creation/setup there may be no human player; allow vanilla so assignment can complete.
+			if (__instance == null)
+				return false;
 			if (!__instance.PID.IsHumanPlayer)
-				return true;
+			{
+				try
+				{
+					// Setup and police assignment retain vanilla behavior. Interactive outfits may only
+					// add or switch vehicle occupants while both vehicles are back at headquarters.
+					PlayerInfo aiPlayer = __instance.PID.FindPlayer();
+					if (aiPlayer == null
+						|| aiPlayer.IsJustCop
+						|| aiPlayer.IsCopOrFed
+						|| global::Game.Game.ctx?.IsInteractive != true)
+					{
+						return true;
+					}
+					if (MultiCrewVehicleHelper.CanAiAssignCrewToVehicleAtSafehouse(aiPlayer, peepId, vehicleId, out string aiAssignmentReason))
+					{
+						GameplayTweaksPlugin.VerificationLog(
+							"VehicleNodeAuthority",
+							$"ai-vehicle-assignment-allowed gang={__instance.PID.id} peep={peepId.id} vehicle={vehicleId.id} reason={aiAssignmentReason}");
+						return true;
+					}
+					GameplayTweaksPlugin.VerificationLog(
+						"VehicleNodeAuthority",
+						$"ai-vehicle-assignment-blocked gang={__instance.PID.id} peep={peepId.id} vehicle={vehicleId.id} reason={aiAssignmentReason}");
+					return false;
+				}
+				catch (Exception ex)
+				{
+					Debug.LogWarning($"[GameplayTweaks] AssignCrewToVehicle AI guard failed; blocking assign. {ex.GetType().Name}: {ex.Message}");
+					return false;
+				}
+			}
+
+			// During map creation/setup there may be no human player; allow vanilla so assignment can complete.
 			if (G.GetHumanPlayer() == null)
 				return true;
 
@@ -2286,6 +2319,13 @@ internal static class AssignCrewToBuildingPatch
 		{
 			if (!assignment.IsValid || !assignment.peepId.IsValid || player.commands.PeepHasTask(assignment.peepId))
 			{
+				return;
+			}
+			if (GameplayTweaksPlugin.TurnUpdatePatch.IsCrewReservedForPendingAiHumanRobberyMeeting(player, assignment))
+			{
+				GameplayTweaksPlugin.VerificationLog(
+					"AIPlayerRobbery",
+					$"robbery-meeting-automation-skip robber={player.PID.id} peep={assignment.peepId.id} vehicle={(assignment.VehicleID.IsValid ? assignment.VehicleID.id : 0UL)} reason=pending-meeting-reserved result=skipped");
 				return;
 			}
 

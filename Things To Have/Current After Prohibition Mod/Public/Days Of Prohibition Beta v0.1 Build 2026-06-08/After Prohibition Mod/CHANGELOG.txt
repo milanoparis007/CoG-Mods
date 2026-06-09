@@ -2,70 +2,14 @@
 
 ## 2026-06-08 Beta v0.1 Build
 
-This beta public build packages the latest route, robbery, war-heat, front-closure, important-business, truce, and public-package fixes for testing. The old v1.3.98 public package is left intact; this is a separate beta build folder so older builds are not overwritten.
+This beta public build focuses on making enemy pressure feel more physical, readable, and route-based. The old v1.3.98 public package is left intact; this is a separate beta build folder so older builds are not overwritten.
 
-Major package updates:
-
-- Added the latest `GameplayTweaks.dll`.
-- Added the latest `CopKilling.dll`.
-- Added the BepInEx preloader patcher.
-- Added `AssemblyPatchManifest.json`.
-- Added the current `CoG_Data/StreamingAssets`.
-- Added custom asset support files.
-- Added the main menu image folder.
-- Added the beta `GUIDE.txt`.
-- Updated this `CHANGELOG.txt`.
-
-Robbery and meeting flow:
-
-- Enemy robberies now start from a meeting route.
-- Robbery prompts should feel less instant.
-- Robberies check the player's latest location.
-- Stale robbery routes are cleaned up.
-- Robberies stop retrying when the player is too far away.
-- Closed robbery prompts clear more safely.
-- Robberies add less war heat than before.
-
-Front closures and important businesses:
-
-- Enemies get more time to reach fronts.
-- Non-boss crew can close fronts.
-- Crews should not reuse the same closer as often.
-- Defended fronts show clearer results.
-- Aggressive enemies can still attack defended fronts.
-- Important businesses can close from war pressure.
-- Failed closures have better cooldowns.
-- Defended closures have better retry pacing.
-
-Enemy AI routing and vehicles:
-
-- Front routes should loop less.
-- Robbery routes should backtrack less.
-- Enemies should switch targets less mid-route.
-- Passenger swaps should be safer.
-- Normal AI defense routes still run.
-- Vehicle count matters more for enemy pressure.
-
-Combat, truce, and relations:
-
-- Low boss relations matter more.
-- Recent attacks can lead to more pressure.
-- Retaliation should avoid mid-turn surprise attacks.
-- Combat should wait for the correct route timing.
-- Truce checks are no longer suppressed.
-- Truce and robbery meetings need beta testing.
-
-Beta test focus:
-
-- Check if front closures finish.
-- Check if important-business closures finish.
-- Check if defended fronts show the right popup.
-- Check if combat waits for the enemy to arrive.
-- Check if robbery prompts start from believable meetings.
-- Check if robbery prompts stop when the player leaves.
-- Check if non-boss crew members get used.
-- Check if multiple enemy vehicles get used.
-- Keep this as beta until routes feel stable.
+- Enemy robberies now start from a meeting route instead of feeling like an instant background event.
+- Robbery prompts now clean up better when closed, interrupted, or when the player moves too far away.
+- Front closures should be more reliable, with enemies getting more time to reach the target before changing plans.
+- Non-boss enemy crew and multiple vehicles can now take part in front/business pressure more often.
+- Important businesses can now be targeted through war pressure, not only robbery outcomes.
+- Defended fronts, retaliation, truce checks, and combat timing were cleaned up so attacks should happen at more believable moments.
 
 ## 2026-06-05 Public Robbery And Log Cleanup Release
 

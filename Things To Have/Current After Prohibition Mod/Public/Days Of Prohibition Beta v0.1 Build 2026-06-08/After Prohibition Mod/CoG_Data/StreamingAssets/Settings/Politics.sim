@@ -1,0 +1,920 @@
+{ politics {
+	elections {
+		baseSamplingNumber		120
+		nominationStartMonth	6
+		campaignStartMonth		8
+		electionDayStartMonth	11
+		legislationStartMonth	1
+		legislationEndMonth		2
+
+		yearsBetweenElections	2
+		maxCandidatesInElection	3
+		numLocalPoliticians		12
+
+		influencePerPercentAtWin	{ value 0.25 mods [ { #type law-mod laws [ radio-ads-law print-ads-law ] enacted true } ] }
+	;  add modifier above for mayor election	
+		influencePer100InWarchestAtWin	0.05
+
+		donorInfluenceGain	2
+		sponsorInfluenceMultiplier	0.6
+		nominatorInfluenceMultiplier	1
+		supportPricePerVote			0.1
+		supportPricePerPositivePolTrait	125
+		supportPriceForTutorial	1200
+
+		voteCountChunkLow	5
+		voteCountChunkHigh	25
+
+		experienceStartupVoteFraction	{ value 0.3 }
+		ethnicityStartupVoteFraction	{ value 0.2 mods [ 
+											{ #type law-mod laws [ translated-election-materials ] enacted true } 
+											{ #type quest-mod id protected-disliked-three is completed delta 0.1 }
+										] }
+		businessStartupVoteFraction		{ value 0.15 }
+		traitStartupVoteFraction		{ value 0.1 }
+
+		minimumSponsorPrice		{ value 1500 mods [ 
+									{ #type law-mod laws [ dirty-money-crackdown ] enacted true }
+									{ #type same-ethnicity-at-node-mod multiplier -100 }
+									{ #type relationship-mod is atleast value 15 delta -500 } 
+									{ #type territory-size-mod pernode 10 skip 15 }
+									{ #type controlled-biz-mod perbiz 250 skip 2 }
+									{ #type is-node-in-territory expected #true multiplier 0.5 }
+									{ #type quest-mod id protected-disliked-three is completed delta -250 }
+									{ #type person-relative-of-human-mod expected #true multiplier 0.5 }
+								] }
+		minimumNominatePrice	{ value 750 mods [ 
+									{ #type law-mod laws [ dirty-money-crackdown ] enacted true }
+									{ #type same-ethnicity-at-node-mod multiplier -100 }
+									{ #type relationship-mod is atleast value 15 delta -500 } 
+									{ #type territory-size-mod pernode 10 skip 15 }
+									{ #type controlled-biz-mod perbiz 250 skip 2 }
+									{ #type is-node-in-territory expected #true multiplier 0.5 }
+									{ #type quest-mod id protected-disliked-three is completed delta -250 }
+									{ #type person-relative-of-human-mod expected #true multiplier 0.5 }
+								] }
+
+		warchestPerVote	{ value 2 }
+	}
+
+
+	npcCandidateAI {
+		largeActionPerformChance	{ value 0.2 mods [ { #type player-mod id 1 multiplier 0.5 }] }
+		largeActionCooldownWeekz	3 
+		smallActionPerformChance	{ value 0.5 mods [ { #type player-mod id 1 multiplier 0.5 }] }
+		smallActionCooldownWeekz	2 
+		
+		largeActionDefs [
+			{
+				id				npc-campaign-rally
+				locdesc	"politicalaction.npc.campaign-rally"
+				maxVoteEffect	8 ;; these are percentages! don't forget!
+				minVoteEffect	5
+				warchestCost	5000
+			}
+			{
+				id				npc-voter-intimidation
+				locdesc	"politicalaction.npc.voter-intimidation"
+				maxVoteEffect	15
+				minVoteEffect	10
+				warchestCost	10000
+				validArchetypes	[ corrupt populist ]
+				NPCOnly			#true
+			}
+			{
+				id				npc-donation-drive
+				locdesc "politicalaction.npc.donation-drive"
+				maxVoteEffect	0.5
+				minVoteEffect	0
+				warchestCost	-10000
+				NPCOnly			#true
+			}
+			{
+				id				npc-dono-scandal
+				locdesc	"politicalaction.npc.dono-scandal"
+				maxVoteEffect	-1
+				minVoteEffect	-8
+				warchestCost	0
+				validArchetypes	[ corrupt populist ruthless ]
+			}
+			{
+				id				npc-press-pickup
+				locdesc	"politicalaction.npc.press-pickup"
+				maxVoteEffect	10
+				minVoteEffect	5
+				warchestCost	0
+				validArchetypes [ orator populist ]
+				NPCOnly			#true
+			}
+			{
+				id				npc-family-problems
+				locdesc	"politicalaction.npc.family-problems"
+				maxVoteEffect	-4
+				minVoteEffect	-12
+				warchestCost	20000
+				validArchetypes [ corrupt insider ruthless ]
+				NPCOnly			#true
+			}
+			{
+				id				npc-major-gaffe
+				locdesc	"politicalaction.npc.major-gaffe"
+				minVoteEffect	-6
+				maxVoteEffect 	-10
+				warchestCost	0
+				validArchetypes [ abrasive ruthless ]
+				NPCOnly			#true
+			}
+			{
+				id				npc-major-endorsement
+				locdesc	"politicalaction.npc.major-endorsement"
+				minVoteEffect 	4
+				maxVoteEffect 	8
+				warchestCost	2500
+				validArchetypes [ insider ]
+				NPCOnly			#true
+			}
+			{
+				id				npc-ethics-hearing
+				locdesc	"politicalaction.npc.ethics-hearing"
+				minVoteEffect 	-2
+				maxVoteEffect 	-4
+				warchestCost	-20000
+				validArchetypes [ corrupt insider ruthless ]
+			}
+		]
+
+		smallActionDefs [
+			{
+				id				npc-business-dinner
+				locdesc	"politicalaction.npc.business-dinner"
+				maxVoteEffect	1.5
+				minVoteEffect	1
+				warchestCost	500
+			}
+			{
+				id				npc-donor-meeting
+				locdesc	"politicalaction.npc.donor-meeting"
+				maxVoteEffect	0.2
+				minVoteEffect	0
+				warchestCost	-1000
+				NPCOnly			#true
+			}
+			{
+				id				npc-good-press
+				locdesc	"politicalaction.npc.good-press"
+				maxVoteEffect	3
+				minVoteEffect	2
+				warchestCost	0
+				NPCOnly			#true
+			}
+			{
+				id				npc-flubbed-lines
+				locdesc	"politicalaction.npc.flubbed-lines"
+				minVoteEffect	-1
+				maxVoteEffect 	-2
+				warchestCost	500
+				validArchetypes [ abrasive seat-warmer ]
+			}
+			{
+				id				npc-coffee-shop
+				locdesc	"politicalaction.npc.coffee-shop"
+				minVoteEffect 1
+				maxVoteEffect 2
+				warchestCost -500
+				validArchetypes [ pushover populist ]
+			}
+		]
+
+		playerActionDefs [
+			{
+				id				player-bizowner-favor
+				reqs			[]
+				locdesc			"politicalaction.player.bizowner-favor"
+				maxVoteEffect	0.6
+				minVoteEffect	0.2
+				warchestCost	0
+				displayInConvo	#false
+			}
+			{
+				id				player-frontowner-favor
+				reqs			[]
+				locdesc			"politicalaction.player.frontowner-favor"
+				maxVoteEffect	3
+				minVoteEffect	1
+				warchestCost	0
+				displayInConvo	#false
+			}
+			{
+				id				player-campaign-rally
+				reqs			[ { #type can-pay-for-campaign-action actionId player-campaign-rally } ]
+				locdesc			"politicalaction.npc.campaign-rally"
+				locconvo		"convo.politician.politicalaction-campaign-rally"
+				maxVoteEffect	8
+				minVoteEffect	5
+				warchestCost	6000
+			}
+			{
+				id				player-major-speech
+				reqs			[ { #type can-pay-for-campaign-action actionId player-major-speech } 
+								  { #type check-npc-politician-archetype is any of [ orator populist ] }]
+				locdesc			"politicalaction.npc.major-speech"
+				locconvo		"convo.politician.politicalaction-player-major-speech"
+				maxVoteEffect	10
+				minVoteEffect	6
+				warchestCost	8000
+				validArchetypes [ orator populist ]
+				oncePerCandidate #true
+			}
+			{
+				id				player-dig-up-dirt
+				reqs			[ {  #type can-pay-for-campaign-action actionId player-dig-up-dirt } 
+								  { #type check-npc-politician-archetype is any of [ ruthless corrupt insider ] }]
+				locdesc			"politicalaction.player.dig-up-dirt"
+				locconvo		"convo.politician.politicalaction-dig-up-dirt"
+				maxVoteEffect	6
+				minVoteEffect	5
+				warchestCost	2000
+				validArchetypes [ ruthless corrupt insider ]
+			}
+			{
+				id				player-city-hall-stunt
+				reqs			[ { #type check-npc-is-incumbent-politician expected #true } ]
+				locdesc			"politicalaction.player.city-hall-stunt"
+				locconvo		"convo.politician.politicalaction-city-hall-stunt"
+				maxVoteEffect 	4
+				minVoteEffect 	3
+				warchestCost	0
+			}
+			{
+				id				player-city-hall-stunt-large
+				reqs			[ { #type check-npc-politician-archetype is any of [ insider ] }
+								  { #type check-npc-is-incumbent-politician expected #true } ]
+				locdesc			"politicalaction.player.city-hall-stunt-large"
+				locconvo		"convo.politician.politicalaction-city-hall-stunt-large"
+				maxVoteEffect 	8
+				minVoteEffect 	6
+				warchestCost	0
+				validArchetypes [ insider ]
+				oncePerCandidate #true
+			}
+			{
+				id				player-charity-dinner-ethnic
+				reqs			[ { #type check-player-same-ethnicity } ]
+				locdesc			"politicalaction.player.charity-dinner-ethnic"
+				locconvo		"convo.politician.politicalaction-charity-dinner-ethnic"
+				maxVoteEffect	8
+				minVoteEffect	6
+				warchestCost	0
+				oncePerCandidate #true
+			}
+			{
+				id 				player-charity-dinner
+				reqs 			[ { #type can-pay-for-campaign-action actionId player-charity-dinner } 
+								  { #type check-npc-politician-archetype is any of [ populist legalist orator ] }
+									;; quest active or complete
+								]
+				locdesc			"politicalaction.player.charity-dinner"
+				locconvo		"convo.politician.politicalaction-charity-dinner"
+				maxVoteEffect 	6
+				minVoteEffect	4
+				warchestCost 	1000
+				validArchetypes [ populist legalist orator ]
+				oncePerElection #true
+			}
+			{
+				id 				player-parade-float-ethnic
+				reqs			[ { #type check-player-same-ethnicity } ]
+				locdesc			"politicalaction.player.parade-float-ethnic"
+				locconvo		"convo.politician.politicalaction-parade-float-ethnic"
+				maxVoteEffect	6
+				minVoteEffect	4
+				warchestCost	0
+				oncePerCandidate #true
+			}
+			{
+				id 				player-parade-float
+				reqs			[ { #type check-player-same-ethnicity } 
+								  { #type check-npc-politician-archetype is any of [ pushover orator seat-warmer ] }]
+				locdesc			"politicalaction.player.parade-float"
+				locconvo		"convo.politician.politicalaction-parade-float"
+				maxVoteEffect	7
+				minVoteEffect	5
+				warchestCost	1200
+				validArchetypes [ pushover orator seat-warmer ]
+				oncePerElection #true
+			}
+			{
+				id				player-political-buttons
+				reqs			[ 
+									{ #type can-pay-for-campaign-action actionId player-political-buttons } 
+									{ #type check-player-skills has all of [ political-buttons-skill ] }
+								]
+				locdesc			"politicalaction.player.political-buttons" 
+				locconvo		"convo.politician.politicalaction-political-buttons"
+				maxVoteEffect	2
+				minVoteEffect	2
+				warchestCost	250
+			}
+			{
+				id				player-print-ads
+				reqs 			[
+									{ #type can-pay-for-campaign-action actionId player-print-ads } 
+									{ #type check-laws has any of [ print-ads-law ] active #true }
+								]
+				locdesc			"politicalaction.player.print-ads"
+				locconvo		"convo.politician.politicalaction-print-ads"
+				maxVoteEffect	6
+				minVoteEffect	4
+				warchestCost	1500
+				oncePerCandidate #true
+			}
+			{
+				id				player-radio-ads
+				reqs			[
+									{ #type can-pay-for-campaign-action actionId player-radio-ads }
+									{ #type check-laws has any of [ radio-ads-law ] active #true }
+								]
+				locdesc			"politicalaction.player.radio-ads"
+				locconvo		"convo.politician.politicalaction-radio-ads"
+				maxVoteEffect	10
+				minVoteEffect	7
+				warchestCost	2500
+				oncePerElection	#true
+			}
+		]
+	}
+
+	lawSettings {
+		lawDefs [
+			
+			;; starter laws
+			{
+				id		illegal-grapes
+				locname	"law.illegal-grapes.name"
+				locdesc	"law.illegal-grapes.desc"
+
+				visreqs [ { #type always-false } ]
+
+				revokePrice	12
+				buyPrice 14
+				onEnactCallback		EnactCallbackGrapeJuiceIllegal
+				onRevokeCallback	RevokeCallbackGrapeJuiceIllegal
+
+				mods [ { #type static-mod multiplier 1.2 } ]
+			}
+			{
+				id		illegal-apples
+				locname	"law.illegal-apples.name"
+				locdesc	"law.illegal-apples.desc"
+
+				visreqs [ { #type always-false } ]
+
+				revokePrice	12
+				buyPrice 14
+				onEnactCallback		EnactCallbackAppleJuiceIllegal
+				onRevokeCallback	RevokeCallbackAppleJuiceIllegal
+
+				mods [ { #type static-mod multiplier 1.2 } ]
+			}
+			{
+				id		illegal-malt
+				locname	"law.illegal-malt.name"
+				locdesc	"law.illegal-malt.desc"
+
+				visreqs [ { #type always-false } ]
+
+				revokePrice	12
+				buyPrice 14
+				onEnactCallback		EnactCallbackMaltIllegal
+				onRevokeCallback	RevokeCallbackMaltIllegal
+
+				mods [ { #type static-mod multiplier 1.2 } ]
+			}
+			{
+				id		legal-neutral-alcohol
+				locname "law.legal-neutral-alcohol.name"
+				locdesc "law.legal-neutral-alcohol.desc"
+
+				visreqs [ ]
+
+				buyPrice 16
+
+				onEnactCallback		EnactCallbackNeutralAlcoholLegal
+				onRevokeCallback	RevokeCallbackNeutralAlcoholLegal
+			}
+			{
+				id		construction-tax
+				locname	"law.construction-tax.name"
+				locdesc "law.construction-tax.desc"
+
+				visreqs [ { #type always-false } ]
+
+				revokePrice	12
+
+				mods [ { #type static-mod multiplier 1.2 } ]
+			}
+			{
+				id		container-tax
+				locname "law.container-tax.name"
+				locdesc "law.container-tax.desc"
+
+				visreqs [ { #type always-false } ]
+
+				revokePrice 12
+
+				mods [ { #type static-mod multiplier 1.2 } ]
+			}
+			{
+				id		ceramics-subsidy
+				locname "law.ceramics-subsidy.name"
+				locdesc "law.ceramics-subsidy.desc"
+
+				buyPrice 12
+				revokePrice 12
+
+				visreqs []
+				mods [ { #type static-mod multiplier 1.25 } ]
+			}
+			{
+				id		prohibition
+				locname "law.prohibition.name"
+				locdesc "law.prohibition.desc"
+
+				buyPrice 100000
+				revokePrice 100000
+
+				visreqs []
+				mods [ { #type static-mod multiplier 40 } ]
+			}
+			{
+				id		casino
+				locname "law.casino.name"
+				locdesc "law.casino.desc"
+
+				buyPrice 30
+				revokePrice 30
+				expireNextElectionYear #true
+
+				visreqs []
+				mods [ { #type static-mod delta 1 } ]
+			}
+			{
+				id		beerkeg
+				locname "law.beerkeg.name"
+				locdesc "law.beerkeg.desc"
+
+				buyPrice 25
+				revokePrice 25
+				expireNextElectionYear #true
+
+				visreqs [ ]
+				mods [ { #type static-mod multiplier 1.25 } ]
+			}
+			{
+				id		dealer
+				locname "law.dealer.name"
+				locdesc "law.dealer.desc"
+
+				buyPrice 45
+				revokePrice 45
+				expireNextElectionYear #true
+
+				visreqs [ { #type check-current-turn is moreorequalto value 180 } ]
+				mods [ { #type static-mod multiplier 1.25 } ]
+			}
+			{
+				id		glass-subsidy
+				locname "law.glass-subsidy.name"
+				locdesc "law.glass-subsidy.desc"
+
+				buyPrice 16
+				revokePrice 16
+
+				visreqs []
+				mods [ { #type static-mod multiplier 1.25 } ]
+			}
+			{
+				id		vehicle-tax
+				locname "law.vehicle-tax.name"
+				locdesc "law.vehicle-tax.desc"
+
+				revokePrice 15
+
+				visreqs [ { #type always-false } ]
+				mods [ { #type static-mod multiplier 1.25 } ]
+			}
+			{
+				id 		speed-limit
+				locname "law.speed-limit.name"
+				locdesc "law.speed-limit.desc"
+
+				revokePrice 10
+				visreqs [ { #type always-false } ]
+				mods [ { #type static-mod delta -2 } ]
+			}
+			{
+				id 		cop-funding
+				locname "law.cop-funding.name"
+				locdesc "law.cop-funding.desc"
+
+				revokePrice 14
+				visreqs [ { #type always-false } ]
+				mods [ { #type static-mod delta -15 } ]
+			}
+			{
+				id		internal-affairs
+				locname "law.internal-affairs.name"
+				locdesc "law.internal-affairs.desc"
+
+				revokePrice 18
+				visreqs [ { #type always-false } ]
+				mods [ { #type static-mod multiplier 1.25 } ]
+			}
+			{
+				id 	real-estate-taxes
+				locname "law.real-estate-taxes.name"
+				locdesc "law.real-estate-taxes.desc"
+
+				revokePrice 20
+				visreqs [ { #type always-false } ]
+				mods [ { #type static-mod multiplier 1.1 } ]
+			}
+
+			;; beyond starters
+
+			{
+				id truck-permits
+				locname "law.truck-permits.name"
+				locdesc "law.truck-permits.desc"
+
+				buyPrice 16
+				visreqs []
+				reqs [ { #type check-laws has none of [ vehicle-tax ] active #true } { #type check-player-skills has any of [ truck-garage-brick-wine truck-garage-cider truck-garage-home-brew truck-garage-moonshine truck-garage-apple-jack truck-garage-fruit-wine truck-garage-homemade-brandy ] } ]
+				mods [ { #type static-mod multiplier 0.9 } ]
+			}
+			{
+				id fruit-subsidies
+				locname "law.fruit-subsidies.name"
+				locdesc "law.fruit-subsidies.desc"
+
+				buyPrice 15
+				reqs [ { #type check-laws has none of [ illegal-grapes illegal-apples ] active #true } ]
+				mods [ { #type static-mod multiplier 0.5 } ]
+				expireNextElectionYear #true
+			}
+			{
+				id construction-subsidies
+				locname "law.construction-subsidies.name"
+				locdesc "law.construction-subsidies.desc"
+
+				buyPrice 15
+				reqs [ { #type check-laws has none of [ construction-tax ] active #true } ]
+				mods [ { #type static-mod multiplier 0.5 } ]
+				expireNextElectionYear #true
+			}
+			{
+				id transportation-contract
+				locname "law.transportation-contract.name"
+				locdesc "law.transportation-contract.desc"
+
+				buyPrice 12
+
+				visreqs [ { #type check-player-skills has any of [ fake-wine sparkling-cider fake-beer bathtub-ginworks ] } ]
+				expireNextElectionYear #true
+
+				;; no mods or callbacks - just unlocks a quest convo with a local politician
+			}
+			{
+				id abandoned-property-seizure
+				locname "law.abandoned-property-seizure.name"
+				locdesc "law.abandoned-property-seizure.desc"
+
+				buyPrice 16
+
+				visreqs [ { #type check-player-territory-size is atleast value 12 } ]
+				expireNextElectionYear #true
+
+				;; no mods or callbacks - just unlocks a quest convo with a local politician
+			}
+
+			{
+				id legal-brick-wine
+				locname "law.legal-brick-wine.name"
+				locdesc "law.legal-brick-wine.desc"
+
+				reqs [ { #type check-player-produced-total resource brick-wine is atleast value 500 } { #type check-laws has none of [ legal-cider legal-home-brew legal-moonshine ] active #true } ]
+				visreqs [ { #type check-player-skills has any of [ improved-homebooze-brick-wine ] } ]
+
+				buyPrice 30
+
+				onEnactCallback EnactCallbackBrickWineLegal
+				onRevokeCallback RevokeCallbackBrickWineLegal
+
+			}
+			{
+				id legal-cider
+				locname "law.legal-home-brew.name"
+				locdesc "law.legal-home-brew.desc"
+
+				reqs [ { #type check-player-produced-total resource cider is atleast value 450 } { #type check-laws has none of [ legal-brick-wine legal-home-brew legal-moonshine ] active #true } ]
+				visreqs [ { #type check-player-skills has any of [ improved-homebooze-cider ] } ]
+
+				buyPrice 30
+
+				onEnactCallback EnactCallbackCiderLegal
+				onRevokeCallback RevokeCallbackCiderLegal
+
+			}
+			{
+				id legal-home-brew
+				locname "law.legal-cider.name"
+				locdesc "law.legal-cider.desc"
+
+				reqs [ { #type check-player-produced-total resource home-brew is atleast value 600 } { #type check-laws has none of [ legal-brick-wine legal-cider legal-moonshine ] active #true } ]
+				visreqs [ { #type check-player-skills has any of [ improved-homebooze-home-brew ] } ]
+
+				buyPrice 30
+
+				onEnactCallback EnactCallbackHomeBrewLegal
+				onRevokeCallback RevokeCallbackHomeBrewLegal
+
+			}
+			{
+				id legal-moonshine
+				locname "law.legal-moonshine.name"
+				locdesc "law.legal-moonshine.desc"
+
+				reqs [ { #type check-player-produced-total resource moonshine is atleast value 400 } { #type check-laws has none of [ legal-brick-wine legal-cider legal-home-brew ] active #true } ]
+				visreqs [ { #type check-player-skills has any of [ improved-homebooze-moonshine ] } ]
+
+				buyPrice 30
+
+				onEnactCallback EnactCallbackMoonshineLegal
+				onRevokeCallback RevokeCallbackMoonshineLegal
+			}
+			{
+				id business-grants
+				locname "law.business-grants.name"
+				locdesc "law.business-grants.desc"
+
+				reqs [ { #type check-player-territory-size is atleast value 10 } { #type check-laws has none of [ real-estate-taxes ] active #true } ]
+				visreqs [ { #type check-player-territory-size is atleast value 5 } ]
+
+				buyPrice 36
+
+				mods [ { #type static-mod multiplier 0.6 } ]
+				expireNextElectionYear #true
+			}
+			{
+				id street-repairs
+				locname "law.street-repairs.name"
+				locdesc "law.street-repairs.desc"
+
+				buyPrice 12
+
+				reqs [ { #type check-laws has none of [ speed-limit ] active #true } ]
+				visreqs [ { #type check-player-crew-size is atleast value 3 } ]
+
+				mods [ { #type static-mod delta 2 } ]
+				expireNextElectionYear #true
+			}
+			{
+				id parking-contract
+				locname "law.parking-contract.name"
+				locdesc "law.parking-contract.desc"
+
+				buyPrice 20
+
+				reqs [ { #type check-laws has any of [ vehicle-tax ] active #false } ]
+				visreqs [ { #type check-player-skills has any of [ delivery-driving ] } ]
+
+				mods [ { #type static-mod delta 3 } ]
+				grants [ { #type add-cash amount 2500 at safehouse } ]
+				expireNextElectionYear #true
+			}
+			{
+				id police-commission-appointment
+				locname "law.police-commission-appointment.name"
+				locdesc "law.police-commission-appointment.desc"
+
+				buyPrice 18
+
+				reqs [ { #type check-laws has none of [ internal-affairs ] active #true } ]
+				visreqs []
+				expireNextElectionYear #true
+
+				mods [ { #type static-mod multiplier 0.8 } ]
+				;; will also unlock a convo with politician if controlled
+
+			}
+			{
+				id translated-election-materials
+				locname "law.translated-election-materials.name"
+				locdesc "law.translated-election-materials.desc"
+
+				buyPrice 15
+
+				mods [ { #type static-mod delta 0.1 } ]
+			}
+			{
+				id mayor-election
+				locname "law.mayor-election.name"
+				locdesc "law.mayor-election.desc"
+
+				buyPrice 80
+
+				visreqs [ { #type check-influence type highwater is atleast value 20 } ]
+				reqs [ { #type check-num-crew-in-role id politician is atleast value 1 }]
+				mods [ { #type static-mod delta 100 } ]
+			}
+			{
+				id print-ads-law
+				locname	"law.print-ads-law.name"
+				locdesc "law.print-ads-law.desc"
+
+				buyPrice 100
+				visreqs [ { #type always-false } ]
+				mods [ { #type static-mod delta 0.05 } ]
+			}
+			{
+				id radio-ads-law
+				locname "law.radio-ads-law.name"
+				locdesc "law.radio-ads-law.desc"
+
+				buyPrice 100
+				visreqs [ { #type always-false } ]
+				mods [ { #type static-mod delta 0.1 } ]
+
+			}
+
+			{
+				id	dirty-money-crackdown
+				locname	"law.dirty-money-crackdown.name"
+				locdesc	"law.dirty-money-crackdown.desc"
+
+				visreqs	[ { #type always-false } ]
+
+				revokePrice	12
+				mods [ { #type static-mod delta 1500 } ]
+				;; grants
+				;; onEnactCallback
+				;; onRevokeCallback
+			}
+			{
+				id biz-owner-stimulus
+				locname	"law.biz-owner-stimulus.name"
+				locdesc	"law.biz-owner-stimulus.desc"
+				
+				visreqs	[]
+
+				expireNextElectionYear #true
+				
+				buyPrice	8
+				;; mods
+				onEnactCallback	EnactCallbackBizOwnerStimulus
+				;; onRevokeCallback
+			}
+		]
+
+		starterPacks [
+			{
+				visreqs	[ { #type check-module-in-player-territory has none of [ source-grocery-starter ] scope player-only } ]
+				weight	1
+				numLawsToPick	6
+				possibleLaws	[ dirty-money-crackdown illegal-grapes illegal-malt legal-neutral-alcohol construction-tax container-tax ceramics-subsidy glass-subsidy vehicle-tax speed-limit cop-funding internal-affairs real-estate-taxes ]
+			}
+			{
+				visreqs	[ { #type check-module-in-player-territory has none of [ fruit-store-starter ] scope player-only } ]
+				weight	1
+				numLawsToPick	6
+				possibleLaws	[ dirty-money-crackdown illegal-apples illegal-malt legal-neutral-alcohol construction-tax container-tax ceramics-subsidy glass-subsidy vehicle-tax speed-limit cop-funding internal-affairs real-estate-taxes ]
+			}
+			{
+				visreqs	[ { #type check-module-in-player-territory has none of [ flavor-barber-starter ] scope player-only } ]
+				weight	1
+				numLawsToPick	6
+				possibleLaws	[ dirty-money-crackdown illegal-apples illegal-malt illegal-grapes construction-tax container-tax ceramics-subsidy glass-subsidy vehicle-tax speed-limit cop-funding internal-affairs real-estate-taxes ]
+			}
+			{
+				visreqs	[ { #type check-module-in-player-territory has none of [ source-forge-front-starter ] scope player-only } ]
+				weight	1
+				numLawsToPick	7
+				possibleLaws	[ dirty-money-crackdown illegal-apples legal-neutral-alcohol illegal-grapes construction-tax container-tax ceramics-subsidy glass-subsidy vehicle-tax speed-limit cop-funding internal-affairs real-estate-taxes ]
+			}
+			{
+				visreqs	[ { #type check-module-in-player-territory has none of [ source-deli-starter source-deli-starter-cincinnati source-deli-starter-new-york ] scope player-only } ]
+				weight	1
+				numLawsToPick	7
+				possibleLaws	[ dirty-money-crackdown illegal-apples legal-neutral-alcohol illegal-grapes construction-tax container-tax ceramics-subsidy glass-subsidy vehicle-tax speed-limit cop-funding internal-affairs real-estate-taxes ]
+			}
+			{
+				visreqs	[ { #type check-module-in-player-territory has none of [ source-cold-storage-small-starter source-cold-storage-small-starter-cincinnati source-cold-storage-small-starter-new-york ] scope player-only } ]
+				weight	1
+				numLawsToPick	7
+				possibleLaws	[ dirty-money-crackdown legal-neutral-alcohol illegal-grapes illegal-malt construction-tax container-tax ceramics-subsidy glass-subsidy vehicle-tax speed-limit cop-funding internal-affairs real-estate-taxes ]
+			}
+			{
+				visreqs	[ { #type check-module-in-player-territory has none of [ small-lumberyard-starter small-lumberyard-starter-cincinnati small-lumberyard-starter-new-york ] scope player-only } ]
+				weight	1
+				numLawsToPick	7
+				possibleLaws	[ dirty-money-crackdown legal-neutral-alcohol illegal-apples illegal-malt construction-tax container-tax ceramics-subsidy glass-subsidy vehicle-tax speed-limit cop-funding internal-affairs real-estate-taxes ]
+			}
+			{
+				visreqs	[ { #type check-module-in-player-territory has none of [ flavor-restaurant-starter ] scope player-only } ]
+				weight	1
+				numLawsToPick	7
+				possibleLaws	[ dirty-money-crackdown legal-neutral-alcohol illegal-grapes illegal-malt construction-tax container-tax ceramics-subsidy glass-subsidy vehicle-tax speed-limit cop-funding internal-affairs real-estate-taxes ]
+			}
+
+
+
+
+		]
+	}
+
+	archetypeDefs [
+		{
+			id	corrupt
+			favoredTraits	[ trait-confident trait-immoral trait-nervous trait-unkind ]
+			locname	"political-archetype.corrupt.name"
+			locdesc	"political-archetype.corrupt.desc"
+			influenceMultiplier	1.1
+			supportPriceMultiplier	0.8
+		}
+		{
+			id	populist
+			favoredTraits	[ trait-friendly trait-compassionate trait-hardworking trait-irreverant ]
+			locname	"political-archetype.populist.name"
+			locdesc	"political-archetype.populist.desc"
+			influenceMultiplier	0.7
+			supportPriceMultiplier	0.8
+		}
+		{
+			id	legalist
+			favoredTraits	[ trait-upright trait-religious trait-cautious ]
+			locname	"political-archetype.legalist.name"
+			locdesc	"political-archetype.legalist.desc"
+			influenceMultiplier	1.4
+			supportPriceMultiplier	1.5
+		}
+		{
+			id standard
+			favoredTraits	[]
+			locname	"political-archetype.standard.name"
+			locdesc	"political-archetype.standard.desc"
+			influenceMultiplier 1
+			supportPriceMultiplier	1
+		}
+		{
+			id ruthless
+			favoredTraits [ trait-cruel trait-aggressive trait-intelligent trait-vindictive ]
+			locname "political-archetype.ruthless.name"
+			locdesc "political-archetype.ruthless.desc"
+			influenceMultiplier 1.6
+			supportPriceMultiplier 1.6
+		}
+		{
+			id pushover
+			favoredTraits [ trait-slow trait-compassionate trait-forgiving ]
+			locname "political-archetype.pushover.name"
+			locdesc "political-archetype.pushover.desc"
+			influenceMultiplier 0.6
+			supportPriceMultiplier 0.8
+		}
+		{
+			id orator
+			favoredTraits [ trait-intelligent trait-talkative trait-attractive ]
+			locname "political-archetype.orator.name"
+			locdesc "political-archetype.orator.desc"
+			influenceMultiplier 0.9
+			supportPriceMultiplier 1.5
+		}
+		{
+			id abrasive
+			favoredTraits [ trait-ugly trait-clumsy trait-quiet ]
+			locname "political-archetype.abrasive.name"
+			locdesc "political-archetype.abrasive.desc"
+			influenceMultiplier 1.1
+			supportPriceMultiplier 1.4
+		}
+		{
+			id insider
+			favoredTraits [ trait-sociable trait-hardworking trait-sharpeyed ]
+			locname "political-archetype.insider.name"
+			locdesc "political-archetype.insider.desc"
+			influenceMultiplier 1.8
+			supportPriceMultiplier 1.8
+		}
+		{
+			id seat-warmer
+			favoredTraits [ trait-loner trait-lazy trait-mellow ]
+			locname "political-archetype.seat-warmer.name"
+			locdesc "political-archetype.seat-warmer.desc"
+			influenceMultiplier 0.9
+			supportPriceMultiplier 0.9
+		}
+
+	]
+
+
+}}

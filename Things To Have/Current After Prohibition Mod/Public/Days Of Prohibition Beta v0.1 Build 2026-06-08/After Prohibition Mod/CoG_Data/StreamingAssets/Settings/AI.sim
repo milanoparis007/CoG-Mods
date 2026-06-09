@@ -1,0 +1,1466 @@
+{
+npc {
+
+goons {
+	specialGoonChance { value 1.0 }
+	specialGoonReqs [
+		{
+			reqs [{ #type at-residence }]
+			config business-goon
+		}
+		{
+			reqs []
+			config business-goon
+		}
+	]
+
+	relToStartLoot { value 9.0 }
+	relToStopLoot { value -1.0 }
+
+	goonCosts {
+		buyout {
+			resource-goon { 
+				cash { value -1400 mods [ { #type skills-mod if [ starter-goons ] multiplier 0.8 } ] }
+			}
+			business-goon { 
+				cash { value -1600 mods [ { #type skills-mod if [ starter-goons ] multiplier 0.8 } ] }
+			}
+			obstacle-goon {
+				cash { value -2000 mods [ { #type skills-mod if [ starter-goons ] multiplier 0.8 } ] }
+			}
+		}
+		hitman {
+			cash { value -5000 }
+		}
+	}
+
+}
+
+scriptdefs [
+	
+	;; automation
+
+	{	id perform-automation-step
+		steps [
+			{ type goto argument target-building }
+			{ type automation-action argument target-building }
+		]
+	}
+
+	;; fallback
+
+	{	id heal
+		steps [
+			{ type goto argument my-safehouse }
+			{ type heal }
+	] }
+
+	{
+		id return-to-safehouse
+		steps [
+			{ type goto argument my-safehouse }
+	] }
+
+	;; personality stuff
+
+	{	id burgle
+		steps [
+			{ type goto argument target-building }
+			{ type social-action label vandalism argument target-peep }
+			{ type record-harassment argument target-building message vandalize }
+		] 
+	}
+
+	{	id extort
+		steps [ 
+			{ type goto argument target-building }
+			{ type social-action label extortion argument target-peep }
+			{ type record-harassment argument target-building message extort }
+		] 
+	}
+
+	{	id vandalize
+		steps [
+			{ type goto argument target-building }
+			{ type social-action label vandalism argument target-peep }
+			{ type record-harassment argument target-building message vandalize }
+		] 
+	}
+
+	;; attack advisor
+
+	{	id attack-target
+		steps [
+			{ type goto argument target-peep }
+			{ type attack argument target-peep }
+	] }
+
+	{	id attack-building
+		steps [
+			{ type goto argument target-building }
+			{ type attack-building message gangbiz argument target-building }
+	] }
+
+	{	id force-close-business
+		steps [
+			{ type goto argument target-building }
+			{ type attack-building message npcbiz argument target-building }
+	] }
+
+	{	id wait-at-rally-point 
+		steps [
+			{ type goto argument target-building }
+			{ type wait-turns argument target-number }
+	] }
+
+	;; territory advisor
+
+	{ 	id go-start-new-outpost 
+	  	steps [ 
+			{ type goto argument target-building }
+			{ type at-outpost message start }
+			{ type goto argument my-safehouse }
+			{ type end-turn }
+	] }
+
+	{ 	id go-visit-outpost 
+	  	steps [
+			{ type goto argument target-building }
+			{ type at-outpost message visit }
+			{ type end-turn }
+			{ type goto argument my-safehouse }
+			{ type end-turn }
+	] }
+
+	{ 	id go-steal-outpost 
+	  	steps [
+			{ type gen-message-callback	message will-steal}
+			{ type wait-turns argument target-number}
+			{ type goto argument target-building }
+			{ type at-outpost message maybe-steal }
+			{ type end-turn }
+			{ type goto argument my-safehouse }
+			{ type end-turn }
+	] }
+
+	{ 	id go-explore-node
+	  	steps [
+			{ type goto argument target-node }
+			{ type explore-node argument target-node }
+			{ type end-turn }
+	] }
+
+	{ 	id go-scope-building
+	  	steps [
+			{ type goto argument target-node }
+			{ type scope-out argument target-node }
+			{ type end-turn }
+			{ type goto argument my-safehouse }
+			{ type end-turn }
+	] }
+	
+	{	id protect-at-outpost 
+		steps [
+			{ type goto argument target-building }
+			{ type wait-turns argument target-number }
+	] }
+
+	;; business advisor
+
+	{	id setup-controlled
+		steps [
+			{ type goto argument target-building }
+			{ type trade-callback argument target-building message control }
+			{ type end-turn }
+	] }
+	{	id setup-controlled-gambling
+		steps [
+			{ type goto argument target-building }
+			{ type trade-callback argument target-building message control-gambling }
+			{ type end-turn }
+		]
+	}
+
+	{
+		id go-buy-item
+		steps [
+			{ type goto argument target-building }
+			{ type buy-item argument target-item }
+			{ type end-turn }
+			{ type goto argument my-safehouse }
+			{ type dropoff-item argument target-item }
+			{ type end-turn }
+		]
+	}
+	{
+		id go-sell-item
+		steps [
+			{ type goto argument my-safehouse }
+			{ type pickup-item argument target-item }
+			{ type end-turn }
+			{ type goto argument target-building }
+			{ type sell-item argument target-item }
+			{ type end-turn }
+		]
+	}
+
+	;; social advisor
+
+	{
+		id go-meeting-point
+		steps [
+			{ type goto argument target-node }
+			{ type wait-at-meeting-point argument target-node }
+			{ type end-turn }
+		]
+	}
+
+	;; safehouse advisor
+
+	{ 	id install-backroom-at-building
+	  	steps [ 
+			{ type goto argument target-building }
+			{ type install-backroom argument target-building }
+			{ type end-turn }
+	] }
+	{ 	id handle-cash-at-safehouse
+	  	steps [ 
+			{ type goto argument my-safehouse }
+			{ type refill-cash argument my-safehouse }
+			{ type end-turn }
+	] }
+
+
+	;; cops
+
+	{	id cop-visit-corner
+		steps [
+			{ type ensure-peep-has-car argument my-safehouse }
+			{ type end-turn }
+			{ type goto argument target-node }
+			{ type police-or-fed-visit argument target-number }
+		]
+	}
+	{	id cop-collect-vehicle
+		steps [
+			{ type ensure-peep-has-car argument my-safehouse }
+			{ type end-turn }
+			{ type goto argument target-node }
+			{ type police-collect-vehicle argument target-vehicle }
+		]
+	}
+	{	id cop-patrol-beat
+		steps [
+			{ type ensure-peep-has-car }
+			{ type get-police-beat }
+			{ type goto argument target-node }
+		]
+	}
+
+	{	id fed-investigate
+		steps [
+			{ type ensure-peep-has-car argument my-safehouse }
+			{ type end-turn }
+			{ type goto argument target-node }
+			{ type police-or-fed-visit argument target-number }
+			{ type goto argument my-safehouse }
+		]
+	}
+	{	id fed-sleep
+		steps [
+			{ type end-turn }
+		]
+	}
+	{	id fed-goto-precinct
+		steps [
+			{ type goto argument my-safehouse }
+		]
+	}
+
+	;; schemes
+
+	{
+		id move-to-target-and-wait
+		steps [
+			{ type goto argument target-building }
+			{ type wait-turns argument target-number }
+		]
+	}
+	{
+		id teleport-to-target
+		steps [
+			{ type teleport-to argument target-node }
+		]
+	}
+	{
+		id leave-board
+		steps [
+			{ type remove-from-board }
+		]
+	}
+	{
+		id return-board
+		steps [
+			{ type return-to-board }
+		]
+	}
+
+]
+
+fallback { rules [
+	;; behaviors for when there's nothing forcibly assigned to the peep
+
+	;; survive
+	{ conditions [ { #type health-level is lessthan thresh 1.0 } ] result heal }
+
+	;; do your job
+	{ conditions [ { #type has-task } ] }
+
+	;; nothing to do...
+	{ conditions [ { #type location-not-safehouse } ] result return-to-safehouse }
+
+	{ conditions [] } ;; the true failsafe
+] }
+
+;; the various 
+advisorConfigs {
+
+	;; crew
+
+	units-default-gangs {
+		#type units-advisor-config
+		cap { value 7 mods [ 
+			{ #type ai-personality-mod if [ crew-large ] delta 10 }
+			{ #type ai-personality-mod if [ crew-small ] delta 2 }
+			] }
+		growthChance { value 1.0 }
+		dayzToGrow { value 14 mods [
+			{ #type random-delta-mod from 14 to 42 }
+			{ #type ai-personality-mod if [ crew-large ] delta 0 }
+			{ #type ai-personality-mod if [ crew-small ] delta 42 }
+			] }
+	}
+
+	units-default-goons {
+		#type units-advisor-config
+		cap { value 3 }
+		growthChance { value 1.0 }
+		dayzToGrow { value 168 mods [
+			{ #type random-delta-mod from 28 to 112 }
+			] }
+	}
+
+	units-default-cops-or-feds {
+		#type units-advisor-config
+		cap { value 3 }
+		growthChance { value 1.0 }
+		dayzToGrow { value 30 mods [
+			{ #type random-delta-mod from 0 to 30 }
+			] }
+	}
+
+	;; social
+
+	social-default-cops-or-feds {
+		#type social-advisor-config
+
+	}
+
+	social-default-goons {
+		#type social-advisor-config
+
+		convoInitiative {
+			enabled #true
+			timeoutTurns 5
+		}
+
+		knownByNearbyOwners {
+			chancePerOwner 0.7
+			maxRadius 100
+		}
+
+		wrongFootChance { value 0 mods [
+			{ #type ai-personality-mod if [ aggressive ] delta 0.5 }
+		] }
+	}
+
+	social-default-gangs {
+		#type social-advisor-config
+
+		convoInitiative {
+			enabled #true
+			timeoutTurns 5
+		}
+
+		knownByNearbyOwners {
+			chancePerOwner 0.7
+			maxRadius 100
+		}
+
+		wrongFootChance { value 0 mods [
+			{ #type ai-personality-mod if [ aggressive ] delta 0.5 }
+		] }
+	}
+
+	;; safehouses
+
+
+	safehouse-default-gangs {
+		#type safehouse-advisor-config
+		carryCash { from 200 to 2500 }
+		stashCash { from 5000 to 20000 }
+
+		skills {
+			growth #true
+			checkDayzMin { value 270 }
+			checkDayzMax { value 900 }
+		}
+
+		donations { 
+			firstCheckDayz { value 365 mods [{ #type random-delta-mod from 0 to 30 }] }
+			cooldownDayz { value 168 }
+			probPerCheck { value 0.5 }
+		}
+	}
+
+	safehouse-default-goons {
+		#type safehouse-advisor-config
+		carryCash { from 250 to 1150 }
+		stashCash { from 1500 to 2200 }
+
+		skills { growth #false }
+	}
+
+	safehouse-default-cops {
+		#type safehouse-advisor-config
+		carryCash { from 0 to 20 }
+		stashCash { from 0 to 100 }
+
+		skills { growth #false }
+	}
+
+
+	;; territory
+
+	territory-default-gangs {
+		#type territory-advisor-config
+
+		scopeout { 
+			;; per turn if there are unscoped businesses and nothing else is going on
+			scopeProb { value 0.3 } 
+		}
+
+		exploration {
+			;; nodes here or closer will have nearProb
+			nearDistance { value 60 }
+			;; nodes here or further will have farProb
+			farDistance { value 100 mods [
+				{ #type ai-personality-mod if [ expansionist ] delta 100 }
+				{ #type ai-personality-mod if [ isolationist ] delta -50 }
+				]}
+			;; nodes beyond this will have prob = 0.0
+			maxDistance { value 150 mods [
+				{ #type ai-personality-mod if [ isolationist ] delta -75 }
+				]} 
+			;; per turn if nothing else is going on
+			nearProb { value 1 mods [
+				{ #type ai-personality-mod if [ expansionist ] delta 0.2 }
+				]}    
+			;; per turn if nothing else is going on
+			farProb { value 0.3 }
+		}
+
+		growth {
+			firstCheckDayz { value 14 mods [{ #type random-delta-mod from 0 to 14 }] }
+			cooldownDayz { value 14 mods [
+				{ #type random-delta-mod from 0 to 14 }
+				{ #type ai-personality-mod if [ expansionist ] multiplier 0.5 }
+				] }
+			;; how long to wait with expansion if an outpost was stolen
+			cooldownDayzAfterStolen { value 14 mods [
+				{ #type ai-personality-mod if [ expansionist ] multiplier 0.3 }
+				] }
+			;; base score per node: 1 point per interesting business here and around, if in territory
+			basePerNode { value 1 mods [ 
+				{ #type interesting-biz-at-node-mod perbiz 2 includeneighbors #true }
+				{ #type node-owner-mod is any-player multiplier 0 }
+				]}
+			;; extra bonus if dominant ethnicity matches the player
+			ethBonusPerNode { value 1 mods [
+				{ #type ai-personality-mod if [ eth-like ] delta -1 } ;; likes everybody, remove bonus
+				{ #type ai-personality-mod if [ eth-dislike ] delta 2 } ;; dislikes other eths, increase bonus
+				]}
+
+			;newBizBonusPerNode { value 0 }
+			;tradingBonusPerNode { value 0 }
+		}
+
+		stealingOutpost {
+			firstCheckDayz { value 14 mods [{ #type random-delta-mod from 0 to 14 }] }
+			cooldownDayzAfterCheck { value 14 mods [
+				{ #type random-delta-mod from 0 to 14 }
+				]}
+			cooldownDayzAfterStolen { value 14 mods [
+				{ #type random-delta-mod from 0 to 14 }
+				]}
+			;; relationship must be at or below this level to steal from randos (also see relbuff-social-stolen-outpost)
+			relThresholdNonEnemy { value 0 mods [
+				;; aggressive ai steals even when positive
+				{ #type ai-personality-mod if [ aggressive ] delta 5 }
+				]}
+			;; other player must have an outpost N distance away from one of ours
+			maxDistanceToOurOutpost { value 60 mods [
+				{ #type ai-personality-mod if [ expansionist ] multiplier 1.5 }
+				{ #type ai-personality-mod if [ isolationist ] multiplier 0.5 }
+				]}
+			;; probability against enemies (between 0 and 1)
+			stealingProbEnemy { value 1.0 mods [
+				{ #type ai-personality-mod if [ peaceful ] multiplier 0.5 }
+				] }
+			;; probability against randos (between 0 and 1)
+			stealingProbNonEnemy { value 1 mods [
+				{ #type ai-personality-mod if [ expansionist ] multiplier 1.5 }
+				{ #type ai-personality-mod if [ peaceful ] multiplier 0.3 }
+				] }
+		}
+
+		expansionTreaty { ;; WAITING FOR MOD HOOKUP
+				;; these depend on ai accepting a truce request
+				;; if request is ai -> human, these are computed on sender
+				;; otherwise they're computed on recipient
+				lengthDayz { value 180 }
+				acceptCost { value -1000 }
+				acceptTreatyProb { value 0.6 }
+				;; these depend on ai asking for truce
+				;; always computed on sender since these are ai->ai or ai->human
+				askForTreatyProb { value 0.6 }
+				
+				askCooldownDayz { value 84 }
+				expansionTreatyDistance	1 
+		}
+		outpostAgreementDef { ;; WAITING FOR MOD HOOKUPS
+
+			;; these depend on ai accepting a outpost agreement request
+			;; if request is ai -> human, these are computed on sender
+			;; otherwise they're computed on recipient
+			lengthDayz 	{ value 360 }
+			acceptCost { value -1200 }
+			acceptOutpostAgreementProb { value 0.5 }
+
+			;; these depend on ai asking for outpost agreement
+			;; always computed on sender since these are ai->ai or ai->human
+			askForOutpostAgreementProb { value 0.5 }
+			askForOutpostAgreementMinTerritorySize { value 4 }
+		}
+	}
+	territory-default-goons {
+		#type territory-advisor-config
+
+		scopeout { 
+			;; per turn if there are unscoped businesses and nothing else is going on
+			scopeProb { value 0.2 } 
+		}
+
+		exploration {
+			;; nodes here or closer will have nearProb
+			nearDistance { value 10 } 
+			;; nodes here or further will have farProb
+			farDistance { value 30 mods [
+				{ #type ai-personality-mod if [ expansionist ] delta 20 }
+				{ #type ai-personality-mod if [ isolationist ] delta -20 }
+				]} 
+			;; nodes beyond this will have prob = 0.0
+			maxDistance { value 50 mods [
+				{ #type ai-personality-mod if [ isolationist ] delta -30 }
+				]} 
+			;; per turn if nothing else is going on
+			nearProb { value 0.3 mods [
+				{ #type ai-personality-mod if [ expansionist ] delta 0.3 }
+				]}    
+			;; per turn if nothing else is going on
+			farProb { value 0.1 }
+		}
+
+		growth {
+			firstCheckDayz { value 1720 mods [{ #type random-delta-mod from 336 to 720 }] }
+			cooldownDayz { value 1720 mods [
+				{ #type random-delta-mod from 336 to 720 }
+				{ #type ai-personality-mod if [ expansionist ] multiplier 1 }
+				] }
+			;; how long to wait with expansion if an outpost was stolen
+			cooldownDayzAfterStolen { value 1720 mods [
+				{ #type ai-personality-mod if [ expansionist ] multiplier 1 }
+				] }
+			;; base score per node: 1 point per interesting business here and around, if in territory
+			basePerNode { value 0 mods [ 
+				{ #type interesting-biz-at-node-mod perbiz 1 includeneighbors #true }
+				{ #type node-owner-mod is any-player multiplier 0 }
+				]}
+			;; extra bonus if dominant ethnicity matches the player
+			ethBonusPerNode { value 0 mods [
+				{ #type ai-personality-mod if [ eth-like ] delta -1 } ;; likes everybody, remove bonus
+				{ #type ai-personality-mod if [ eth-dislike ] delta 2 } ;; dislikes other eths, increase bonus
+				]}
+
+			;newBizBonusPerNode { value 0 }
+			;tradingBonusPerNode { value 0 }
+		}
+
+		stealingOutpost {
+			firstCheckDayz { value 1720 mods [{ #type random-delta-mod from 336 to 720 }] }
+			cooldownDayzAfterCheck { value 336 mods [
+				{ #type random-delta-mod from 168 to 336 }
+				]}
+			cooldownDayzAfterStolen { value 720 mods [
+				{ #type random-delta-mod from 336 to 720 }
+				]}
+			;; relationship must be at or below this level to steal from randos (also see relbuff-social-stolen-outpost)
+			relThresholdNonEnemy { value -5 mods [
+				;; aggressive ai steals even when positive
+				{ #type ai-personality-mod if [ aggressive ] delta 5 }
+				]}
+			;; other player must have an outpost N distance away from one of ours
+			maxDistanceToOurOutpost { value 40 mods [
+				{ #type ai-personality-mod if [ expansionist ] multiplier 1.5 } 
+				{ #type ai-personality-mod if [ isolationist ] multiplier 0.7 } 
+				]}
+			;; probability against enemies (between 0 and 1)
+			stealingProbEnemy { value 0.5 mods [
+				{ #type ai-personality-mod if [ peaceful ] multiplier 0.5 }
+				] }
+			;; probability against randos (between 0 and 1)
+			stealingProbNonEnemy { value 0.3 mods [
+				{ #type ai-personality-mod if [ expansionist ] multiplier 1.5 }
+				{ #type ai-personality-mod if [ peaceful ] multiplier 0 }
+				] }
+		}
+
+		expansionTreaty { ;; WAITING FOR MOD HOOKUP
+				;; these depend on ai accepting a truce request
+				;; if request is ai -> human, these are computed on sender
+				;; otherwise they're computed on recipient
+				lengthDayz { value 720 }
+				acceptCost { value -500 }
+				acceptTreatyProb { value 0.6 }
+				;; these depend on ai asking for truce
+				;; always computed on sender since these are ai->ai or ai->human
+				askForTreatyProb { value 0.6 }
+				
+				askCooldownDayz { value 84 }
+				expansionTreatyDistance	1 
+		}
+		outpostAgreementDef { ;; WAITING FOR MOD HOOKUPS
+
+			;; these depend on ai accepting a outpost agreement request
+			;; if request is ai -> human, these are computed on sender
+			;; otherwise they're computed on recipient
+			lengthDayz 	{ value 720 }
+			acceptCost { value -600 }
+			acceptOutpostAgreementProb { value 0.65 }
+
+			;; these depend on ai asking for outpost agreement
+			;; always computed on sender since these are ai->ai or ai->human
+			askForOutpostAgreementProb { value 0.6 }
+			askForOutpostAgreementMinTerritorySize { value 4 }
+		}
+	}
+	;; business
+
+	business-default-gangs {
+		#type business-advisor-config
+
+		buildings {
+			firstCheckDayz { value 63 mods [{ #type random-delta-mod from 0 to 63 }] }
+			cooldownDayz { value 63 mods [{ #type random-delta-mod from 0 to 63 }] }
+
+			setupProbPerCheck { value 1 }
+			nodesPerControlledBuilding { value 0.5 mods [
+				{ #type ai-personality-mod if [ biz-fast ] multiplier 2 }
+				] }
+			;; maxBuildings { value 30 }
+		}
+
+		casinos {
+			firstCheckDayz	{ value 56 mods [{ #type random-delta-mod from 0 to 56 }]}
+			cooldownDayz	{ value 56 mods [{ #type random-delta-mod from 0 to 28 }] }
+
+			setupProbPerCheck	{ value 0.3 }
+		}
+
+		trades {
+			firstCheckDayz { value 14 mods [
+				{ #type random-delta-mod from 0 to 14 }
+				{ #type ai-personality-mod if [ biz-fast ] multiplier 1.5 }
+				{ #type ai-personality-mod if [ biz-slow ] multiplier 0.8 }
+				] }
+
+			cooldownDayz { value 14 mods [
+				{ #type random-delta-mod from 0 to 10 }
+				{ #type ai-personality-mod if [ biz-fast ] multiplier 1.5 }
+				{ #type ai-personality-mod if [ biz-slow ] multiplier 0.8 }
+				] }
+
+			probPerCheck { value 1 }
+
+			tradeEfficiency { value 0.9 mods [
+				{ #type ai-personality-mod if [ biz-slow ] delta -0.2 }
+				{ #type ai-personality-mod if [ biz-fast ] delta 0.1 }
+				] }
+
+			maxDistanceFromBuilding { value 100 mods [
+				{ #type ai-personality-mod if [ expansionist ] multiplier 1.5 }
+				{ #type ai-personality-mod if [ isolationist ] multiplier 0.5 }
+				] }
+
+			tiedHouseProbability { value 1.0 }
+			tiedHouseCooldownDayz { value 21 }
+			reqsPerTurn { value 5 mods [
+				{ #type ai-personality-mod if [biz-fast] delta 2 }
+				{ #type ai-personality-mod if [biz-slow] delta -1 }
+			] }
+		}
+	}
+
+	business-default-goons {
+		#type business-advisor-config
+
+		buildings {
+			firstCheckDayz { value 2400 mods [{ #type random-delta-mod from 600 to 1200 }] }
+			cooldownDayz { value 82 mods [{ #type random-delta-mod from 0 to 30 }] }
+
+			setupProbPerCheck { value 0.2 }
+			nodesPerControlledBuilding { value 1 mods [
+				{ #type ai-personality-mod if [ biz-fast ] multiplier 0.75 }
+				] }
+			maxBuildings { value 1 }
+		}
+
+		casinos {
+			firstCheckDayz	{ value 1200 mods [{ #type random-delta-mod from 600 to 1200 }]}
+			cooldownDayz	{ value 84 mods [{ #type random-delta-mod from 0 to 30 }] }
+
+			setupProbPerCheck	{ value 0.15 }
+		}
+
+		trades {
+			firstCheckDayz { value 84 mods [
+				{ #type random-delta-mod from 0 to 15 }
+				{ #type ai-personality-mod if [ biz-fast ] multiplier 0.8 }
+				{ #type ai-personality-mod if [ biz-slow ] multiplier 1.5 }
+				] }
+
+			cooldownDayz { value 28 mods [
+				{ #type random-delta-mod from 0 to 10 }
+				{ #type ai-personality-mod if [ biz-fast ] multiplier 0.8 }
+				{ #type ai-personality-mod if [ biz-slow ] multiplier 1.5 }
+				] }
+
+			probPerCheck { value 0.9 }
+
+			tradeEfficiency { value 0.75 mods [
+				{ #type ai-personality-mod if [ biz-slow ] delta -0.25 }
+				{ #type ai-personality-mod if [ biz-fast ] delta 0.25 }
+				] }
+
+			maxDistanceFromBuilding { value 70 mods [
+				{ #type ai-personality-mod if [ expansionist ] multiplier 1.5 }
+				{ #type ai-personality-mod if [ isolationist ] multiplier 0.5 }
+				] }
+
+			tiedHouseProbability { value 1.0 }
+			tiedHouseCooldownDayz { value 21 }
+			reqsPerTurn { value 3 mods [
+				{ #type ai-personality-mod if [biz-fast] delta 1 }
+				{ #type ai-personality-mod if [biz-slow] delta -1 }
+			] }
+		}
+	}
+
+	;; precinct
+	precinct-default {
+		#type precinct-advisor-config
+
+
+		arrestPhotos [ { sprite "Police Van" } { sprite "Postcard" lockey "postcard.arrested" } ]
+	}
+
+	;; feds
+	feds-default {
+		#type feds-advisor-config
+
+		investigation {
+			durationDayz { value 7 }
+		}
+		
+		arrestPhotos [ { sprite "Police Van" } { sprite "Postcard" lockey "postcard.arrested" } ]
+	}
+
+	;; goon idle behaviors
+	goon-idle-default {
+		#type goon-advisor-config
+
+		targetRange 80.0  ;; how far will someone search for a target?
+		friendlyAt { value 5 } ;; skip the malevolent behaviors if rel >= friendlyat
+		nonHostileDayz { value 365 } ;; don't harass businesses inside player territory during first X turns
+
+		;; should keep these weights' sum <= 1 
+		scriptWeights [
+			{ id burgle		weight 0.1 }
+			{ id vandalize	weight 0.1 }
+			{ id extort		weight 0.1 }
+		]
+	}
+
+	goon-idle-hatchetman {
+		#type goon-advisor-config
+
+		targetRange 80.0  ;; how far will someone search for a target?
+		friendlyAt { value 5 } ;; skip the malevolent behaviors if rel >= friendlyat
+		nonHostileDayz { value 365 } ;; don't harass businesses inside player territory during first X turns
+
+		;; should keep these weights' sum <= 1 
+		scriptWeights [
+			{ id burgle		weight 0.05 }
+			{ id vandalize	weight 0.3 }
+			{ id extort		weight 0 }
+		]
+	}
+
+	goon-idle-thief {
+		#type goon-advisor-config
+
+		targetRange 80.0  ;; how far will someone search for a target?
+		friendlyAt { value 5 } ;; skip the malevolent behaviors if rel >= friendlyat
+		nonHostileDayz { value 365 } ;; don't harass businesses inside player territory during first X turns
+
+		;; should keep these weights' sum <= 1 
+		scriptWeights [
+			{ id burgle		weight 0.5 } 
+			{ id vandalize	weight 0 }
+			{ id extort 	weight 0 }
+		]
+	}
+
+	;; combat
+
+	combat-default-goons {
+		#type combat-advisor-config
+
+		aggro {
+			hitmanRelDelta	-50
+			compliantRelDelta 30 ;; enough to go over the stop value most of the time
+
+			start { value -5 mods [
+				;; peaceful ai won't go aggro so easily
+				{ #type ai-personality-mod if [ peaceful ] delta -5 }
+				;; aggressive ai starts out with hair-trigger aggro
+				{ #type ai-personality-mod if [ aggressive ] delta 9 }
+				]}
+			stop { value 0 mods [
+				;; aggressive ai only stops aggro once actually positive
+				{ #type ai-personality-mod if [ peaceful ] delta -5 }
+				{ #type ai-personality-mod if [ aggressive ] delta 1 }
+				]}
+
+			photos [ { sprite "Fish In Newspaper" } { sprite "Postcard" lockey "postcard.gangaggro" } ]
+
+			truce {
+				;; not dependent on sender or recipient
+				reqAggroDayz { value 14 }
+
+				;; these depend on ai accepting a truce request
+				;; if request is ai -> human, these are computed on sender
+				;; otherwise they're computed on recipient
+				lengthDayz { value 720 }
+				acceptCost { value -500 mods [
+					{ #type gang-aggro-level-mod perpoint 10 } ;; -50 rel => -$1000 extra
+					{ #type ai-personality-mod if [ peaceful ] multiplier 0.5 }
+					{ #type ai-personality-mod if [ aggressive ] multiplier 2 }
+				]}
+				acceptTruceProb { value 0.6 mods [
+					{ #type gang-aggro-time-mod permonth 0.1 }
+					{ #type ai-personality-mod if [ aggressive ] multiplier 0.5 }
+				]}
+				;; these depend on ai asking for truce
+				;; always computed on sender since these are ai->ai or ai->human
+				askForTruceProb { value 0.45 mods [
+					{ #type gang-aggro-time-mod permonth 0.05 }
+					{ #type ai-personality-mod if [ peaceful ] multiplier 1.5 }
+				]}
+				askForTruceMaxCrewDelta { value 0 } ;; crew difference must be at most zero (we're smaller or equal)
+				askCooldownDayz { value 21 }
+			}
+		}
+		jointWarDef { ;; WAITING FOR MOD HOOKUPS
+			reqAggroDayz { value 84 }
+
+			;; these depend on ai accepting a joint war request
+			;; if request is ai -> human, these are computed on sender
+			;; otherwise they're computed on recipient
+			lengthDayz { value 180 }
+			lockOutRel { value 20 }
+
+			acceptCost { value -1500 }
+			acceptJointWarProb { value 0.7 }
+			;; these depend on ai asking for joint war
+			;; always computed on sender since these are ai->ai or ai->human
+			askForJointWarProb { value 0.02 }
+			askForJointWarCrewMinimum { value 2 }
+			askCooldownDayz { value 180 }
+		}
+	}
+
+	combat-default-gangs {
+		#type combat-advisor-config
+
+		aggro {
+			compliantRelDelta 10 ;; enough to go over the stop value most of the time
+
+			start { value -5 mods [
+				;; peaceful ai won't go aggro so easily
+				{ #type ai-personality-mod if [ peaceful ] delta -4 }
+				;; aggressive ai starts out with hair-trigger aggro
+				{ #type ai-personality-mod if [ aggressive ] delta 0 }
+				]}
+			stop { value 0 mods [
+				;; aggressive ai only stops aggro once actually positive
+				{ #type ai-personality-mod if [ peaceful ] delta -5 }
+				{ #type ai-personality-mod if [ aggressive ] delta 5 }
+				]}
+
+			photos [ { sprite "Fish In Newspaper" } { sprite "Postcard" lockey "postcard.gangaggro" } ]
+
+			truce {
+				;; not dependent on sender or recipient
+				reqAggroDayz { value 14 }
+
+				;; these depend on ai accepting a truce request
+				;; if request is ai -> human, these are computed on sender
+				;; otherwise they're computed on recipient
+				lengthDayz { value 360 }
+				acceptCost { value -1000 mods [
+					{ #type gang-aggro-level-mod perpoint 20 } ;; -50 rel => -$1000 extra
+					{ #type ai-personality-mod if [ peaceful ] multiplier 0.5 }
+					{ #type ai-personality-mod if [ aggressive ] multiplier 2 }
+				]}
+				acceptTruceProb { value 0.5 mods [
+					{ #type gang-aggro-time-mod permonth 0.3 }
+					{ #type ai-personality-mod if [ aggressive ] multiplier 0.5 }
+				]}
+				;; these depend on ai asking for truce
+				;; always computed on sender since these are ai->ai or ai->human
+				askForTruceProb { value 0.1 mods [
+					{ #type gang-aggro-time-mod permonth 0.3 }
+					{ #type ai-personality-mod if [ aggressive ] multiplier 0.5 }
+					{ #type ai-personality-mod if [ peaceful ] multiplier 1.5 }
+				]}
+				askForTruceMaxCrewDelta { value 0.5 } ;; crew difference must be at most zero (we're smaller or equal)
+				askCooldownDayz { value 21 }
+			}
+		}
+		jointWarDef { ;; WAITING FOR MOD HOOKUPS
+			reqAggroDayz { value 42 }
+
+			;; these depend on ai accepting a joint war request
+			;; if request is ai -> human, these are computed on sender
+			;; otherwise they're computed on recipient
+			lengthDayz { value 90 }
+			lockOutRel { value 20 }
+
+			acceptCost { value -3500 }
+			acceptJointWarProb { value 0.7 }
+			;; these depend on ai asking for joint war
+			;; always computed on sender since these are ai->ai or ai->human
+			askForJointWarProb { value 0.02 }
+			askForJointWarCrewMinimum { value 3 }
+			askCooldownDayz { value 180 }
+		}
+
+	}
+
+	combat-default-cops {
+		#type combat-advisor-config
+
+		aggro {
+			compliantRelDelta 30 ;; enough to go over the stop value most of the time
+
+			start { value -60 mods [
+				;; peaceful ai won't go aggro so easily
+				{ #type ai-personality-mod if [ peaceful ] delta -15 }
+				;; aggressive ai starts out with hair-trigger aggro
+				{ #type ai-personality-mod if [ aggressive ] delta 0 }
+				]}
+			stop { value 0 mods [
+				;; aggressive ai only stops aggro once actually positive
+				{ #type ai-personality-mod if [ peaceful ] delta -5 }
+				{ #type ai-personality-mod if [ aggressive ] delta 1 }
+				]}
+
+			photos [ { sprite "Fish In Newspaper" } { sprite "Postcard" lockey "postcard.gangaggro" } ]
+
+			truce {
+				;; not dependent on sender or recipient
+				reqAggroDayz { value 84 }
+
+				;; these depend on ai accepting a truce request
+				;; if request is ai -> human, these are computed on sender
+				;; otherwise they're computed on recipient
+				lengthDayz { value 1440 }
+				acceptCost { value 15000 mods [
+					{ #type gang-aggro-level-mod perpoint 50 } ;; -50 rel => -$1000 extra
+					{ #type ai-personality-mod if [ peaceful ] multiplier 0.5 }
+					{ #type ai-personality-mod if [ aggressive ] multiplier 2 }
+				]}
+				acceptTruceProb { value 0  mods [
+					{ #type gang-aggro-time-mod permonth 0.1 }
+					{ #type ai-personality-mod if [ aggressive ] multiplier 0.5 }
+				]}
+				;; these depend on ai asking for truce
+				;; always computed on sender since these are ai->ai or ai->human
+				askForTruceProb { value 0.7 }
+				askForTruceMaxCrewDelta { value 0 } ;; crew difference must be at most zero (we're smaller or equal)
+				askCooldownDayz { value 84 }
+			}
+		}
+		jointWarDef { ;; WAITING FOR MOD HOOKUPS
+			reqAggroDayz { value 84 }
+
+			;; these depend on ai accepting a joint war request
+			;; if request is ai -> human, these are computed on sender
+			;; otherwise they're computed on recipient
+			lengthDayz { value 180 }
+			lockOutRel { value 20 }
+
+			acceptCost { value -1500 }
+			acceptJointWarProb { value 0 mods [
+				{ #type ai-personality-mod if [ peaceful ] multiplier 0.8 }
+				{ #type ai-personality-mod if [ aggressive ] multiplier 1.2 }
+				]}
+			;; these depend on ai asking for joint war
+			;; always computed on sender since these are ai->ai or ai->human
+			askForJointWarProb { value 0 mods [
+				{ #type ai-personality-mod if [ aggressive ] multiplier 1.2 }
+				]}
+			askForJointWarCrewMinimum { value 2 }
+			askCooldownDayz { value 84 }
+		}
+	}
+
+	attack-default-cops {
+		#type attack-advisor-config
+
+		coordinatedAttack {
+			firstCheckDayz { value 35 }
+			checkProbability { value 0 mods [ 
+				{ #type ai-personality-mod if [ aggressive ] multiplier 0.5 }
+			]}
+			checkDayz { value 14 mods [ 
+				{ #type random-delta-mod from 0 to 14 }
+			] }
+
+			maxDistance { value 1000 } 
+			minCrewSize { value 1 } ;; my crew must be at least this
+			maxRel { value -60 } ;; rel with enemy must be at most this
+
+			minHealth { value 100 } ;; min health for crew to participate
+		}
+
+		opportunisticAttack {
+			minHealth { value 80 mods [
+				{ #type ai-personality-mod if [ aggressive ] delta -20 } ;; more likely to attack if injured
+				]}
+			maxDistance { value 1000 mods [
+				{ #type ai-personality-mod if [ peaceful ] multiplier 0.5 } ;; don't go looking
+				{ #type ai-personality-mod if [ aggressive ] multiplier 1.5 } ;; do go looking
+				]}
+		}
+
+		buildingAttack {
+			firstCheckDayz { value 126 }
+			checkProbability { value 0 mods [ 
+				{ #type ai-personality-mod if [ aggressive ] multiplier 2 }
+			]}
+			checkDayz { value 84 }
+
+			maxDistance { value 1000 }
+			minCrewSize { value 2 } ;; my crew must be at least this
+			maxRel { value 0 } ;; rel with enemy must be at most this
+		}
+
+		forcedClosure {
+			firstCheckDayz { value 126 }
+			checkProbability { value 0 mods [ 
+				{ #type ai-personality-mod if [ peaceful ] multiplier 2 } ;; peaceful ones do this more (it's indirect)
+				{ #type ai-personality-mod if [ aggressive ] multiplier 1.1 } ;; aggressive ones just go after you
+			]}
+			checkDayz { value 42 }
+
+			maxDistance { value 1000 }
+			minCrewSize { value 1 } ;; my crew must be at least this
+			maxRel { value 0 } ;; rel with enemy must be at most this
+		}
+
+		sellOutToFeds {				
+			firstCheckDayz { value 28 }
+			checkProbability { value 1 }
+			checkDayz { value 28 }
+			maxDistance { value 1000 } 
+			minCrewSize { value 1 } ;; my crew must be at least this
+			maxRel { value 0 } ;; rel with enemy must be at most this
+		}
+
+		weaponProbs {
+			;; ~ monthly. x is game year (float ok) and y is roll prob 
+			weapon-bat     { x [ 1 2 ] y [ 0.0 0.3 ] }
+			weapon-billy-club { x [ 1 3 ] y [ 0.1 0.2 ] }
+			weapon-crowbar { x [ 1 3 ] y [ 0.0 0.2 ] }
+			weapon-switchblade { x [ 1 2 ] y [ 0.0 0.2 ] }
+			weapon-knife   { x [ 1 3 ] y [ 0.0 0.2 ] }
+			weapon-pistol	{ x [ 3 8 ] y [ 0.1 0.4 ] }
+			weapon-colt	{ x [ 5 8 ] y [ 0.0 0.5 ] }
+			weapon-remington 	{ x [ 2 8 ] y [ 0.0 0.4 ] }
+			weapon-lemat 	{ x [ 1 8 ] y [ 0.0 0.5 ] }
+			weapon-beretta-m1918	{ x [ 8 10 ] y [ 0.0 0.2 ] }
+			weapon-mp18	{ x [ 8 12 ] y [ 0.0 0.2 ] }
+			weapon-thompson	{ x [ 8 10 ] y [ 0.0 0.2 ] }
+			weapon-iver-johnson	{ x [ 13 15 ] y [ 0.0 0.5 ] }
+			weapon-broomhandle	{ x [ 13 14 ] y [ 0.0 0.4 ] }
+			weapon-beretta	{ x [ 13 15 ] y [ 0.0 0.4 ] }
+			weapon-bearcat	{ x [ 13 14 ] y [ 0.0 0.5 ] }
+			weapon-1934-winchester	{ x [ 14 16 ] y [ 0.0 0.5 ] }
+			weapon-mp-28	{ x [ 14 18 ] y [ 0.0 0.2 ] }
+			weapon-emp-35	{ x [ 14 18 ] y [ 0.0 0.2 ] }
+		}
+	}
+
+	attack-default-gangs {
+		#type attack-advisor-config
+
+		coordinatedAttack {
+			firstCheckDayz { value 14 }
+			checkProbability { value 0.8 mods [ 
+				{ #type ai-personality-mod if [ aggressive ] multiplier 2 }
+			]}
+			checkDayz { value 14 mods [ 
+				{ #type random-delta-mod from 0 to 14 }
+			] }
+
+			maxDistance { value 100 }
+			minCrewSize { value 2 } ;; my crew must be at least this
+			maxRel { value -5 } ;; rel with enemy must be at most this
+
+			minHealth { value 100 } ;; min health for crew to participate
+		}
+
+		opportunisticAttack {
+			minHealth { value 100 mods [
+				{ #type ai-personality-mod if [ aggressive ] delta -20 } ;; more likely to attack if injured
+				]}
+			maxRel { value -5 } ;; rel with enemy must be at most this
+			maxDistance { value 30 mods [
+				{ #type ai-personality-mod if [ peaceful ] multiplier 0.5 } ;; don't go looking
+				{ #type ai-personality-mod if [ aggressive ] multiplier 3 } ;; do go looking
+				]}
+		}
+
+		buildingAttack {
+			firstCheckDayz { value 42 }
+			checkProbability { value 0.45 mods [ 
+				{ #type ai-personality-mod if [ aggressive ] multiplier 2 }
+			]}
+			checkDayz { value 28 }
+
+			maxDistance { value 80 }
+			minCrewSize { value 3 } ;; my crew must be at least this
+			maxRel { value -10 } ;; rel with enemy must be at most this
+		}
+
+		forcedClosure {
+			firstCheckDayz { value 126 }
+			checkProbability { value 0.6 mods [
+				{ #type ai-personality-mod if [ peaceful ] multiplier 2 } ;; peaceful ones do this more (it's indirect)
+				{ #type ai-personality-mod if [ aggressive ] multiplier 1.1 } ;; aggressive ones just go after you
+			]}
+			checkDayz { value 42 }
+
+			maxDistance { value 100 }
+			minCrewSize { value 1 } ;; my crew must be at least this
+			maxRel { value -5 } ;; rel with enemy must be at most this
+		}
+
+		sellOutToFeds {
+			firstCheckDayz { value 49 }
+			checkProbability { value 0.35 mods [
+			{ #type ai-personality-mod if [ peaceful ] multiplier 2 }
+			{ #type ai-personality-mod if [ aggressive ] multiplier 2 }
+			]}
+			checkDayz { value 84 }
+			maxDistance { value 200 } 
+			minCrewSize { value 2 } ;; my crew must be at least this
+			maxRel { value -10 } ;; rel with enemy must be at most this
+		}
+
+
+		weaponProbs {
+			;; ~ monthly. x is game year (float ok) and y is roll prob 
+			weapon-bat     { x [ 1 2 ] y [ 0.1 0.3 ] }
+			weapon-billy-club { x [ 1 3 ] y [ 0.1 0.2 ] }
+			weapon-crowbar { x [ 1 3 ] y [ 0.1 0.2 ] }
+			weapon-switchblade { x [ 1 2 ] y [ 0.1 0.2 ] }
+			weapon-knife   { x [ 1 3 ] y [ 0.1 0.2 ] }
+			weapon-pistol	{ x [ 2 6 ] y [ 0.0 0.4 ] }
+			weapon-colt	{ x [ 1 6 ] y [ 0.0 0.5 ] }
+			weapon-remington 	{ x [ 2 9 ] y [ 0.0 0.4 ] }
+			weapon-lemat 	{ x [ 1 9 ] y [ 0.0 0.5 ] }
+			weapon-beretta-m1918	{ x [ 5 8 ] y [ 0.0 0.2 ] }
+			weapon-mp18	{ x [ 7 10 ] y [ 0.0 0.2 ] }
+			weapon-thompson	{ x [ 9 8 ] y [ 0.0 0.2 ] }
+			weapon-iver-johnson	{ x [ 13 15 ] y [ 0.0 0.5 ] }
+			weapon-broomhandle	{ x [ 13 14 ] y [ 0.0 0.4 ] }
+			weapon-beretta	{ x [ 13 15 ] y [ 0.0 0.4 ] }
+			weapon-bearcat	{ x [ 13 14 ] y [ 0.0 0.5 ] }
+			weapon-1934-winchester	{ x [ 14 16 ] y [ 0.0 0.5 ] }
+			weapon-mp-28	{ x [ 14 18 ] y [ 0.0 0.2 ] }
+			weapon-emp-35	{ x [ 14 18 ] y [ 0.0 0.2 ] }
+		}
+	}
+
+	attack-default-goons {
+		#type attack-advisor-config
+
+		coordinatedAttack {
+			firstCheckDayz { value 20 }
+			checkProbability { value 0.4 mods [ 
+				{ #type ai-personality-mod if [ aggressive ] multiplier 2 }
+			]}
+			checkDayz { value 42 mods [ 
+				{ #type random-delta-mod from 21 to 42 }
+			] }
+
+			maxDistance { value 1000 } 
+			minCrewSize { value 1 } ;; my crew must be at least this
+			maxRel { value -10 } ;; rel with enemy must be at most this
+
+			minHealth { value 100 } ;; min health for crew to participate
+		}
+
+		opportunisticAttack {
+			minHealth { value 100 mods [
+				{ #type ai-personality-mod if [ aggressive ] delta -20 } ;; more likely to attack if injured
+				]}
+			maxDistance { value 2000 mods [
+				{ #type ai-personality-mod if [ peaceful ] multiplier 0.5 } ;; don't go looking
+				{ #type ai-personality-mod if [ aggressive ] multiplier 3 } ;; do go looking
+				]}
+		}
+
+		buildingAttack {
+			firstCheckDayz { value 126 }
+			checkProbability { value 0 mods [ 
+				{ #type ai-personality-mod if [ aggressive ] multiplier 2 }
+			]}
+			checkDayz { value 84 }
+
+			maxDistance { value 1000 }
+			minCrewSize { value 3 } ;; my crew must be at least this
+			maxRel { value -10 } ;; rel with enemy must be at most this
+		}
+
+		forcedClosure {
+			firstCheckDayz { value 126 }
+			checkProbability { value 0 mods [ 
+				{ #type ai-personality-mod if [ peaceful ] multiplier 2 } ;; peaceful ones do this more (it's indirect)
+				{ #type ai-personality-mod if [ aggressive ] multiplier 1.1 } ;; aggressive ones just go after you
+			]}
+			checkDayz { value 42 }
+
+			maxDistance { value 1000 }
+			minCrewSize { value 1 } ;; my crew must be at least this
+			maxRel { value -5 } ;; rel with enemy must be at most this
+		}
+
+		sellOutToFeds {				
+			firstCheckDayz { value 28 }
+			checkProbability { value 0.45 mods [
+			{ #type ai-personality-mod if [ peaceful ] multiplier 2 }
+			{ #type ai-personality-mod if [ aggressive ] multiplier 2 }
+			]}
+			checkDayz { value 180 }
+			maxDistance { value 1000 } 
+			minCrewSize { value 2 } ;; my crew must be at least this
+			maxRel { value 1 } ;; rel with enemy must be at most this
+		}
+
+
+		weaponProbs {
+			;; ~ monthly. x is game year (float ok) and y is roll prob 
+			weapon-bat     { x [ 1 2 ] y [ 0.1 0.3 ] }
+			weapon-billy-club { x [ 1 3 ] y [ 0.1 0.2 ] }
+			weapon-crowbar { x [ 1 3 ] y [ 0.1 0.2 ] }
+			weapon-switchblade { x [ 1 2 ] y [ 0.1 0.2 ] }
+			weapon-knife   { x [ 1 3 ] y [ 0.1 0.2 ] }
+			weapon-pistol	{ x [ 2 5 ] y [ 0.1 0.4 ] }
+			weapon-colt	{ x [ 1 5 ] y [ 0.1 0.5 ] }
+			weapon-remington 	{ x [ 2 6 ] y [ 0.0 0.4 ] }
+			weapon-lemat 	{ x [ 1 6 ] y [ 0.0 0.5 ] }
+			weapon-beretta-m1918	{ x [ 4 6 ] y [ 0.0 0.2 ] }
+			weapon-mp18	{ x [ 6 8 ] y [ 0.0 0.2 ] }
+			weapon-thompson	{ x [ 4 10 ] y [ 0.0 0.2 ] }
+			weapon-iver-johnson	{ x [ 13 16 ] y [ 0.0 0.5 ] }
+			weapon-broomhandle	{ x [ 13 14 ] y [ 0.0 0.4 ] }
+			weapon-beretta	{ x [ 13 16 ] y [ 0.0 0.4 ] }
+			weapon-bearcat	{ x [ 13 14 ] y [ 0.0 0.5 ] }
+			weapon-1934-winchester	{ x [ 13 16 ] y [ 0.0 0.5 ] }
+			weapon-mp-28	{ x [ 16 20 ] y [ 0.0 0.2 ] }
+			weapon-emp-35	{ x [ 16 20 ] y [ 0.0 0.2 ] }
+		}
+	}
+}
+
+
+
+personalitiesFromTraits [
+	{
+		traits [ trait-unkind trait-cruel trait-careless trait-confident trait-irritable trait-strong ]
+		givespersonality hatchetman
+	}
+	{
+		traits [ trait-aggressive trait-sociable trait-loner trait-intelligent trait-agile trait-sharpeyed ]
+		givespersonality thief
+	}
+
+	;; fallback always last	
+	{ givespersonality default-goon-personality }
+]
+
+
+personalityAspects {
+	;; note: for gangs, only N ~= 3 will be picked from this list
+	borders [ 
+		{ id expansionist lockey "aspect-expansionist.name" locicon "ui.aiicon.expansionist" }
+		{ id isolationist lockey "aspect-isolationist.name" locicon "ui.aiicon.isolationist" }
+		]
+	combat [ 
+		{ id aggressive lockey "aspect-aggressive.name" locicon "ui.aiicon.aggressive" }
+		{ id peaceful lockey "aspect-peaceful.name" locicon "ui.aiicon.peaceful" }
+		]
+	business [ 
+		{ id biz-fast lockey "aspect-biz-fast.name" locicon "ui.aiicon.biz-fast" }
+		{ id biz-slow lockey "aspect-biz-slow.name" locicon "ui.aiicon.biz-slow" }
+		]
+	eth [ 
+		{ id eth-like lockey "aspect-eth-like.name" locicon "ui.aiicon.eth-like" }
+		{ id eth-dislike lockey "aspect-eth-dislike.name" locicon "ui.aiicon.eth-dislike" }
+		]
+	crew [ 
+		{ id crew-large lockey "aspect-crew-large.name" locicon "ui.aiicon.crew-large" }
+		]
+
+
+	;; more here
+}
+
+personalities {
+	default-goon-personality {
+		id default-goon
+		npccategory goononly
+		aspects { value 0 }
+
+		goon goon-idle-default
+	}
+
+	hatchetman {
+		id hatchetman
+		npccategory goononly
+		aspects { value 0 }
+
+		goon goon-idle-hatchetman
+	}
+
+	thief {
+		id thief
+		npccategory goononly
+		aspects { value 0 }
+
+		goon goon-idle-thief
+	}
+
+	default-gang-personality {
+		id default-gang-personality
+		npccategory gangonly
+		aspects { value 3 }
+		;; don't override specific configs
+	}
+}
+
+players [
+	{ 
+		type AgentPlayer
+		units units-default-cops-or-feds
+		social social-default-cops-or-feds
+		feds feds-default
+	}
+
+	{
+		type CopPlayer
+		units units-default-cops-or-feds
+		social social-default-cops-or-feds
+		precinct precinct-default
+		combat combat-default-cops
+		attack attack-default-cops
+	}
+
+	{
+		type GangPlayer
+		units units-default-gangs
+		social social-default-gangs
+		safehouse safehouse-default-gangs
+		territory territory-default-gangs
+		business business-default-gangs
+		combat combat-default-gangs
+		attack attack-default-gangs
+	}
+
+	{
+		type GoonPlayer
+		goon goon-idle-default
+		units units-default-goons
+		social social-default-goons
+		territory territory-default-goons
+		business business-default-goons
+		safehouse safehouse-default-goons
+		combat combat-default-goons
+		attack attack-default-goons
+	}
+
+	{
+		;; this is only used when debugging ai
+		;; along with the set-human-ai flag
+		type HumanPlayer
+		units units-default-gangs
+		social social-default-gangs
+		safehouse safehouse-default-gangs
+		territory territory-default-gangs
+		business business-default-gangs
+		combat combat-default-gangs
+		attack attack-default-gangs
+	}
+]
+
+
+pickColors {
+	humans 	[{ hexcolor "2E7D32" }]
+	goons 	[{ hexcolor "00838F" }]
+	gangs 	[{ hexcolor "6A1B9A" }]
+	cops 	[{ hexcolor "4916CC" }]
+	agents	[{ hexcolor "877676" }]
+
+	biz 	[{ hexcolor "87B524" }]
+	res		[{ hexcolor "BF7949" }]
+	unknown [{ hexcolor "687F36" }]
+	toofar  [{ hexcolor "73747F" }]
+}
+
+}
+}
+

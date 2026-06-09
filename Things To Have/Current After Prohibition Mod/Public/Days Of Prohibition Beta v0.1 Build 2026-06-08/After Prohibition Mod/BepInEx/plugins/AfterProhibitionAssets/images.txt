@@ -1,0 +1,23 @@
+# AfterProhibitionAssets image manifest
+#
+# Format:
+# key=relative path
+#
+# Notes:
+# - Lines that start with # are ignored.
+# - A # after whitespace is treated as a trailing note, not part of the path.
+# - Put PNG/JPG files under BepInEx/plugins/AfterProhibitionAssets/images/
+# - Remove the leading # from an optional slot only when that image file exists.
+
+main-menu.primary=images/after_prohibition_main_menu.png
+
+# Optional rotating main menu slots.
+# These stay disabled until you remove the leading #.
+# main-menu.alt1=images/main_menu_alt1.png
+# main-menu.alt2=images/main_menu_alt2.png
+# main-menu.alt3=images/main_menu_alt3.png
+# main-menu.alt4=images/main_menu_alt4.png
+# main-menu.alt5=images/main_menu_alt5.png
+
+# Game resources can be used with game:<resource path>.
+# city.chicago=game:City Screenshots/Chicago Screenshot

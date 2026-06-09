@@ -1,0 +1,396 @@
+{
+	people {
+	traits [
+		;; first, the extremes on the five factor / OCEAN scale
+		{   id trait-bossm
+			locname  "trait-bossm.name" 
+			locdesc  "trait-bossm.desc"
+			locshort "trait-bossm.short"
+			locgambling "trait-bossm.gambling"
+			locicon  "trait-bossm.icon"
+			not [ trait-connected trait-confident trait-nervous trait-curious trait-cautious trait-organized trait-boss trait-sociable trait-careless trait-loner trait-kind trait-unkind ] 
+		}
+		{   id trait-boss
+			locname  "trait-boss.name" 
+			locdesc  "trait-boss.desc"
+			locshort "trait-boss.short"
+			locgambling "trait-boss.gambling"
+			locicon  "trait-boss.icon"
+			not [ trait-nervous trait-quiet trait-slow trait-lazy ] 
+		}
+        {   id trait-killer
+			locname  "trait-killer.name" 
+			locdesc  "trait-killer.desc"
+			locshort "trait-killer.short"
+			locgambling "trait-killer.gambling"
+			locicon  "trait-killer.icon"
+			not [ trait-kind trait-nervous trait-cautious trait-lazy trait-weak ] 
+		}
+		{   id trait-curious 
+			locname  "trait-curious.name" 
+			locdesc  "trait-curious.desc"
+			locshort "trait-curious.short"
+			locgambling "trait-curious.gambling"
+			locicon  "trait-curious.icon"
+			not [ trait-cautious trait-quiet trait-slow ] 
+		}
+
+		{   id trait-cautious 
+			locname  "trait-cautious.name" 
+			locdesc  "trait-cautious.desc"
+			locshort "trait-cautious.short"
+			locgambling "trait-cautious.gambling"
+			locicon  "trait-cautious.icon"
+			not [ trait-curious trait-talkative ] 
+			implies [ trait-quiet ] 
+		}
+
+		{   id trait-organized 
+			locname  "trait-organized.name" 
+			locdesc  "trait-organized.desc"
+			locshort "trait-organized.short"
+			locgambling "trait-organized.gambling"
+			locicon  "trait-organized.icon"
+			not [ trait-careless trait-aggressive ] 
+			implies [ trait-hardworking trait-connected ] 
+		}
+
+		{   id trait-careless 
+			locname  "trait-careless.name" 
+			locdesc  "trait-careless.desc"
+			locshort "trait-careless.short"
+			locgambling "trait-careless.gambling"
+			locicon  "trait-careless.icon"
+			not [ trait-organized trait-lazy ] 
+		}
+
+		{   id trait-sociable 
+			locname  "trait-sociable.name" 
+			locdesc  "trait-sociable.desc"
+			locshort "trait-sociable.short"
+			locgambling "trait-sociable.gambling"
+			locicon  "trait-sociable.icon"
+			not [ trait-loner trait-quiet ] 
+			implies [ trait-friendly trait-connected ] 
+		}
+
+		{   id trait-loner 
+			locname  "trait-loner.name" 
+			locdesc  "trait-loner.desc"
+			locshort "trait-loner.short"
+			locgambling "trait-loner.gambling"
+			locicon  "trait-loner.icon"
+			not [ trait-sociable trait-talkative ] 
+			implies [ trait-quiet ] 
+		}
+
+		{   id trait-kind 
+			locname  "trait-kind.name" 
+			locdesc  "trait-kind.desc"
+			locshort "trait-kind.short"
+			locgambling "trait-kind.gambling"
+			locicon  "trait-kind.icon"
+			not [ trait-unkind trait-cruel trait-aggressive trait-vindictive ] 
+			implies [ trait-forgiving ] 
+		}
+
+		{   id trait-unkind 
+			locname  "trait-unkind.name" 
+			locdesc  "trait-unkind.desc"
+			locshort "trait-unkind.short"
+			locgambling "trait-unkind.gambling"
+			locicon  "trait-unkind.icon"
+			not [ trait-kind trait-friendly trait-forgiving ] 
+		}
+
+		{   id trait-nervous 
+			locname  "trait-nervous.name" 
+			locdesc  "trait-nervous.desc"
+			locshort "trait-nervous.short"
+			locgambling "trait-nervous.gambling"
+			locicon  "trait-nervous.icon"
+			not [ trait-confident ] 
+		}
+
+		{   id trait-confident 
+			locname  "trait-confident.name" 
+			locdesc  "trait-confident.desc"
+			locshort "trait-confident.short"
+			locgambling "trait-confident.gambling"
+			locicon  "trait-confident.icon"
+			not [ trait-nervous ]
+			implies [ trait-aggressive trait-connected ] 
+		}
+
+		{   id trait-connected
+			locname  "trait-connected.name" 
+			locdesc  "trait-connected.desc"
+			locshort "trait-connected.short"
+			locgambling "trait-connected.gambling"
+			locicon  "trait-connected.icon"
+			not [ trait-nervous ]
+		}
+
+		;; some additional trait pairs
+		{   id trait-cruel 
+			locname  "trait-cruel.name" 
+			locdesc  "trait-cruel.desc"
+			locshort "trait-cruel.short"
+			locgambling "trait-cruel.gambling"
+			locicon  "trait-cruel.icon"
+			not [ trait-compassionate trait-kind trait-friendly trait-forgiving ] 
+			implies [ trait-vindictive ] 
+		}
+
+		{   id trait-compassionate 
+			locname  "trait-compassionate.name" 
+			locdesc  "trait-compassionate.desc"
+			locshort "trait-compassionate.short"
+			locgambling "trait-compassionate.gambling"
+			locicon  "trait-compassionate.icon"
+			not [ trait-cruel trait-vindictive ] 
+			implies [ trait-kind trait-forgiving ] 
+		}
+
+		{   id trait-talkative 
+			locname  "trait-talkative.name" 
+			locdesc  "trait-talkative.desc"
+			locshort "trait-talkative.short"
+			locgambling "trait-talkative.gambling"
+			locicon  "trait-talkative.icon"
+			not [ trait-quiet trait-loner ] 
+			implies [ trait-friendly trait-connected ] 
+		}
+
+		{   id trait-quiet 
+			locname  "trait-quiet.name" 
+			locdesc  "trait-quiet.desc"
+			locshort "trait-quiet.short"
+			locgambling "trait-quiet.gambling"
+			locicon  "trait-quiet.icon"
+			not [ trait-talkative trait-sociable ] 
+		}
+
+		{   id trait-aggressive 
+			locname  "trait-aggressive.name" 
+			locdesc  "trait-aggressive.desc"
+			locshort "trait-aggressive.short"
+			locgambling "trait-aggressive.gambling"
+			locicon  "trait-aggressive.icon"
+			not [ trait-friendly trait-cautious ] 
+		}
+
+		{   id trait-friendly 
+			locname  "trait-friendly.name" 
+			locdesc  "trait-friendly.desc"
+			locshort "trait-friendly.short"
+			locgambling "trait-friendly.gambling"
+			locicon  "trait-friendly.icon"
+			not [ trait-aggressive trait-cruel trait-vindictive ] }
+
+		{   id trait-irritable 
+			locname  "trait-irritable.name" 
+			locdesc  "trait-irritable.desc"
+			locshort "trait-irritable.short"
+			locgambling "trait-irritable.gambling"
+			locicon  "trait-irritable.icon"
+			not [ trait-mellow trait-sociable ] 
+		}
+
+		{   id trait-mellow 
+			locname  "trait-mellow.name" 
+			locdesc  "trait-mellow.desc"
+			locshort "trait-mellow.short"
+			locgambling "trait-mellow.gambling"
+			locicon  "trait-mellow.icon"
+			not [ trait-irritable ] 
+		}
+
+		{   id trait-intelligent 
+			locname  "trait-intelligent.name" 
+			locdesc  "trait-intelligent.desc"
+			locshort "trait-intelligent.short"
+			locgambling "trait-intelligent.gambling"
+			locicon  "trait-intelligent.icon"
+			not [ trait-slow ]
+			implies [ trait-curious trait-connected ] 
+		}
+
+		{   id trait-slow 
+			locname  "trait-slow.name" 
+			locdesc  "trait-slow.desc"
+			locshort "trait-slow.short"
+			locgambling "trait-slow.gambling"
+			locicon  "trait-slow.icon"
+			not [ trait-intelligent ] implies [ trait-clumsy ] 
+		}
+
+		{   id trait-hardworking 
+			locname  "trait-hardworking.name" 
+			locdesc  "trait-hardworking.desc"
+			locshort "trait-hardworking.short"
+			locgambling "trait-hardworking.gambling"
+			locicon  "trait-hardworking.icon"
+			not [ trait-lazy trait-careless ] 
+			implies [ trait-organized trait-connected ] 
+		}
+
+		{   id trait-lazy 
+			locname  "trait-lazy.name" 
+			locdesc  "trait-lazy.desc"
+			locshort "trait-lazy.short"
+			locgambling "trait-lazy.gambling"
+			locicon  "trait-lazy.icon"
+			not [ trait-hardworking trait-organized ] 
+		}
+
+		{   id trait-immoral 
+			locname  "trait-immoral.name" 
+			locdesc  "trait-immoral.desc"
+			locshort "trait-immoral.short"
+			locgambling "trait-immoral.gambling"
+			locicon  "trait-immoral.icon"
+			not [ trait-upright ]
+			implies [ trait-irreverent ] 
+		}
+
+		{   id trait-upright 
+			locname  "trait-upright.name" 
+			locdesc  "trait-upright.desc"
+			locshort "trait-upright.short"
+			locgambling "trait-upright.gambling"
+			locicon  "trait-upright.icon"
+			not [ trait-immoral trait-cruel trait-vindictive ] 
+		}
+
+		{   id trait-religious 
+			locname  "trait-religious.name" 
+			locdesc  "trait-religious.desc"
+			locshort "trait-religious.short"
+			locgambling "trait-religious.gambling"
+			locicon  "trait-religious.icon"
+			not [ trait-irreverent trait-vindictive trait-cruel ] 
+		}
+
+		{   id trait-irreverent 
+			locname  "trait-irreverent.name" 
+			locdesc  "trait-irreverent.desc"
+			locshort "trait-irreverent.short"
+			locgambling "trait-irreverent.gambling"
+			locicon  "trait-irreverent.icon"
+			not [ trait-religious trait-cruel trait-vindictive ] 
+		}
+
+		{   id trait-vindictive 
+			locname  "trait-vindictive.name" 
+			locdesc  "trait-vindictive.desc"
+			locshort "trait-vindictive.short"
+			locgambling "trait-vindictive.gambling"
+			locicon  "trait-vindictive.icon"
+			not [ trait-forgiving trait-kind trait-compassionate trait-upright trait-forgiving ] 
+			implies [ trait-cruel ] 
+		}
+
+		{   id trait-forgiving 
+			locname  "trait-forgiving.name" 
+			locdesc  "trait-forgiving.desc"
+			locshort "trait-forgiving.short"
+			locgambling "trait-forgiving.gambling"
+			locicon  "trait-forgiving.icon"
+			not [ trait-vindictive trait-cruel ] 
+			implies [ trait-compassionate ] 
+		}
+
+		{   id trait-agile 
+			locname  "trait-agile.name" 
+			locdesc  "trait-agile.desc"
+			locshort "trait-agile.short"
+			locgambling "trait-agile.gambling"
+			locicon  "trait-agile.icon"
+			not [ trait-clumsy ]
+		}
+
+		{   id trait-clumsy 
+			locname  "trait-clumsy.name" 
+			locdesc  "trait-clumsy.desc" 
+			locshort "trait-clumsy.short"
+			locgambling "trait-clumsy.gambling"
+			locicon  "trait-clumsy.icon"
+			not [ trait-agile ]
+		}
+
+		;; physical traits
+		{   id trait-tall 
+			locname  "trait-tall.name" 
+			locdesc  "trait-tall.desc"
+			locshort "trait-tall.short"
+			locgambling "trait-tall.gambling"
+			locicon  "trait-tall.icon"
+			not [ trait-short ] 
+		}
+
+		{   id trait-short 
+			locname  "trait-short.name" 
+			locdesc  "trait-short.desc"
+			locshort "trait-short.short"
+			locgambling "trait-short.gambling"
+			locicon  "trait-short.icon"
+			not [ trait-tall ] 
+		}
+
+		{   id trait-attractive 
+			locname  "trait-attractive.name" 
+			locdesc  "trait-attractive.desc"
+			locshort "trait-attractive.short"
+			locgambling "trait-attractive.gambling"
+			locicon  "trait-attractive.icon"
+			not [ trait-ugly ] 
+		}
+
+		{   id trait-ugly 
+			locname  "trait-ugly.name" 
+			locdesc  "trait-ugly.desc"
+			locshort "trait-ugly.short"
+			locgambling "trait-ugly.gambling"
+			locicon  "trait-ugly.icon"
+			not [ trait-attractive ] 
+		}
+
+		{   id trait-strong 
+			locname  "trait-strong.name" 
+			locdesc  "trait-strong.desc"
+			locshort "trait-strong.short"
+			locgambling "trait-strong.gambling"
+			locicon  "trait-strong.icon"
+			not [ trait-weak ] 
+		}
+
+		{   id trait-weak 
+			locname  "trait-weak.name" 
+			locdesc  "trait-weak.desc"
+			locshort "trait-weak.short"
+			locgambling "trait-weak.gambling"
+			locicon  "trait-weak.icon"
+			not [ trait-strong ] 
+		}
+
+		{   id trait-sharpeyed 
+			locname  "trait-sharpeyed.name" 
+			locdesc  "trait-sharpeyed.desc"
+			locshort "trait-sharpeyed.short"
+			locgambling "trait-sharpeyed.gambling"
+			locicon  "trait-sharpeyed.icon"
+			not [ trait-myopic ] 
+		}
+
+		{   id trait-myopic 
+			locname  "trait-myopic.name" 
+			locdesc  "trait-myopic.desc"
+			locshort "trait-myopic.short"
+			locgambling "trait-myopic.gambling"
+			locicon  "trait-myopic.icon"
+			not [ trait-sharpeyed ] 
+		}
+	]
+	}
+}

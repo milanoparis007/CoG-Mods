@@ -5687,11 +5687,6 @@ public partial class GameplayTweaksPlugin
 		{
 			try
 			{
-				if (__result == null || __result.Count == 0)
-				{
-					return;
-				}
-
 				object currentSlot = Traverse.Create(__instance).Property("Model").Field("currentSlot").GetValue<object>();
 				if (currentSlot == null)
 				{
@@ -5703,6 +5698,11 @@ public partial class GameplayTweaksPlugin
 				IModuleConfig installedConfig = installedModule?.ModuleConfig;
 				if (installedModule != null && IsFrontRoomSlot(slotdef) && IsPlayerLegalDirtyCashBusinessModule(installedConfig))
 				{
+					if (__result == null)
+					{
+						__result = new List<AddModuleDef>();
+					}
+
 					FilterLegalFrontUpgradeChoices(__result, installedConfig);
 					LogLegalFrontUpgradeList(installedConfig, __result);
 					return;
@@ -5713,6 +5713,12 @@ public partial class GameplayTweaksPlugin
 					return;
 				}
 
+				if (__result == null)
+				{
+					__result = new List<AddModuleDef>();
+				}
+
+				EnsureStandaloneDirtyCashBackroomChoices(__instance, slotdef, installedModule, __result);
 				RemoveDisallowedBackroomChoices(__result);
 
 				if (FindConflictingIllegalBackroom(FindCurrentBuilding(__instance)?.components?.modules, installedModule) != null)
@@ -5732,6 +5738,100 @@ public partial class GameplayTweaksPlugin
 			{
 				Debug.LogWarning("[GameplayTweaks] Failed to filter illegal backroom add choices: " + ex.Message);
 			}
+		}
+
+		private static void EnsureStandaloneDirtyCashBackroomChoices(object controllerInstance, object slotdef, IModule installedModule, List<AddModuleDef> defs)
+		{
+			if (installedModule != null || defs == null)
+			{
+				return;
+			}
+
+			try
+			{
+				VisitState visit = Traverse.Create(controllerInstance).Property("Model").Field("visit").GetValue<VisitState>();
+				if (visit == null)
+				{
+					return;
+				}
+
+				Entity biz = visit?.biz;
+				int added = 0;
+				foreach (IModuleConfig config in ModulesUtil.FindAllModuleDefsExpensive())
+				{
+					if (!IsIllegalBackroomModule(config) ||
+						!CanInstallStandaloneDirtyCashBackroomChoice(config, slotdef, biz) ||
+						HasAddModuleChoice(defs, config.Id))
+					{
+						continue;
+					}
+
+					AddModuleDef def = ModulesUtil.MakeAddModuleDef(config, visit);
+					if (!def.passesVisreqs)
+					{
+						continue;
+					}
+
+					defs.Add(def);
+					added++;
+				}
+
+				if (added > 0)
+				{
+					defs.StableSort((AddModuleDef a, AddModuleDef b) => (!a.passesReqs || b.passesReqs) ? ((!a.passesReqs && b.passesReqs) ? 1 : 0) : (-1));
+					VerificationLog("DirtyCash", $"standalone-backroom-choices-added count={added} total={defs.Count}");
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Failed to add standalone illegal backroom choices: " + ex.Message);
+			}
+		}
+
+		private static bool CanInstallStandaloneDirtyCashBackroomChoice(IModuleConfig config, object slotdef, Entity biz)
+		{
+			ModuleSlot moduleSlot = slotdef as ModuleSlot;
+			if (moduleSlot == null || config == null || !moduleSlot.CanSlotHouseThisModule(config))
+			{
+				return false;
+			}
+
+			PlayerModulesConstraints playerModules = biz?.components?.biz?.Config?.playerModules;
+			ModulePurchaseCost purchase = config.Common?.purchase;
+			if (playerModules == null || purchase == null)
+			{
+				return false;
+			}
+
+			if (!playerModules.size.ContainsAtLeastOneOf(purchase.size))
+			{
+				return false;
+			}
+
+			if (!playerModules.verticals.ContainsAtLeastOneOf(purchase.verticals))
+			{
+				return false;
+			}
+
+			return true;
+		}
+
+		private static bool HasAddModuleChoice(List<AddModuleDef> defs, Label id)
+		{
+			if (defs == null)
+			{
+				return false;
+			}
+
+			for (int i = 0; i < defs.Count; i++)
+			{
+				if (defs[i].config != null && defs[i].config.Id == id)
+				{
+					return true;
+				}
+			}
+
+			return false;
 		}
 
 		private static void FindUpgradesOrNullPostfix(IModule module, ref List<AddModuleDef> __result)

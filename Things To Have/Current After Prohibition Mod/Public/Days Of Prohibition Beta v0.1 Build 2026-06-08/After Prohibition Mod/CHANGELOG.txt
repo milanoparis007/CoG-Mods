@@ -2,29 +2,55 @@
 
 ## 2026-06-08 Beta v0.1 Build
 
-This beta public build packages the latest route, robbery, war-heat, front-closure, important-business, and truce fixes for public testing. The old v1.3.98 public package is left intact; this is a separate beta build folder so older builds are not overwritten.
+This beta public build packages the latest route, robbery, war-heat, front-closure, important-business, truce, and public-package fixes for testing. The old v1.3.98 public package is left intact; this is a separate beta build folder so older builds are not overwritten.
+
+Major package updates:
 
 - Added the latest `GameplayTweaks.dll` and `CopKilling.dll` to the beta public package.
-- Included the BepInEx preloader patchers and manifest in the beta package.
-- Included the current StreamingAssets baseline under `CoG_Data`, including entities, settings, maps, localization, queries, and UI simulation files.
-- Included the current custom asset support files and AfterProhibitionAssets image folder.
-- Stabilized the robbery meeting flow so enemy outfits travel toward a meeting/contact point before the robbery prompt starts.
-- Added route-window and stale-route recovery checks so robbery attempts do not keep reusing invalid player positions.
-- Improved handling when a robbery prompt is closed or interrupted so pending robbery state is cleaned up instead of repeatedly firing from stale context.
-- Reduced robbery war-heat pressure so robberies do not stack front closures, business closures, and attacks too aggressively after one failed interaction.
-- Improved relationship-driven retaliation logic so low boss relations and recent hostile actions can feed later offensive pressure.
-- Improved front-closure follow-through so enemy crews have more time to reach the target before changing plans.
-- Allowed non-boss enemy crew members to perform front-closure work when the outfit has available vehicles and crew.
-- Reduced repeated same-actor front-closure behavior so one crew member is less likely to close a front and immediately chain into the next front while other vehicles sit unused.
-- Restored clearer defended-front behavior so a successful player defense can show as a defense instead of always looking like a normal attack.
-- Kept vanilla-style combat expectations for defended fronts: if an aggressive enemy reaches the defended corner, the attack can happen after the route resolves.
-- Added important-business closure pressure into the war-heat/offensive action path so important businesses can be targeted during war pressure, not only from robbery outcomes.
-- Added cooldown and retry pacing around failed or defended offensive actions so outfits do not immediately spam the same front/business pressure.
-- Improved enemy route authority around front closures and robbery routes to reduce backtracking, one-node loops, and mid-route target switching.
-- Tightened enemy passenger and vehicle handling so crew assignment changes should happen through safer routing patterns instead of arbitrary passenger swaps during travel.
-- Kept enemy AI defensive/protective route behavior compatible with normal script definitions while adding offensive front/business pressure around it.
-- Adjusted CopKilling truce handling so truce conversation checks are no longer incorrectly suppressed by the cleanup pass.
-- Kept this build in beta naming until the current route and offensive-pressure behavior is stable enough for a numbered public release.
+- Added the BepInEx preloader patcher DLL and `AssemblyPatchManifest.json`.
+- Added the current `CoG_Data/StreamingAssets` baseline, including entities, settings, maps, localization, queries, and UI simulation files.
+- Added custom asset support files, the `AfterProhibitionAssets` plugin, and the main menu image folder.
+- Added the current beta `GUIDE.txt` and this updated `CHANGELOG.txt` inside the public build folder.
+
+Robbery and meeting flow:
+
+- Enemy robbery pressure now uses a meeting/contact route before the prompt starts, making the encounter feel more physical and less like an instant background event.
+- Robbery attempts now check the player's latest known location and the meeting route window before firing the prompt.
+- Stale robbery routes are cleaned up when the player moves too far away or the enemy cannot reasonably reach the meeting point.
+- Closing or interrupting the robbery prompt now clears pending robbery state more safely, reducing repeated prompts from old context.
+- Robbery war-heat gain is toned down so one failed robbery does not immediately stack too many front closures, business closures, and attacks.
+
+Front closures and important businesses:
+
+- Enemy outfits now get more time to reach a front before changing targets or giving up.
+- Non-boss enemy crew members can perform front closures when the outfit has available crew and vehicles.
+- The same enemy actor is less likely to close one front and immediately chain into the next while other vehicles sit unused.
+- Defended-front resolution is clearer, with the defense result showing again instead of every defense looking like a generic attack.
+- If an aggressive enemy reaches a defended front, combat can still happen after the route resolves, closer to vanilla expectations.
+- Important-business closures now participate in war-heat offensive pressure instead of relying only on robbery outcomes.
+- Failed or defended front/business pressure now has better cooldown and retry pacing so outfits do not immediately spam the same target.
+
+Enemy AI routing and vehicles:
+
+- Front-closure and robbery routes have stronger route-authority checks to reduce one-node loops, backtracking, and mid-route target switching.
+- Enemy crew assignment and passenger behavior is tightened so vehicle changes should happen through safer route patterns instead of arbitrary travel swaps.
+- Enemy offensive pressure now works alongside normal AI defensive/protective script behavior instead of replacing the usual safehouse, business, and front-protection movement.
+- Outfit vehicle count now matters more for how many offensive jobs an enemy outfit can reasonably support at once.
+
+Combat, truce, and relations:
+
+- Low boss relations and recent hostile actions can feed later offensive pressure more consistently.
+- Retaliation pressure is kept separate from immediate mid-turn attacks; offensive combat should wait for the correct route or turn resolution.
+- CopKilling truce handling no longer suppresses the normal truce conversation check during the cleanup pass.
+- Truce and robbery-related conversation behavior is being kept under beta testing because it now overlaps with enemy routing and meeting logic.
+
+Beta test focus:
+
+- Watch whether enemy outfits finish front-closure and important-business routes without repeatedly changing targets.
+- Watch whether defended fronts show the correct defense result and only escalate to combat when an aggressive enemy actually reaches the corner.
+- Watch whether robbery prompts appear from believable meeting/contact situations and stop retrying once the player is too far away.
+- Watch whether enemy crews use non-boss members and multiple vehicles without breaking normal safehouse, business, and protection behavior.
+- Keep this build in beta naming until the current route and offensive-pressure behavior is stable enough for a numbered public release.
 
 ## 2026-06-05 Public Robbery And Log Cleanup Release
 

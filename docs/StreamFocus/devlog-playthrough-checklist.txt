@@ -7,7 +7,8 @@ Goal
 - Show the major After Prohibition changes without turning the recording into a full tutorial.
 - Aim for a 20-35 minute devlog, not a full campaign run.
 - Start from a save where the boss has a crew, a vehicle, nearby enemy territory, at least one pact or enemy outfit, and a few businesses/fronts already visible.
-- Keep the first recording focused on what players can immediately see: split plugins, custom assets, crew/vehicle controls, robberies, enemy AI pressure, and public-log cleanup.
+- Keep the first recording focused on what players can immediately see: custom assets, crew/vehicle controls, robbery meetings, front closures, important-business pressure, and enemy AI routes.
+- Treat this as a planned devlog checklist. The devlog has not happened yet, so keep notes flexible while testing.
 
 Before Recording
 ----------------
@@ -23,6 +24,7 @@ Before Recording
 - Open with the package folder only briefly:
   - show that BepInEx has the split plugins;
   - mention that the mod is no longer one giant GameplayTweaks-only system;
+  - mention that the beta build now includes all expected plugin DLLs;
   - point out custom assets and the public guide/changelog files.
 
 - Do not spend more than 2-3 minutes on install/package files.
@@ -37,19 +39,32 @@ Suggested Recording Order
 - Show the crew/vehicle setup first because it is easy to understand visually.
 - Demonstrate switching passengers and vehicle crew behavior.
 - Demonstrate the attack crew conversation UI and the updated combat options.
-- Move into or near enemy territory to set up robbery pressure.
+- Move into or near enemy territory to set up route-based robbery pressure.
 - Show that outfit robbery/conversation actions should be handled through the outfit boss, not random non-boss crew members.
-- Trigger or explain robbery pressure.
+- Trigger or explain the robbery meeting route.
 - Show the boss crew relations robbery response toggle.
-- End with enemy AI expectations: robberies, business pressure, expansion pressure, and possible coordinated attacks.
+- Show or explain front closures and important-business pressure.
+- End with enemy AI expectations: robbery meetings, front pressure, business pressure, expansion pressure, and possible coordinated attacks.
 
 Opening Talking Points
 ----------------------
 
-- "This build is the public v1.3.98 After Prohibition package."
+- "This build is the Days Of Prohibition beta v0.1 public package."
 - "A lot of systems have been split out of GameplayTweaks into separate plugins."
-- "The big focus of this devlog is what that means in play: cleaner UI behavior, better vehicle crew handling, robbery/extortion pressure, and less noisy public logs."
-- "This is still an evolving overhaul, but the public build is now cleaner for normal play and first bug reports."
+- "The big focus of this devlog is what that means in play: route-based robbery meetings, front closures, important-business pressure, and better vehicle crew handling."
+- "This is still beta, so the goal is to show the direction and what needs testing next."
+
+Short Changelog Summary To Mention
+----------------------------------
+
+- Enemy robberies now start from a meeting route.
+- Robbery prompts clean up better if closed or interrupted.
+- Front closures should be more reliable.
+- Non-boss enemy crew and multiple vehicles can apply pressure.
+- Important businesses can be targeted through war pressure.
+- Defended fronts, retaliation, truce checks, and combat timing were cleaned up.
+
+Do not read this like patch notes on video. Use it as the quick anchor for what the devlog is trying to show.
 
 What To Show: Split Plugins And Custom Assets
 ---------------------------------------------
@@ -114,8 +129,17 @@ What To Show: Robbery And Extortion Pressure
 
 - Mention that peaceful outfits should lean away from robberies.
 - Mention that aggressive outfits are more likely to use robbery pressure and quick retaliation.
+- Explain that robbery pressure now tries to begin from a meeting/contact route.
+- Explain that prompts should not keep firing if the player leaves the area.
 - Explain that robbery prompts are delayed to the player turn instead of firing awkwardly mid-turn.
 - Show the prompt only if it naturally appears during the run.
+
+Robbery meeting talking points:
+
+- "The enemy should try to reach a believable contact point first."
+- "If the player leaves, the prompt should not keep chasing stale context."
+- "Right-clicking or closing the prompt should not leave the robbery stuck forever."
+- "Robberies still matter, but they should not flood war heat by themselves."
 
 Boss-only outfit interaction note:
 
@@ -149,20 +173,49 @@ What To Expect From Robbery Outcomes
 - The same robber outfit should not immediately spam the same human target after resolution because pair cooldowns are longer now.
 - Important-business pressure should target valid visible shops/businesses, not invisible invalid buildings.
 - Forced-closed shops should block normal buy/sell interaction while closed.
+- Robbery pressure should feed later conflict without stacking every offensive option at once.
+
+What To Show: Front Closures And Important Businesses
+-----------------------------------------------------
+
+- Pick a save where the player already owns or protects a few fronts.
+- Identify one front that an enemy outfit may want to close.
+- Put a crew member on or near a possible defense corner.
+- Advance turns only long enough to show the route behavior or explain the expected behavior.
+- Show that non-boss enemy crew can be involved if it happens naturally.
+- Show or explain that multiple enemy vehicles can support more pressure.
+- Mention that important businesses can now close from war pressure, not only robbery.
+
+Front closure talking points:
+
+- "Enemies should get more time to reach the front before changing targets."
+- "The target should not keep changing so fast that the player cannot defend it."
+- "If the enemy reaches a defended front and is aggressive, combat can still happen."
+- "If the player defends successfully, the result should be clearer."
+- "Failed or defended pressure should cool down before another try."
+
+Important business talking points:
+
+- "Important businesses are now part of war pressure."
+- "This means shops can be threatened during a war, not only after robberies."
+- "The system should still avoid unreasonable spam."
 
 What To Show: Enemy AI Expectations
 -----------------------------------
 
 - Enemy outfits should not only shoot first.
 - They can use a mix of:
-  - robbery/extortion pressure;
+  - route-based robbery/extortion pressure;
+  - front closures;
   - normal expansion pressure;
-  - business pressure;
+  - important-business pressure;
   - war heat and local conflict logic;
   - rare coordinated attack pressure.
 
 - Larger or stronger outfits should feel more willing to pressure weaker crews or smaller gangs.
 - Smaller gangs can still act locally, but should not constantly target far-away enemies.
+- Enemy outfits with multiple vehicles should be able to pressure more than one target over time.
+- Enemy outfits should still leave some crew for normal safehouse, business, and front protection behavior.
 - Enemy pressure may not all happen on one turn; use a save where a few turns can be advanced quickly.
 - If the run is quiet, explain that personality, local strength, territory, and nearby targets affect behavior.
 
@@ -174,6 +227,8 @@ What To Avoid Spending Too Much Time On
 - Do not demonstrate every family, politics, economy, and route feature in one video.
 - Do not open every guide file on screen.
 - Do not chase a rare coordinated attack for too long; explain it if it does not happen naturally.
+- Do not spend all day waiting for a perfect front closure.
+- Do not spend all day waiting for an important-business closure.
 - Do not record a long silent turn-advance section. Cut or summarize if needed.
 
 Fast Demo Flow
@@ -182,9 +237,10 @@ Fast Demo Flow
 - 0-3 minutes: intro, package split, custom assets.
 - 3-8 minutes: loaded save, crew, vehicle, passenger behavior.
 - 8-13 minutes: attack crew UI, spread/targets, on-foot versus vehicle attack setup.
-- 13-22 minutes: move near enemy territory, explain robbery triggers, show boss-only outfit interaction rule.
-- 22-28 minutes: show robbery response toggle and explain prompt versus auto evade.
-- 28-35 minutes: advance a few turns and explain enemy AI pressure expectations.
+- 13-20 minutes: move near enemy territory, explain robbery meeting routes, show boss-only outfit interaction rule.
+- 20-25 minutes: show robbery response toggle and explain prompt versus auto evade.
+- 25-31 minutes: explain front closures, defended fronts, and important-business pressure.
+- 31-35 minutes: advance a few turns and explain enemy AI pressure expectations.
 
 Backup Plan If Robbery Does Not Trigger
 ---------------------------------------
@@ -198,6 +254,23 @@ Backup Plan If Robbery Does Not Trigger
 - Show the boss crew relations toggle anyway.
 - Show the enemy outfit boss and explain that outfit-level robbery interactions should go through bosses.
 - Mention that the system is balanced to avoid constant spam, so not every move produces a prompt.
+
+Backup Plan If Front Closure Does Not Happen
+--------------------------------------------
+
+- Show the front or corner that would be worth defending.
+- Explain that enemies need time to route to the target.
+- Explain that non-boss crew can be used now, but it depends on outfit crew and vehicles.
+- Explain that war heat, relations, outfit personality, and local pressure affect timing.
+- Do not force the whole devlog to wait for it.
+
+Backup Plan If Important-Business Closure Does Not Happen
+---------------------------------------------------------
+
+- Show an important business that would be a valid target.
+- Explain that business closures can now come from war pressure.
+- Explain that the system should avoid stacking too many closures too quickly.
+- Mention that this is one of the beta test items.
 
 Bug/Devlog Note
 ---------------

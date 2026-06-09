@@ -34,6 +34,7 @@ public partial class GameplayTweaksPlugin
 		private static readonly string[] CitySuffixes = new string[]
 		{
 			"-atlantic-city",
+			"-philadelphia",
 			"-pittsburgh",
 			"-cincinnati",
 			"-detroit",
@@ -5767,11 +5768,12 @@ public partial class GameplayTweaksPlugin
 					}
 
 					AddModuleDef def = ModulesUtil.MakeAddModuleDef(config, visit);
-					if (!def.passesVisreqs)
+					if (!def.passesVisreqs && IsCitySpecificIllegalBackroomChoice(config))
 					{
 						continue;
 					}
 
+					def.passesVisreqs = true;
 					defs.Add(def);
 					added++;
 				}
@@ -5814,6 +5816,17 @@ public partial class GameplayTweaksPlugin
 			}
 
 			return true;
+		}
+
+		private static bool IsCitySpecificIllegalBackroomChoice(IModuleConfig config)
+		{
+			string id = config?.Id.String ?? string.Empty;
+			if (string.IsNullOrWhiteSpace(id))
+			{
+				return false;
+			}
+
+			return HasAnySuffix(id.ToLowerInvariant(), CitySuffixes);
 		}
 
 		private static bool HasAddModuleChoice(List<AddModuleDef> defs, Label id)

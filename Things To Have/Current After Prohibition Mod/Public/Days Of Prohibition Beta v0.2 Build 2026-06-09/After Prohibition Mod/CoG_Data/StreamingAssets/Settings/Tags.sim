@@ -1,0 +1,248 @@
+{ tags { 
+
+allTags [
+		tag-inventory-vehicle-car
+		tag-inventory-vehicle-truck
+
+		tag-inventory-small
+		tag-inventory-medium
+		tag-inventory-large
+
+		tag-biz-front		
+		tag-biz-back
+
+		tag-vehicle-module
+
+		;; intro tags
+		tag-biz-cider
+		tag-biz-brick-wine
+		tag-biz-moonshine
+		tag-biz-grow-room
+		tag-biz-cannabis-room
+		tag-biz-large-cannabis-room
+		tag-biz-cannabisdealerlow
+		tag-biz-cannabisdealermid
+		tag-biz-cannabisdealerhigh
+		tag-biz-moneylaunderinglow
+		tag-biz-moneylaunderingmid
+		tag-biz-moneylaunderinghigh
+		tag-biz-moneylaunderingaccount
+		tag-biz-cardealer
+		tag-biz-cardealercraft
+		tag-biz-cardealeroffice
+		tag-biz-jewelrysource
+		tag-biz-jewelryoutsource
+		tag-biz-realtorsource
+		tag-biz-realtoroutsource
+		tag-biz-realtoroutsourcemid
+		tag-biz-talentsource
+		tag-biz-talentoutsource
+		tag-biz-gunprodlow
+		tag-biz-gunprodmid
+		tag-biz-gunprodhigh
+		tag-biz-moneylaunderingteamster
+		tag-biz-moneylaunderingweapons
+		tag-biz-moneylaunderingliquor
+		tag-biz-cannabis-packing
+		tag-biz-coca-room
+		tag-biz-coca-prod
+		tag-biz-opium-process
+		tag-biz-gun-making
+		tag-biz-opium-room
+		tag-biz-joint-packing
+		tag-biz-corn-moonshine
+		tag-biz-home-brew
+		tag-biz-apple-jack
+		tag-biz-fruit-wine
+		tag-biz-homemade-brandy
+		tag-biz-rye-moonshine
+		tag-biz-apple-juice
+		tag-biz-neutral-alcohol
+		tag-biz-malt-syrup
+		tag-biz-grape-juice
+		tag-biz-fake-beer
+		tag-biz-sparkling-cider
+		tag-biz-bathtub-gin
+		tag-biz-fake-wine
+		tag-biz-fruit-brandy
+		tag-biz-corn-whiskey
+		tag-biz-corn-whiskey-barrels
+		tag-biz-makeshift-whiskey
+		tag-biz-makeshift-brandy
+		tag-biz-makeshift-vodka
+		tag-biz-makeshift-rum
+		tag-biz-barrels-whiskey
+		tag-biz-barrels-brandy
+		tag-biz-barrels-vodka
+		tag-biz-barrels-rum
+		tag-biz-amaretto
+		tag-biz-absinthe
+		tag-biz-bottling
+		tag-biz-champagne
+		tag-biz-dark-rum
+		tag-biz-beer-keg
+		tag-biz-aged-whiskey
+		tag-biz-cordials
+		tag-biz-gin
+		tag-biz-ice
+		tag-biz-canada-booze
+
+
+		;; used for matching businesses with installable modules
+		tag-size-small
+		tag-size-medium
+		tag-size-large
+		tag-vert-booze
+		tag-vert-cars
+		tag-vert-gambling
+
+
+		;; modules in residences (not business related)
+		tag-res-gambling
+
+
+		;; skills
+		tag-skills-juice-pressing
+		tag-skills-wine-pressing
+		tag-skills-malt-making
+		tag-skills-neutral-alcohol-conversion
+		tag-skills-smuggled-cigarettes
+		tag-skills-home-brew
+		tag-skills-cider
+		tag-skills-moonshine
+		tag-skills-apple-jack
+		tag-skills-fruit-wine
+		tag-skills-homemade-brandy
+		tag-skills-delivery-unlock
+		tag-skills-improved-brick-wine
+		tag-skills-improved-cider
+		tag-skills-improved-home-brew
+		tag-skills-improved-moonshine		
+		tag-skills-homebooze-bootlegging
+		tag-skills-improved-fruit-wine
+		tag-skill-crocks
+		tag-skill-trap-door
+		tag-skills-basic-bartending
+		tag-skills-brick-wine
+		tag-skills-small-speakeasy
+		tag-skills-supper-club
+		tag-skills-backroom-wine
+		tag-skills-backroom-beer
+		tag-skills-sparkling-cider
+		tag-skills-bathtub-gin
+		tag-skills-fruit-brandy
+		tag-skills-corn-whiskey
+		tag-skills-amaretto
+		tag-skills-absinthe
+		tag-skills-barrel-aging
+		tag-skills-speakeasy
+		tag-skill-vehicles
+		tag-skills-bootleg-whiskey
+		tag-skills-bootleg-brandy
+		tag-skills-bootleg-vodka
+		tag-skills-bootleg-rum
+		tag-skills-whiskey-still
+		tag-skills-brandy-still
+		tag-skills-vodka-still
+		tag-skills-rum-still
+		tag-skills-bourbon-making
+		tag-skills-labels
+		tag-skills-champagne-making
+		tag-skills-dark-rum-making
+		tag-skills-drug-distribution
+		tag-skills-large-drug-distribution
+		tag-skills-moneylaundering
+		tag-skills-moneylaunderingmid
+		tag-skills-moneylaunderinghigh
+		tag-skills-moneylaunderingaccount
+		tag-skills-cannabis-production
+		tag-skills-cannabis-packaging
+		tag-skills-opium-production
+		tag-skills-opium-packaging
+		tag-skills-coca-production
+		tag-skills-coca-packaging
+		tag-skills-weapon-production
+		tag-skills-talent-scout
+		tag-skills-usedcardealer
+		tag-skills-realestate
+		tag-skills-jewelersource
+		tag-skills-brothels
+		tag-skills-fancy-brothels
+		tag-skills-loan-shark
+		tag-skills-beer-kegs
+		tag-skills-aged-whiskey
+		tag-skills-gin-making
+		tag-skills-cordials
+		tag-skills-ice
+		tag-skills-booze-bottling
+		tag-skills-large-club
+
+		;;
+		tag-skills-gambling-numbers			;; small restaurants
+		tag-skills-gambling-cards			;; small restaurants
+		tag-skills-gambling-tables			;; furniture, hardware and lumber
+		tag-skills-gambling-clean-money		;; medium restaurants, food
+		tag-skills-gambling-secret-books	;; larger industrial businesses
+		tag-skills-gambling-high-rollers	;; AC unlock
+
+		;; tags for quest limiting
+		;; use these for triggering quests where the NPC buys booze
+		tag-quest-moonshine-sink
+		tag-quest-home-brew-sink
+		tag-quest-brick-wine-sink
+		tag-quest-cider-sink
+		tag-quest-apple-jack-sink
+		tag-quest-fruit-wine-sink
+		tag-quest-homemade-brandy-sink
+
+		;; improved home booze tags
+		tag-quest-improved-brick-wine
+		tag-quest-improved-cider
+		tag-quest-improved-home-brew
+		tag-quest-improved-moonshine
+
+		;; for player booze consumers
+		tag-quest-bootlegging
+
+		;; for level two booze quests
+		tag-quest-fake-wine
+		tag-quest-sparkling-cider
+		tag-quest-fake-beer
+		tag-quest-bathtub-gin
+		tag-quest-fruit-brandy
+		tag-quest-corn-whiskey
+		tag-quest-amaretto
+
+		;; for bottled booze quests
+		tag-quest-whiskey-bottled
+		tag-quest-brandy-bottled
+		tag-quest-vodka-bottled
+		tag-quest-rum-bottled
+
+		;; canada
+		tag-quest-canada
+		tag-quest-canada-barrels
+		tag-quest-canada-upscale-booze
+
+		;; player legal businesses (Business Mod)
+		tag-player-legal-biz
+		;; small-scale
+		tag-upgrade-legal-grocery
+		tag-upgrade-legal-restaurant
+		tag-upgrade-legal-barber
+		tag-upgrade-legal-florist
+		tag-upgrade-legal-funeral
+		tag-upgrade-legal-cafe
+		tag-upgrade-legal-hardware
+		tag-upgrade-legal-laundry
+		;; large-scale
+		tag-upgrade-legal-cardealership
+		tag-upgrade-legal-realestate
+		tag-upgrade-legal-nightclub
+		tag-upgrade-legal-wholesale
+		tag-upgrade-legal-construction
+		tag-upgrade-legal-gasstation
+		tag-upgrade-legal-jewelry
+
+	]
+} }

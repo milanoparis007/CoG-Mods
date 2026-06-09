@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Text;
 using BepInEx;
 using BepInEx.Bootstrap;
+using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -70,6 +71,7 @@ public partial class GameplayTweaksPlugin : BaseUnityPlugin
 		EnableCompatibilityDiagnostics = ((BaseUnityPlugin)this).Config.Bind<bool>("Diagnostics", "EnableCompatibilityDiagnostics", false, "Emit detailed compatibility verification logs beyond compact breadcrumbs.");
 		EnableRouteSimulatedConvenienceActions = ((BaseUnityPlugin)this).Config.Bind<bool>("VehicleRouteSimulation", "EnableRouteSimulatedConvenienceActions", true, "Allow selected human vehicles that are actively routed to a friendly/neutral business or civic destination to open route-simulated conversations and stage shop buy/sell before physical arrival. Physical arrival remains required for inventory mutation.");
 		EnableCrewOddJobs = ((BaseUnityPlugin)this).Config.Bind<bool>("CrewRelations", "EnableOddJobs", true, "Enable the Crew Relations odd job button. Odd jobs consume half of a crew member's current action points and pay a small weekly clean-cash wage.");
+		DebugAddMurderWitnessHotkey = ((BaseUnityPlugin)this).Config.Bind<KeyboardShortcut>("Debug", "AddMurderWitnessHotkey", new KeyboardShortcut(KeyCode.F10, KeyCode.LeftControl, KeyCode.LeftShift), "Temporary Phase 1 debug hotkey to add one non-federal murder witness to the selected human crew member. Remove before final public push.");
 		VehicleGroupCombatAllowRangedWeapons = ((BaseUnityPlugin)this).Config.Bind<bool>("VehicleGroupCombat", "AllowRangedWeapons", true, "Allow grouped player vehicle attacks to use ranged/firearm weapons from inventory.");
 		VehicleGroupCombatAllowMeleeWeapons = ((BaseUnityPlugin)this).Config.Bind<bool>("VehicleGroupCombat", "AllowMeleeWeapons", true, "Allow grouped player vehicle attacks to use melee weapons from inventory. If both melee and ranged are disabled, grouped attacks fall back to fists.");
 		CompatDisableRetaliationWarWithGangWars = ((BaseUnityPlugin)this).Config.Bind<bool>("Compatibility", "DisableRetaliationWarWithGangWars", false, "Disable GameplayTweaks retaliation-war reconciliation when GangWars is detected.");

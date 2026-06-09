@@ -1,0 +1,851 @@
+{ convos {
+;; interacting with goon npcs
+
+goon-toplevel {
+	npcsays [
+		;{ #type rel-history-with-other-blurb reqs [{ #type check-peep-has-npc-history }] } ;; goons/gangs won't gossip about others
+		{ #type rel-history-blurb reqs [{ #type check-peep-has-player-history }] }
+		{ #type toplevel-start-blurb rootkey "convo.goons.toplevel.start" reqs [{ #type special-toplevel-start firststate #true }] }
+		{ #type relationship-based-blurb rootkey "convo.goons.toplevel.state" }
+	]
+	buttons [
+	{	;; can't talk, there's a cop here
+		visreqs [{ #type check-blocking-cop expected #true }]
+		text	{ key "convo.goons.cop-effect.at-node.button" addmo #true }
+		next	{ goto goon-cop-at-node-start }
+	}
+	{
+		;; you wanted to talk to me about something?
+		visreqs [{ #type check-gang-has-convo-initiative type any }]
+		reqs 	[{ #type check-blocking-cop expected #false }]
+
+		onShow	StoreGangConvoInitiative
+		text	{ key "convo.gangs.initiative" }
+		next	{ #type next-state-chain defs [
+					{ reqs [ { #type check-gang-has-convo-initiative type truce } ] then gang-init-truce }
+					{ reqs [ { #type check-gang-has-convo-initiative type tied-house } ] then gang-init-tied-house }
+					{ reqs [ { #type check-gang-has-convo-initiative type expansion-halt } ] then gang-init-expansion-treaty }
+					{ reqs [ { #type check-gang-has-convo-initiative type joint-war } ] then gang-init-joint-war }
+					{ reqs [ { #type check-gang-has-convo-initiative type stolen-outpost } ] then gang-init-stolen-outpost }
+				] default goon-toplevel }
+	}
+	{	;; Crew Leisure
+		visreqs [
+			{ #type check-is-convo-aggro expected #false }
+			{ #type check-crew-traits has any of [ trait-connected trait-confident trait-friendly trait-sociable ] }
+			 { #type check-owner-relbuffs has none of [ relbuff-gangs-leisure-table-on-finish ] }
+		 ]
+		reqs 	[
+			{ #type check-crew-traits has any of [ trait-connected trait-confident trait-friendly trait-sociable ] }
+			 { #type check-owner-relbuffs has none of [ relbuff-gangs-leisure-table-on-finish ] }
+			]
+
+		text 	{ key "convo.peep-leisure.human" icon "quest.crewleisure.icon" }
+		next	{ goto goon-leisure }
+	}
+	{	;; so what have you got in there?
+		visreqs [ { #type check-crew-role id persuader } ]
+		reqs 	[{ #type check-blocking-cop expected #false }
+				 { #type check-convo-actions has enough }]
+		text { key "convo.goons.persuader-option-ask" addmo #true }
+		next { goto persuader-request }
+		onShow	StoreSafehouseInfo
+	}
+	{	;; goon offered reward in the past
+		visreqs [{ #type goon-loot-is-in-state state offered }]
+		reqs 	[{ #type check-blocking-cop expected #false }]
+		text	{
+			dynkey  [{ #type goon-rewards-offer-button }]
+			dynmo   [{ lockey "convo.goons.rewards.offer.mo" }]
+			dynicon [{ lockey "convo.goons.rewards.offer.icon.qmark" }]
+		}
+		onShow	StoreGoonReward
+		next 	{ goto goon-rewards-start }
+	}
+	{	;; goon offering rewards
+		visreqs [{ #type goon-loot-is-in-state state ready }]
+		reqs 	[{ #type check-blocking-cop expected #false }]
+		text	{
+			dynkey  [{ #type goon-rewards-ready-button }]
+			dynmo   [{ lockey "convo.goons.rewards.ready.mo" }]
+			dynicon [{ lockey "convo.goons.rewards.ready.icon" }]
+		}
+		onShow	StoreGoonReward
+		next 	{ goto goon-rewards-ready }
+	}
+	{	;; goon not offering rewards at this point, maybe later
+		visreqs [{ #type goon-loot-is-in-state state cooldown }]
+		reqs 	[{ #type check-blocking-cop expected #false }]
+		text	{ 	key "convo.goons.rewards.cooldown.say"
+					npc "convo.goons.rewards.cooldown.npc" 
+					icon "convo.goons.rewards.offer.icon.qmark" }
+		next 	{ goto goon-toplevel }
+	}
+	{	;; for thieves only: ask to share loot if friendly
+		visreqs [{ #type check-npc-has-loot }
+				{ #type check-convo-demand-state is notset to defiant }
+				{ #type check-gang-personality is equal-to personality thief }]
+		reqs 	[{ #type check-convo-actions has enough }
+		 	  	 { #type check-goon-relationship is on-good-terms }
+		 	  	 { #type check-blocking-cop expected #false }]
+
+		onShow 	StoreLootDrop
+		text 	{ key "convo.goons.loot-drop.button" icon "convo.goons.loot-drop.icon.qmark" }
+		next 	{ goto goon-loot-drop-start }
+	}
+	{	;; gang moneylaundering
+		visreqs [{ #type check-is-convo-aggro expected #false }
+			{ #type check-current-turn is moreorequalto value 2 }
+			{ #type check-crew-peep-level id levelup-streetcred1 is atleast value 1 }
+			{ #type check-relationship-tickets is moreorequalto value 0 }
+			     { #type check-gang-has-convo-initiative type none }]
+		reqs 	[{ #type check-convo-actions has enough }
+				 { #type check-blocking-cop expected #false }]
+		text	{ key "convo.gangs.dirtycash1.button" icon "quest.loan1.icon" }
+		next	{ goto goon-money-in }
+	}
+	{	;; "let's have a truce"
+		visreqs [{ #type check-gang-conflict-truce expected #false }
+				 { #type check-gang-has-convo-initiative type none }]
+		reqs    [{ #type check-gang-conflict-trucedays }
+				 { #type check-convo-actions has enough }
+				 { #type check-blocking-cop expected #false }]
+		text 	{ key "convo.gangs.truce.button" }
+		next 	{ reqs 	[{ #type check-gang-has-history-element-to-human labelled [ gang-broke-truce ] }]
+				  then	gang-truce-broken
+				  else	gang-truce
+				}
+	}
+	{	;; stop expanding near me
+		visreqs	[ { #type check-is-convo-aggro expected #false }
+			      { #type check-has-expansion-treaty-with-gang expected #false }
+				  { #type check-gang-has-convo-initiative type none }]
+		reqs	[ { #type check-convo-actions has enough }
+				  { #type check-blocking-cop expected #false }]
+
+		text	{ key "convo.gangs.expansion-treaty.button"}
+		next	{ reqs	[{ #type check-gang-has-history-element-to-human labelled [ gang-broke-truce ]}]
+				  then	gang-truce-broken
+				  else	gang-expansion-treaty
+				}
+	}
+	{	;; help me fight this other gang
+		visreqs	[ { #type check-is-convo-aggro expected #false }
+				  { #type check-aggro-gang-exists } 
+				  { #type check-gang-has-convo-initiative type none }]
+		reqs	[ { #type check-convo-actions has enough }
+				  { #type check-blocking-cop expected #false }]
+
+		text	{ key "convo.gangs.joint-war.button"}
+		next	{ reqs	[{ #type check-gang-has-history-element-to-human labelled [ gang-broke-truce ]}]
+				  then	gang-truce-broken
+				  else	gang-joint-war-choose-target
+				}
+	}
+	{	;; stop harassing businesses etc
+		visreqs [{ #type check-npc-harassed }]
+		reqs    [{ #type check-convo-demand-state is notset to defiant }
+				 { #type check-convo-actions has enough }
+				 { #type check-blocking-cop expected #false }]
+		text	{ key "convo.goons.stopharassing-ask" }
+		onShow 	StoreDemandToStopHarassing
+
+		next	{ #type next-state-chain defs [
+					{ reqs [ { #type check-convo-demand-state is set to defiant } ] then goon-defiant }
+					{ reqs [ { #type check-convo-demand-state is set to compliant } ] then goon-paymore }
+				  ] default goon-neutral-stopharassing }
+	}
+	{	;; matchmaker with goon
+		text 	{
+				key "convo.ticket-boost.goon.button"
+				icon "ui.pipicon.social-goon-intro"
+				addmo #true
+			}
+
+		visreqs [{ #type check-can-boost-for-goon } { #type check-relationship-tickets is atleast value 1 }]
+		onClick	StoreTicketBoostGoon
+		next	{ goto ticket-goonin-boost-start }
+	}
+	{	;; so about that favor you owe me (single favor)
+		visreqs [{ #type check-relationship-tickets is equalto value 1 } { #type check-blocking-cop expected #false }]
+		reqs 	[{ #type check-convo-demand-state is notset to defiant }
+				 { #type check-convo-actions has enough }]
+
+		text 	{ key "convo.goon-single-favor-owed" icon "ui.ticket" }
+		next	{ goto goon-redeem-favor-owed }
+	}
+	{	;; so about those favors you owe me (multiple favors)
+		visreqs [{ #type check-relationship-tickets is morethan value 1 }
+				 { #type check-blocking-cop expected #false }]
+		reqs 	[{ #type check-convo-demand-state is notset to defiant }
+				 { #type check-convo-actions has enough }]
+
+		text 	{ key "convo.goon-many-favors-owed" icon "ui.ticket" }
+		next	{ goto goon-redeem-favor-owed }
+	}
+	{	;; attack when they're defiant
+		visreqs [{ #type check-convo-demand-state is set to defiant }]
+		reqs    [{ #type check-convo-actions has enough }
+				 { #type check-blocking-cop expected #false }]
+		text	{ key "convo.goons.fight-defiant.button" icon "convo.goons.fight.icon" }
+		next	{ goto goon-fight-defiant-confirmation }
+	}
+	{	;; gang robbery low
+		visreqs [
+			{ #type check-owner-relbuffs has none of [ relbuff-gangs-robbery1-table-on-finish relbuff-gangs-robbery2-table-on-finish ] }
+			{ #type check-owner-relationship is lessorequalto value 10 }
+			     { #type check-gang-has-convo-initiative type none }]
+		reqs 	[{ #type check-convo-actions has enough }
+				 { #type check-blocking-cop expected #false }]
+		text	{ icon "convo.gangs.robbery.icon" key "convo.gangs.robbery1.button" }
+		next	{ goto goon-robbery-low }
+	}
+	{	;; gang robbery high
+		visreqs [
+			{ #type check-owner-relbuffs has none of [ relbuff-gangs-robbery1-table-on-finish relbuff-gangs-robbery2-table-on-finish ] }
+			{ #type check-crew-peep-level id levelup-hoodsgang is atleast value 1 }
+			{ #type check-owner-relationship is moreorequalto value 1 }]
+		reqs 	[{ #type check-convo-actions has enough }
+				 { #type check-blocking-cop expected #false }]
+		text	{ icon "convo.gangs.robbery.icon" key "convo.gangs.robbery3.button" }
+		next	{ goto goon-robbery-lowsmith }
+	}
+	{	;; unprovoked attack
+		visreqs [{ #type check-convo-demand-state is notset to defiant }]
+		reqs    [{ #type check-convo-actions has enough }
+				 { #type check-blocking-cop expected #false }]
+		text	{ key "convo.goons.fight.button" icon "convo.goons.fight.icon" }
+		next	{ goto goon-fight-confirmation }
+	}
+	{	;; goodbye
+		text 	{ 
+			key "convo.goons.goodbye" 
+			icon "convo.icon-leave" 
+			mo "convo.goodbye-button.mo" 
+		}
+		onClick	Goodbye
+	}
+	]
+}
+
+
+;;
+;; Leisure
+
+		goon-leisure {
+			npcsays [{ lockey "convo.peep.leisure-price.npc" }]
+			buttons [{ 
+				reqs 	[{ #type check-player-cash type current is morethan value 1000 }]
+				text 	{ key "convo.peep.leisure-price.yes" 
+				 		 npc "convo.peep.leisure.yes-epi" 
+				 		 icon "convo.icon-check"
+				}
+				grants [
+		 			{ #type add-rel-buff with player id "relbuff-gangs-leisure-table-on-finish" }
+		 			{ #type add-rel-buff with player id "relbuff-gangs-leisure-buff" }
+					{ #type consume-actions for convo }
+					{ #type add-resource id streetcredit qty 2 at safehouse }
+					{ #type add-xp delta 200 }
+					{ #type add-cash amount -1000 at crew }] 
+				}
+				{	;; goodbye
+					text { key "convo.gangs.fight.cancel" icon "convo.icon-leave" mo "convo.goodbye-button.mo" }
+						onClick	Goodbye
+				}
+			]
+		}
+
+;;
+;; biz request etc
+
+goon-neutral-allowbiz {
+	npcsays [{ lockey "convo.goons.allowbiz-npc" }]
+	buttons [{
+		text 	{ key "convo.goons.allowbiz-say" }
+		onClick	ExecuteConsiderDemand
+
+		grants 	[{ #type consume-actions for convo }]
+		next 	{ 	reqs [ { #type check-convo-demand-state is set to compliant } ] 
+					then goon-compliant else goon-defiant }
+	} {
+		text 	{ key "convo.goons.later" icon "convo.icon-back" }
+		next 	{ goto goon-toplevel }
+	}]
+}
+
+goon-neutral-stopharassing {
+	npcsays [{ lockey "convo.goons.stopharassing-npc" }]
+	buttons [{
+		text 	{ key "convo.goons.stopharassing-say" }
+		onClick	ExecuteConsiderDemand
+
+		grants 	[{ #type consume-actions for convo }]
+		next 	{ 	reqs [ { #type check-convo-demand-state is set to compliant } ] 
+					then goon-compliant else goon-defiant }
+	} {
+		text 	{ key "convo.goons.later" icon "convo.icon-back" }
+		next 	{ goto goon-toplevel }
+	}]
+}
+
+goon-neutral-stopstealing {
+	npcsays [{ lockey "convo.goons.stopstealing-npc" }]
+	buttons [{
+		text 	{ key "convo.goons.stopstealing-say" }
+		onClick	ExecuteConsiderDemand
+
+		grants 	[{ #type consume-actions for convo }]
+		next 	{ 	reqs [ { #type check-convo-demand-state is set to compliant } ] 
+					then goon-compliant else goon-defiant }
+	} {
+		text 	{ key "convo.goons.later" icon "convo.icon-back" }
+		next 	{ goto goon-toplevel }
+	}]
+}
+
+
+;;
+;; generic handlers
+
+goon-defiant {
+	npcsays [{ lockey "convo.goons.defiant-npc" }]
+	buttons [{ 
+		text 	{ key "convo.goons.defiant-say" }
+		next	{ goto goon-fight-confirmation }
+	} {
+		text 	{ key "convo.goons.later" icon "convo.icon-back" }
+		next 	{ goto goon-toplevel }
+	}]
+}
+
+goon-compliant {
+	npcsays [{ lockey "convo.goons.compliant-npc" }]
+	buttons [{ 
+		text 	{ key "convo.goons.compliant-say" }
+		next 	{ goto goon-toplevel }
+	}]
+}
+
+
+;;
+;; paying cash to get extra demands in
+
+goon-paymore {
+	npcsays [{ lockey "convo.goons.paymore-npc" }]
+	buttons [{ 
+		text 	{ key "convo.goons.paymore-say" }
+		next	{ goto goon-paymore-2 }
+	} {
+		text 	{ key "convo.goons.paymore-later" icon "convo.icon-back" }
+		next 	{ goto goon-toplevel }
+	}]
+}
+
+goon-paymore-2 {
+	npcsays [{ lockey "convo.goons.paymore-2-npc" }]
+	buttons [{ 
+		text 	{ key "convo.goons.paymore-2-say" }
+		onShow	StoreDemandPayment
+		next	{ goto goon-paymore-3 }
+	}]
+}
+
+goon-paymore-3 {
+	npcsays [{ lockey "convo.goons.paymore-3-npc" }]
+	buttons [{ 
+		reqs	[{ #type special-can-pay-for-demand }]
+		text 	{ key "convo.goons.paymore-3-agree" npc "convo.goons.paymore-3-agree-epilogue" }
+		
+		onClick	ExecuteDemandPaymentCash
+		grants	[{ #type consume-actions for convo }
+				 { #type add-rel-buff with player id "relbuff-goons-demand-cash" }]
+
+		next 	{ goto goon-toplevel }
+	} {
+		reqs	[{ #type check-relationship-tickets is atleast value 1 }]
+		text 	{ key "convo.goons.paymore-3-favor" npc "convo.goons.paymore-3-favor-epilogue" }
+
+		onClick	ExecuteDemandPaymentTickets
+		grants	[{ #type consume-actions for convo }
+				 { #type add-rel-buff with player id "relbuff-goons-demand-favors" }]
+
+		next 	{ goto goon-toplevel }
+	} {
+		text 	{ key "convo.goons.paymore-3-fail" npc "convo.goons.paymore-3-fail-epilogue" icon "convo.icon-back" }
+		next 	{ goto goon-toplevel }
+	}]
+}
+
+;;
+;; Gang Robbery
+
+goon-robbery-low {
+	npcsays [{ lockey "convo.gangs.rob2.npc" }]
+	buttons [{ 
+		reqs 	[{ #type check-convo-actions has enough }
+			{ #type check-player-has-too-many resource weapon-colt is atleast value 1 }
+			{ #type check-owner-relbuffs has none of [ relbuff-gangs-robbery1-table-on-finish relbuff-gangs-robbery2-table-on-finish ] }
+				{ #type check-blocking-cop expected #false }]
+		text { icon "convo.gangs.robbery.icon" key "convo.gangs.robbery1-price.yes" }
+		next { goto goon-robbery-lowb}
+		}{
+		reqs 	[{ #type check-player-has-too-many resource weapon-pistol is atleast value 1 }
+			{ #type check-owner-relbuffs has none of [ relbuff-gangs-robbery1-table-on-finish relbuff-gangs-robbery2-table-on-finish ] }
+			{ #type check-convo-actions has enough }
+			{ #type check-blocking-cop expected #false }]
+		text { icon "convo.gangs.robbery.icon" key "convo.gangs.robbery1-price.yes" }
+		next { goto goon-robbery-lowb }
+	}]
+}
+
+goon-robbery-lowsmith {
+	npcsays [{ lockey "convo.gangs.rob1.npc" }]
+	buttons [{ 
+		reqs 	[{ #type check-player-has-too-many resource weapon-pistol is atleast value 1 }
+			{ #type check-owner-relbuffs has none of [ relbuff-gangs-robbery1-table-on-finish relbuff-gangs-robbery2-table-on-finish ] }
+			{ #type check-crew-peep-level id levelup-hoodsgang is atleast value 1 }]
+		text { icon "convo.gangs.robbery.icon" key "convo.gangs.robbery2-price.npc" }
+		next { goto goon-robbery-high}
+		}{
+		reqs 	[{ #type check-player-has-too-many resource weapon-colt is atleast value 1 }
+			{ #type check-owner-relbuffs has none of [ relbuff-gangs-robbery1-table-on-finish relbuff-gangs-robbery2-table-on-finish ] }
+			{ #type check-crew-peep-level id levelup-hoodsgang is atleast value 1 }]
+		text { icon "convo.gangs.robbery.icon" key "convo.gangs.robbery2-price.npc" }
+		next { goto goon-robbery-high }
+	}]
+}
+
+goon-robbery-lowb {
+	npcsays [{ lockey "convo.gangs.robbery1-price.npc" }]
+	buttons [{ 
+		reqs 	[{ #type check-convo-actions has enough }]
+		text 	{ key "convo.gangs.robbery1-price.yes" 
+				  npc "convo.gangs.robbery1.yes-epi" 
+				  icon "convo.icon-check"
+				}
+		grants [{ #type consume-actions all #true }
+		 { #type add-rel-buff with player id "relbuff-gangs-robbery2-table-on-finish" }
+		 { #type add-rel-buff with player id "relbuff-gangs-robbery1-buff" }
+		 { #type add-heat-buff-at-node id "heatbuff-gangs-loot1-table-on-finish" instant #true }
+		{ #type add-resource id streetcredit qty 2 at safehouse }
+		{ #type add-resource id robinfo qty 1 at safehouse }
+		{ #type add-cash amount 600 at crew }
+		{ #type add-xp delta 85 }] 
+	}
+	{	;; goodbye
+		text { key "convo.gangs.fight.cancel" icon "convo.icon-leave" mo "convo.goodbye-button.mo" }
+		onClick	Goodbye
+	}
+	]
+}
+
+goon-robbery-high {
+	npcsays [{ lockey "convo.gangs.robbery2-price.npc" }]
+	buttons [{ 
+		reqs 	[{ #type check-convo-actions has enough }]
+		text 	{ key "convo.gangs.robbery2-price.yes" 
+				  npc "convo.gangs.robbery2.yes-epi" 
+				  icon "convo.icon-check"
+				}
+		grants [{ #type consume-actions all #true }
+		 { #type add-rel-buff with player id "relbuff-gangs-robbery2-table-on-finish" }
+		 { #type add-rel-buff with player id "relbuff-gangs-robbery1-buff" }
+		 { #type add-heat-buff-at-node id "heatbuff-gangs-loot1-table-on-finish" instant #true }
+		{ #type add-resource id streetcredit qty 1 at safehouse }
+		{ #type add-resource id robinfo qty 2 at safehouse }
+		{ #type add-cash amount 1000 at crew }
+		{ #type add-xp delta 120 }] 
+	}
+	{	;; goodbye
+		text { key "convo.gangs.fight.cancel" icon "convo.icon-leave" mo "convo.goodbye-button.mo" }
+		onClick	Goodbye
+	}
+	]
+}
+
+;;
+;;
+
+goon-fight-confirmation {
+	npcsays [{ lockey "convo.goons.fight.blurb"}]
+	buttons [
+	{	;; do the deed
+		reqs 	[{ #type check-convo-actions has enough }]
+		text	{ key "convo.goons.fight.confirm" addmo #true }
+		onShow  StoreCombat
+		onClick ExecuteCombat
+		grants [{ #type consume-actions for convo }]
+	}
+	{	;; wimp out (and goodbye)
+		text { key "convo.goons.fight.cancel" icon "convo.icon-leave" mo "convo.goodbye-button.mo" }
+		onClick	Goodbye
+	}
+	]
+}
+
+goon-fight-defiant-confirmation {
+	npcsays [{ lockey "convo.goons.fight-defiant.blurb"}]
+	buttons [
+	{	;; do the deed
+		reqs 	[{ #type check-convo-actions has enough }]
+		text	{ key "convo.goons.fight-defiant.confirm" addmo #true }
+		onShow  StoreCombat
+		onClick ExecuteCombat
+		grants [{ #type consume-actions for convo }]
+	}
+	{	;; wimp out (and goodbye)
+		text { key "convo.goons.fight-defiant.cancel" icon "convo.icon-leave" mo "convo.goodbye-button.mo" }
+		onClick	Goodbye
+	}
+	]
+}
+
+hatchetman-bribe {
+	npcsays [{ lockey "convo.goons.hatchetman.blurb" }]
+	buttons [
+	{	;; goodbye
+		text {
+			key 	"convo.goons.goodbye"
+			icon	"convo.icon-leave"
+			mo		"convo.goodbye-button.mo"
+		}
+		
+		onClick	Goodbye
+	}
+	]
+}
+
+
+goon-loot-drop-start {
+	npcsays [{ lockey "convo.goons.loot-drop.blurb" }]
+	buttons [
+	{	;; accept their offer
+		text { key "convo.goons.loot-drop.accept" addmo #true }
+		onClick ExecuteLootDrop
+		next { goto goon-loot-drop-post-accept }
+		grants [{ #type consume-actions for convo }]
+	}
+	{
+		text { key "convo.goons.loot-drop.later" icon "convo.icon-back" }
+		next { goto goon-toplevel }
+	}
+	]
+}
+
+goon-loot-drop-post-accept {
+	npcsays [{ lockey "convo.goons.loot-drop.post.accept.blurb" }]
+	buttons [
+	{
+		text { key "convo.goons.loot-drop.post.goodbye" }
+		onClick Goodbye
+	}
+	]
+}
+
+goon-loot-drop-post-decline {
+	npcsays [{ lockey "convo.goons.loot-drop.post.decline.blurb" }]
+	buttons [
+	{
+		text { key "convo.goons.loot-drop.post.goodbye" }
+		onClick Goodbye
+	}
+	]
+}
+
+goon-rewards-start {
+	npcsays	[{ #type goon-rewards-offer-blurb }]
+	buttons	[
+	{
+		reqs	[{ #type check-convo-actions has enough }
+				 { #type special-can-pay-for-goon-loot }]
+		grants	[{ #type consume-actions for convo }]
+		onClick	ExecuteGoonRewardStart
+		text	{ key "convo.goons.rewards.accept.confirm" addmo #true }
+		next	{ goto goon-rewards-post-accept }
+		grants	[{ #type consume-actions for convo }
+				 { #type add-rel-buff with player id "relbuff-goons-loot-table-buy-in" }]
+	}
+	{
+		onShow StoreGoonReward ;; so that they can talk about it in post
+		text	{ key "convo.goons.rewards.accept.decline" addmo #true }
+		next	{ goto goon-rewards-post-decline }
+	}
+	]
+}
+goon-rewards-post-accept {
+	npcsays [{ lockey "convo.goons.rewards.post.confirm.blurb" }]
+	buttons [
+	{
+		text { key "convo.goons.rewards.post.goodbye" addmo #true }
+		onClick Goodbye
+	}
+	]
+}
+goon-rewards-post-decline {
+	npcsays [{ lockey "convo.goons.rewards.post.decline.blurb" }]
+	buttons [
+	{
+		text { key "convo.goons.rewards.post.goodbye" addmo #true }
+		onClick Goodbye
+	}
+	]
+}
+
+goon-rewards-ready {
+	npcsays [{ lockey "convo.goons.rewards.ready.blurb" }]
+	buttons [
+	{
+		onShow StoreGoonReward
+		text { key "convo.goons.rewards.ready.confirm" addmo #true }
+		onClick ExecuteGoonRewardTake
+		grants	[{ #type consume-actions for convo }
+				 { #type add-rel-buff with player id "relbuff-goons-loot-table-on-finish" }
+				 { #type add-heat-buff-at-node id "heatbuff-goons-loot-table-on-finish" instant #true }]
+	}
+	]
+}
+
+goon-cop-at-node-start {
+	npcsays [{ lockey "convo.goons.cop-effect.at-node.blurb" }]
+	buttons [{
+		text	{ key "convo.goons.cop-effect.at-node.leave.button" 
+				  icon "convo.icon-leave" mo "convo.goodbye-button.mo" }
+		onClick Goodbye
+	}]
+}
+
+
+
+;;
+;; find out what they've got in their safehouse
+persuader-request {
+	npcsays [ { lockey "convo.goons.persuader-option-ask-npc" } ]
+	buttons [
+		{
+			text { key "convo.goons.persuader-option-ask-player" }
+			
+			grants [{ #type consume-actions for convo }]
+			next 	{ goto persuader-reveal }
+		}
+	]
+}
+
+persuader-reveal {
+	npcsays	[ { lockey "convo.goons.persuader-reveal-resources-npc" } ]
+	buttons	[
+		{
+			text	{ key "convo.goons.persuader-reveal-resources-player" }
+
+			next { goto goon-toplevel }
+		}
+	]
+}
+
+
+;;
+;; getting rid of goons
+
+goon-hireascrew-start {
+	npcsays [{ lockey "convo.goons.hireascrew-1-npc" }]
+	buttons [{ text { key "convo.goons.hireascrew-1-say" } next { goto goon-hireascrew-2 } }]
+}
+
+goon-hireascrew-2 {
+	npcsays [{ lockey "convo.goons.hireascrew-2-npc" }]
+	buttons [{ text { key "convo.goons.hireascrew-2-say" } next { goto goon-hireascrew-3 } }]
+}
+
+goon-hireascrew-3 {
+	npcsays [{ lockey "convo.goons.hireascrew-3-npc" }]
+	buttons [
+		{ 
+			reqs 	[{ #type special-can-execute-goon-buyout }]
+			text 	{ key "convo.goons.hireascrew-3-agree" } 
+		  	onClick ExecuteGoonHireAsCrew 
+			grants	[{ #type consume-actions for convo }]
+		}
+		{ 	
+			text	{ key "convo.goons.hireascrew-3-fail" 
+					  npc "convo.goons.hireascrew-3-fail-epilogue" 
+					  icon "convo.icon-back" } 
+			next 	{ goto goon-toplevel }
+		  }
+	]
+}
+
+
+goon-paytomove-start {
+	npcsays [{ lockey "convo.goons.paytomove-1-npc" }]
+	buttons [{ text { key "convo.goons.paytomove-1-say" } next { goto goon-paytomove-2 } }]
+}
+
+goon-paytomove-2 {
+	npcsays [{ lockey "convo.goons.paytomove-2-npc" }]
+	buttons [{ text { key "convo.goons.paytomove-2-say" } next { goto goon-paytomove-3 } }]
+}
+
+goon-paytomove-3 {
+	npcsays [{ lockey "convo.goons.paytomove-3-npc" }]
+	buttons [
+		{ 
+			reqs 	[{ #type special-can-execute-goon-buyout }]
+			text 	{ key "convo.goons.paytomove-3-agree" } 
+		  	onClick ExecuteGoonPayToMove
+			grants	[{ #type consume-actions for convo }]
+		}
+		{ 	
+			text	{ key "convo.goons.paytomove-3-fail" 
+					  npc "convo.goons.paytomove-3-fail-epilogue" 
+					  icon "convo.icon-back" } 
+			next 	{ goto goon-toplevel }
+		  }
+	]
+}
+
+
+goon-hitman-start {
+	npcsays [{ lockey "convo.goons.hirehitman-1-npc" }]
+	buttons [{ text { key "convo.goons.hirehitman-1-say" } next { goto goon-hitman-2 } }]
+}
+
+goon-hitman-2 {
+	npcsays [{ lockey "convo.goons.hirehitman-2-npc" }]
+	buttons [{ text { key "convo.goons.hirehitman-2-say" } next { goto goon-hitman-3 } }]
+}
+
+goon-hitman-3 {
+	npcsays [{ lockey "convo.goons.hirehitman-3-npc" }]
+	buttons [
+		{ 
+			reqs 	[{ #type special-can-execute-goon-hitman }]
+			text 	{ key "convo.goons.hirehitman-3-agree" } 
+		  	onClick ExecuteGoonHitman
+			grants	[{ #type consume-actions for convo }]
+		}
+		{ 	
+			text	{ key "convo.goons.hirehitman-3-fail" 
+					  npc "convo.goons.hirehitman-3-fail-epilogue" 
+					  icon "convo.icon-back" } 
+			next 	{ goto goon-toplevel }
+		  }
+	]
+}
+
+
+
+;; TICKET SPEND
+;; call in a favor
+
+goon-redeem-favor-owed {
+	npcsays [ { #type rel-type-blurb to player keyroot "convo.ticket-group-soc-npc" } ]
+
+	buttons [
+	{	;; 		"need your support with a common friend"
+		text 	{ key "convo.ticket-npcboost-button" icon "ui.pipicon.social" addmo #true }
+
+		reqs 	[{ #type check-npc-knows-common-friend }]
+	  	onClick ShowTicketBoostPopup
+		;; next state will be advanced in code
+	}
+	{	;; 		"never mind"
+		text 	{ key "convo.ticket-back-button" icon "convo.icon-back" }
+		next 	{ goto goon-toplevel }
+	}
+] }
+
+;; ticket boost - got one
+goon-ticket-npcboost-confirm {
+	; NPC SAYS "we both know X"
+	npcsays [{ lockey "convo.ticket-npcboost-confirm-npc" }]
+	buttons [
+	{	;; 		"let's do it"
+		text 	{ key "convo.ticket-npcboost-confirm-button" 
+				  npc "convo.ticket-npcboost-epilogue-npc" }
+
+		onClick  ExecuteTicketBoost
+		grants	[{ #type consume-tickets count 1 }
+			{ #type consume-actions for convo }
+			{ #type add-xp source from-social }]
+		next 	{ goto goon-toplevel }
+	}
+	{	;; 		"never mind"
+		text 	{ key "convo.ticket-back-button" icon "convo.icon-back" }
+		grants 	[{ #type center-camera-on-building }]
+		next 	{ goto goon-toplevel }
+	}
+	]
+}
+
+;; ticket boost - nobody available
+goon-ticket-npcboost-none {
+	; NPC SAYS "i don't have anyone"
+	npcsays [{ lockey "convo.ticket-npcboost-none-npc" }]
+	buttons [
+	{	;; 		"never mind"
+		text 	{ key "convo.ticket-npcboost-none-button" }
+		grants 	[{ #type center-camera-on-building }]
+		next 	{ goto goon-toplevel }
+	}
+	]
+}
+
+goon-money-in {
+	npcsays [{ lockey "convo.gangs.dirtycash1b-price.npc" }]
+	buttons [{ 
+		reqs 	[{ #type check-player-cash type current is morethan value 550 }]
+		text 	{ key "convo.gangs.dirtycash1b-price.yes" 
+				  npc "convo.gangs.dirtycash1-price.yes-epi" 
+				  icon "convo.icon-check"
+				}
+		grants [{ #type consume-actions all #true }
+		 { #type add-rel-buff with player id "relbuff-gangs-loot5-table-on-finish" }
+		 { #type add-heat-buff-at-node id "heatbuff-gangs-loot1-table-on-finish" instant #true }
+		 { #type add-rel-buff with player id "relbuff-gangs-loot1-buff" }
+		{ #type add-resource id streetcredit qty 2 at safehouse }
+		{ #type add-xp delta 50 }
+		{ #type add-cash amount -550 at safehouse }
+		{ #type add-resource id dirty-cash qty 700 at safehouse }]
+		next 	{ goto goon-toplevel }
+	}
+	{	;; goodbye
+		text { key "convo.gangs.fight.cancel" icon "convo.icon-leave" mo "convo.goodbye-button.mo" }
+		onClick	Goodbye
+		next 	{ goto goon-toplevel }
+	}
+	]
+}
+
+;; ticket goon intro
+	ticket-goonin-boost-start {
+		npcsays [{ lockey "convo.ticket-boost.goon.start.blurb" }]
+		buttons [
+		{
+			text 	{ key "convo.ticket-boost.goon.start.button" }
+			onClick	ExecuteNPCSelectionZoom
+			next	{ goto ticket-goonin-boost-tell-more }
+		}
+		]
+	}
+	
+	ticket-goonin-boost-tell-more {
+		npcsays [{ lockey "convo.ticket-boost.goon.tell-more.blurb" }]
+		buttons [
+		{	;; 		"let's do it"
+			text 	{ key "convo.ticket-boost.goon.tell-more.button" }
+
+			onClick ExecuteTicketGoonBoost
+			grants	[
+					 { #type consume-actions for convo }
+					 { #type add-xp source from-social }]
+
+			;; no next - restart from top level
+		}
+		{	;; 		"never mind"
+			text 	{ key "convo.ticket-back-button" icon "convo.icon-back" }
+			grants  [{ #type center-camera-on-building }]
+			next 	{ goto goon-toplevel }
+		}
+		]
+	}
+
+} }

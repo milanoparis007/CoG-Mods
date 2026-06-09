@@ -1265,6 +1265,12 @@ public partial class GameplayTweaksPlugin : BaseUnityPlugin
 
 	internal const string VerificationLogPrefix = "[VERIFY-HOTFIX]";
 
+	private const int MurderWitnessCaseThreshold = 3;
+
+	private const int MurderWitnessCaseDryRunLogCooldownDays = 1;
+
+	private static readonly Dictionary<string, int> MurderWitnessCaseDryRunLastDayByPeep = new Dictionary<string, int>(StringComparer.Ordinal);
+
 	internal const int AI_PACT_SLOT_COUNT = 4;
 
 	internal const int PLAYER_PACT_SLOT_INDEX = 4;
@@ -4320,6 +4326,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		{
 			return IsCompactRobberyEvent(eventTag, message);
 		}
+		if (ScopeEquals(scope, "MurderWitness"))
+		{
+			return EventStartsWith(eventTag, "murder-witness-") || EventStartsWith(eventTag, "murder-case-");
+		}
 		if (ScopeStartsWith(scope, "GangOps.") || TextContains(scope, "Front") || TextContains(scope, "BusinessClosure"))
 		{
 			return IsCompactFrontPressureEvent(eventTag, message);
@@ -6691,6 +6701,118 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		private static List<CrewAssignment> _crewList = new List<CrewAssignment>();
 
 		internal static object _popupInstance;
+
+		internal static bool TryHandleDebugAddMurderWitnessHotkey()
+		{
+			if (!(DebugAddMurderWitnessHotkey?.Value.IsDown() ?? false))
+			{
+				return false;
+			}
+			try
+			{
+				PlayerInfo humanPlayer = G.GetHumanPlayer();
+				Entity target = FindDebugMurderWitnessTargetPeep(humanPlayer);
+				if (target == null)
+				{
+					VerificationLog("MurderWitness", "murder-witness-debug-blocked reason=no-human-crew");
+					return true;
+				}
+				AddDebugMurderWitness(target, "debug-hotkey");
+			}
+			catch (Exception ex)
+			{
+				VerificationLog("MurderWitness", $"murder-witness-debug-blocked reason=exception error={ex.GetType().Name}:{ex.Message}");
+			}
+			return true;
+		}
+
+		private static Entity FindDebugMurderWitnessTargetPeep(PlayerInfo humanPlayer)
+		{
+			if (humanPlayer?.crew == null)
+			{
+				return null;
+			}
+			if (IsValidDebugMurderWitnessTarget(_selectedPeep, humanPlayer))
+			{
+				return _selectedPeep;
+			}
+			try
+			{
+				if (_crewList == null || _crewList.Count == 0)
+				{
+					RefreshCrewList();
+				}
+				if (_crewList != null)
+				{
+					foreach (CrewAssignment assignment in _crewList)
+					{
+						if (!assignment.IsValid)
+						{
+							continue;
+						}
+						Entity peep = assignment.GetPeep();
+						if (IsValidDebugMurderWitnessTarget(peep, humanPlayer))
+						{
+							return peep;
+						}
+					}
+				}
+			}
+			catch
+			{
+			}
+			try
+			{
+				CrewAssignment boss = humanPlayer.crew.GetCrewForIndex(0);
+				if (boss.IsValid)
+				{
+					Entity bossPeep = boss.GetPeep();
+					if (IsValidDebugMurderWitnessTarget(bossPeep, humanPlayer))
+					{
+						return bossPeep;
+					}
+				}
+			}
+			catch
+			{
+			}
+			return null;
+		}
+
+		private static bool IsValidDebugMurderWitnessTarget(Entity peep, PlayerInfo humanPlayer)
+		{
+			if (peep == null || peep.Id.IsNotValid || peep.data?.person == null || !peep.data.person.IsAlive || humanPlayer?.crew == null)
+			{
+				return false;
+			}
+			CrewAssignment assignment = humanPlayer.crew.GetCrewForPeep(peep.Id);
+			return assignment.IsValid;
+		}
+
+		private static void AddDebugMurderWitness(Entity peep, string source)
+		{
+			CrewModState state = GetOrCreateCrewState(peep.Id);
+			if (state == null)
+			{
+				return;
+			}
+			state.WitnessCount = Math.Max(0, state.WitnessCount) + 1;
+			state.HasWitness = true;
+			state.WitnessThreatAttempted = false;
+			state.WitnessThreatenedSuccessfully = false;
+			int murderWitnesses = GetNonFederalMurderWitnessCount(state);
+			float heatFloor = murderWitnesses >= MurderWitnessCaseThreshold
+				? 0.75f
+				: (murderWitnesses == 2 ? 0.5f : 0.25f);
+			SetLocalHeatProgress(state, Mathf.Max(state.LocalHeatProgress, heatFloor), G.GetNow().days, refreshDecayAnchor: true);
+			string name = peep.data?.person?.FullName ?? "Unknown";
+			VerificationLog("MurderWitness", $"murder-witness-debug-added peep={peep.Id.id} name=\"{name}\" murderWitnesses={murderWitnesses} totalWitnesses={state.WitnessCount} federal={state.FederalWitnessCount} source={source} result=added");
+			LogMurderWitnessCaseDryRun(peep.Id, state, "debug-add");
+			if (_popupVisible && (UnityEngine.Object)(object)_handlerPopup != (UnityEngine.Object)null && _selectedPeep != null && _selectedPeep.Id == peep.Id)
+			{
+				RefreshHandlerUI();
+			}
+		}
 
 		private static readonly string[] ETHNICITY_FILTERS = new string[] {
 			"All", "am", "en", "de", "af", "as", "la", "pl", "ru", "ir",
@@ -18688,6 +18810,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 
 	internal static ConfigEntry<bool> EnableCrewOddJobs;
 
+	internal static ConfigEntry<KeyboardShortcut> DebugAddMurderWitnessHotkey;
+
 	internal static ConfigEntry<bool> VehicleGroupCombatAllowRangedWeapons;
 
 	internal static ConfigEntry<bool> VehicleGroupCombatAllowMeleeWeapons;
@@ -24542,6 +24666,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 				}
 			}
 		}
+		if (CrewRelationshipHandlerPatch.TryHandleDebugAddMurderWitnessHotkey())
+		{
+			return;
+		}
 		if (Input.GetKeyDown((KeyCode)121))
 		{
 			PactOpsHud.TogglePopup();
@@ -24614,6 +24742,46 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		catch
 		{
 		}
+	}
+
+	private static int GetNonFederalMurderWitnessCount(CrewModState state)
+	{
+		if (state == null)
+		{
+			return 0;
+		}
+		return Math.Max(0, state.WitnessCount - Math.Max(0, state.FederalWitnessCount));
+	}
+
+	internal static void LogMurderWitnessCaseDryRun(EntityID peepId, CrewModState state, string source)
+	{
+		if (peepId.IsNotValid || state == null)
+		{
+			return;
+		}
+		int murderWitnesses = GetNonFederalMurderWitnessCount(state);
+		string sourceTag = string.IsNullOrEmpty(source) ? "unknown" : source;
+		bool debugSource = sourceTag.StartsWith("debug", StringComparison.OrdinalIgnoreCase);
+		if (murderWitnesses < MurderWitnessCaseThreshold)
+		{
+			if (debugSource)
+			{
+				VerificationLog("MurderWitness", $"murder-witness-action-current-state peep={peepId.id} murderWitnesses={murderWitnesses} totalWitnesses={state.WitnessCount} federal={state.FederalWitnessCount} threshold={MurderWitnessCaseThreshold} source={sourceTag} result=below-threshold");
+			}
+			return;
+		}
+		int nowDay = G.GetNow().days;
+		string cooldownKey = $"{peepId.id}:{sourceTag}";
+		if (MurderWitnessCaseDryRunLastDayByPeep.TryGetValue(cooldownKey, out int lastDay) && nowDay - lastDay < MurderWitnessCaseDryRunLogCooldownDays)
+		{
+			return;
+		}
+		MurderWitnessCaseDryRunLastDayByPeep[cooldownKey] = nowDay;
+		int minGain = murderWitnesses;
+		int maxGain = murderWitnesses * 3;
+		VerificationLog("MurderWitness", $"murder-witness-case-threshold-check peep={peepId.id} murderWitnesses={murderWitnesses} totalWitnesses={state.WitnessCount} federal={state.FederalWitnessCount} threshold={MurderWitnessCaseThreshold} source={sourceTag} result=eligible");
+		VerificationLog("MurderWitness", $"murder-witness-case-dryrun-start peep={peepId.id} source={sourceTag} result=projected-only");
+		VerificationLog("MurderWitness", $"murder-witness-case-dryrun-gain peep={peepId.id} murderWitnesses={murderWitnesses} minGain={minGain} maxGain={maxGain} source={sourceTag} result=projected-only");
 	}
 
 	private static WantedLevel HeatLevelFromProgress(float progress)

@@ -223,6 +223,7 @@ public partial class GameplayTweaksPlugin
 								SetLocalHeatProgress(orCreateCrewState, Mathf.Max(orCreateCrewState.LocalHeatProgress, 0.25f), G.GetNow().days, refreshDecayAnchor: true);
 							}
 							Debug.Log($"[GameplayTweaks] Witness #{orCreateCrewState.WitnessCount} saw {val.data.person.FullName} commit a kill!");
+							LogMurderWitnessCaseDryRun(val.Id, orCreateCrewState, "kill-stat");
 						}
 					}
 				}
@@ -5120,6 +5121,7 @@ Target:
 			string victimName = victimGang?.social?.PlayerGroupName ?? "a rival boss";
 			LogGrapevine($"LAW: Boss murder by {attackerName} ({victimName}) raised warrant risk.");
 			Debug.Log($"[GameplayTweaks] Boss-murder witness evidence confirmed for {attackerName}");
+			LogMurderWitnessCaseDryRun(attackerPeep.Id, state, "boss-murder");
 		}
 
 		private static bool HasWitnessEvidenceForAttacker(Entity attackerPeep)

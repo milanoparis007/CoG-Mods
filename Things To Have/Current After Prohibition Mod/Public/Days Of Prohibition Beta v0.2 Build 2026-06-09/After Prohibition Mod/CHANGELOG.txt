@@ -1,0 +1,406 @@
+# Current After Prohibition Mod Changelog
+
+## 2026-06-08 Beta v0.1 Build
+
+This beta public build focuses on making enemy pressure feel more physical, readable, and route-based. The old v1.3.98 public package is left intact; this is a separate beta build folder so older builds are not overwritten.
+
+- Enemy robberies now start from a meeting route instead of feeling like an instant background event.
+- Robbery prompts now clean up better when closed, interrupted, or when the player moves too far away.
+- Front closures should be more reliable, with enemies getting more time to reach the target before changing plans.
+- Non-boss enemy crew and multiple vehicles can now take part in front/business pressure more often.
+- Important businesses can now be targeted through war pressure, not only robbery outcomes.
+- Defended fronts, retaliation, truce checks, and combat timing were cleaned up so attacks should happen at more believable moments.
+
+## 2026-06-05 Public Robbery And Log Cleanup Release
+
+This is the cleaned public release pass for the robbery/front-pressure project. The temporary development logging has been gated behind diagnostics toggles while compact first-report breadcrumbs remain available in normal logs.
+
+- Added AI-human robbery/extortion pressure for exposed, weak, or locally pressured human crews.
+- Robbery prompts now resolve at the start of the next human turn, with same-outfit same-turn contacts collapsed to one pending response.
+- Added the boss crew relations robbery response toggle: `Robbery: Prompt` shows the manual prompt, while `Robbery: Auto Evade` suppresses the prompt and lets crews use the standing order.
+- Refusal and evasion outcomes can now lead to payment, important-business pressure, or rare coordinated attack warnings depending on outfit personality, strength, territory pressure, and local aggression.
+- Robbery pair cooldowns now use a six-month window so the same robber outfit cannot immediately spam the same human target after a resolved attempt.
+- Important-business closures now target valid visible shops and forced-closed shops block buy/sell interactions.
+- AI pressure still keeps normal expansion and war logic; robbery is an added pressure route, not the only front/business pressure source.
+- Grouped combat popups now expose clearer controls for `Attack Type`, `On-Foot Crew`, `Range`, and `Targets`, and vehicle targets can include confirmed passengers.
+- Cop-killing cleanup now suppresses no-op residual-aggro logs while keeping real cop-war cleanup evidence.
+- Default logs now suppress routine verification spam, low-ms performance traces, economy batch progress, individual stock-refresh detail, and repeated Dirty Cash correction detail.
+- First bug reports should still include useful compact breadcrumbs for robbery, front/business pressure, combat, route authority, forced shop locks, and true anomalies.
+- Detailed traces are opt-in through `Diagnostics.EnableVerboseVerificationLogs`, `Diagnostics.EnablePerformanceDiagnostics`, area-specific GameplayTweaks diagnostics, and `AfterProhibitionEconomy` runtime diagnostics.
+- Latest live validation with `AfterProhibitionEconomy.dll` timestamp `2026-06-05 12:16:27` showed `0` `purchase-stock-refreshed`, `0` `purchase-stock-refresh-progress`, `0` `empty-business-module-repair-progress`, and `0` `player-legal-business-consumer-runtime` routine lines in default logs.
+- Release package DLL signals: `GameplayTweaks.dll` `2026-06-05 11:16:42` size `2526208`; `AfterProhibitionEconomy.dll` `2026-06-05 12:16:27` size `122880`; `CopKilling.dll` `2026-06-05 11:17:00` size `139776`.
+
+This public build continues from the older Beta/Stable public packages and the Old Beta StreamingAssets baseline. It is a work-in-progress release for people who want to play the expanding After Prohibition systems while they are still being tuned. Expect this to be a journey over the next few months: crew life, pacts, gang wars, route automation, heat, family, and business ownership are all active systems now, and the next passes will keep tightening balance, UI clarity, and edge-case behavior.
+
+## 2026-05-29 Route And AI Stability
+
+- Fixed a delivery route pump-guard case where a vehicle could be deferred forever even though its current command was trying to reach the guarded destination.
+- Clear stale delivery pump guards when a later route command has moved on to a different node.
+- Changed AI attack route authority so off-node attackers only chain movement and attack when vanilla pathing says the target node is reachable with current movement.
+- Attackers without enough movement now queue movement only instead of attacking from an unreachable node.
+- Applied the same current-movement reachability rule to coordinated/runtime gang attacks, so those attacks no longer bypass the scripted attack guard.
+- Runtime gang attack selection now uses vehicle drivers as movement command roots, preventing passenger-owned `CommandGoto` attacks from being rejected as non-driver moves.
+- Coalesced repeated building-pick container layout refreshes during travel-finalize UI updates to reduce route/vehicle refresh hitches.
+- Made custom pact trade relationship-buff startup injection null-safe when shared buff definitions contain malformed entries.
+- Vehicle passengers now join the defensive response when their vehicle is attacked, for both player and AI vehicles.
+
+## 2026-05-17 Turn-End Pause Diagnostics
+
+- Added `GameplayTweaks` command-queue substep performance diagnostics for the remaining turn-end/player-turn-start hard frame.
+- `CommandQueue` logs now report limiter outcome and max substep fields, and slow command substeps log as `[PERF][CommandQueueStep]`.
+- Kept command behavior intact for this phase; the new markers identify whether the next pass should target social-action execution, command start/finish work, or harassment callbacks.
+- Reduced business-module cohort scan cost by caching human-controlled building IDs during sliced system-turn module updates, so non-human deferred cohort checks avoid thousands of building resolves.
+- Tuned only the BusinessTracker system-turn budgets upward modestly so module and relationship-respect slices can finish in fewer frames while staying far below the old hard-stall range.
+- Added a BusinessTracker-specific cheap-continuation cutoff so small follow-up phases can drain in the same frame instead of adding more 100% wait frames.
+- Added active business-module family profiling to the sliced module update totals so the next pass can target the module family that owns the remaining CPU.
+- Disabled that active module-family profiler by default after collecting a live evidence pass, and raised only the BusinessTracker drain budgets slightly to reduce the remaining 100% wait without restoring the earlier full-frame stall.
+- Skipped immediate human quest-request/building-knowledge flushes for AI/non-human social actions after live logs showed `SocialHistoryData.FlushQuestRequests` creating a 200ms-plus `AICommandSocialAction` frame; human-involved social actions still use the vanilla flush.
+- Collapsed manufacture catch-up clamp and optimized inventory-transfer validation logs into low-frequency summaries, keeping the protections while reducing log I/O during large-city business-module slices.
+- Added adaptive large-save BusinessTracker drain budgets for cities above 120 players or 10,000 businesses, reducing the number of 100% tail frames while leaving smaller-save defaults unchanged.
+- Deferred due-day AI snitch intake into small post-return batches and split the former `crew-and-snitch` timing marker so snitch collection no longer scans every AI gang in the same human turn-start frame.
+- Suppressed repeated human automation `CommandAutomationStep` null-reference stack spam and stop stale broken automation sequences after logging one compact diagnostic, reducing turn-return log I/O and input hitching.
+- Added `SimulationManagerSlice phase=total` CPU/gap/profile diagnostics so the remaining 100% wait can be separated into actual submanager work versus delayed slice resumes.
+- Allowed the small post-BusinessTracker simulation tail to drain in the same bounded frame, avoiding a proven multi-second pending-resume gap after BusinessTracker had already finished.
+- Preserved that post-BusinessTracker tail-drain decision across the generic frame-budget gate so the small tail is not yielded immediately after being approved to continue.
+- Extended the same bounded drain window to the final cheap simulation tail after Politics, preventing a second proven multi-second pending-resume gap at `nextSubmanager=4`.
+- Fixed the large-save budget detector so 10k-business saves use the larger BusinessTracker frame budgets even when player count is below 120.
+- Added V2 mod-save write deduping and timing breakdowns so repeated unchanged turn saves can skip atomic disk writes and future save hitches show serialization versus disk cost.
+- Added focused `TerritoryAdvisor` and `TerritoryPotentials` timing diagnostics after the latest logs showed the largest remaining pause moved to a single AI territory update frame rather than the system-turn tail.
+- Added focused AI trade-takeover callback diagnostics after the latest live run moved the largest remaining blocking player frame to `AICommandBuildingCallback:TradeCallback`.
+- Replaced sliced BusinessTracker module-update owned-business list materialization with a direct `_bizCacheAll` scan, avoiding the latest measured `GetAllBizWithOwnersUnsafe().ToList()` spike during turn-end module updates.
+- Deferred the human-turn-start mod-data save out of `PlayerCrew.OnPlayerTurnStarted` so the 100% handoff queues persistence and flushes it later from the interactive update loop after input/UI maintenance clears.
+- Added casino takeover substep diagnostics after live logs showed `BusinessAdvisor.TryTakeOverCasino` owning a 233ms AI `TradeCallback` frame.
+- Cached non-human runtime `PlayerSetup` use for AI casino-manager generation after diagnostics showed `CreatePlayers.CheatGenerateCrewForPlayer` owning the repeated casino takeover frame.
+- Replaced that lazy casino-manager `PlayerSetup` cache with a direct non-human runtime crew selector after live logs showed the cache build still landing inside the same 210ms AI callback frame.
+- Optimized the direct casino-manager selector by caching politician IDs per turn, avoiding a linear `PoliticsManager.GetPoliticianData` scan for every tracked person.
+- Raised only the large-save BusinessTracker drain budgets after live logs showed the remaining 100% wait was mostly 100ms-plus resume gaps between bounded BusinessTracker slices, not one hard CPU frame.
+- Added a large-save-specific business-module update cap and slightly higher large-save drain budgets so 10k-business saves can finish the module pass in fewer slices instead of stopping at the normal 8,192 update cap.
+- Cached V2 mod-save serializer fields after live logs showed the remaining hard turn-return hitch had moved to deferred save serialization, reducing repeated reflection metadata discovery during `TweaksSave serializeMs`.
+- Let cheap system-turn and simulation setup slices drain together, and raised only the large-save BusinessTracker tail budget so the post-module tail can finish without an extra 100% resume wait.
+- Added large-save-only simulation boundary drain windows so cheap setup can continue into BusinessTracker and the cheap post-BusinessTracker tail can finish without another delayed resume, while keeping the business-module loop budget capped.
+- Raised only the large-save BusinessTracker/module budgets slightly after live logs showed the remaining slow turns were near-miss `BusinessUpdateModules` passes spilling a `56-58ms` CPU pass into a second delayed resume.
+- Added a large-save-only final BusinessTracker tail drain after live logs showed the remaining bad turns yielding right after `UpdateHeatFromBusinesses`, avoiding a 100%-progress resume gap before the final heat/respect recalculation.
+- Added a large-save-only post-relationship BusinessTracker tail drain after live logs showed the remaining first post-load outlier yielding during `UpdateRespectFromRelationships` with low CPU but high resume wall time.
+- Raised the large-save final BusinessTracker tail cap after the first post-load outlier moved later to `UpdateHeatFromBusinesses`, where the pending resume cost was much larger than the remaining final recalculation work.
+- Raised the large-save post-BusinessTracker simulation-tail cap after the first post-load system turn finished BusinessTracker in one slice but still yielded before the tiny Politics/Relationship/Cop/ResEvent tail.
+- Split deferred alliance/pact/gang-ops stages across separate update frames and queued their final mod-data save after live logs showed the remaining turn-return hitch was post-return deferred work, not the old system-turn 100% pause; queued mod-data saves now wait for a human active turn before flushing.
+- Raised the interactive turn synchronization advance cap from one to four cheap player advances per frame, reducing total skipped-turn wait through large AI player lists while keeping the existing frame-budget and system-turn isolation guards.
+- Raised only the large-save non-human business-module cohort count from eight to twelve so 10k-business saves process fewer AI-owned modules per weekly system turn, reducing the remaining BusinessTracker frame without changing human-owned business updates.
+- Let the cheap system-turn setup/heatmap prelude continue into the simulation handler in the same synchronized frame, reducing the remaining wall-clock wait between system-turn slices while leaving BusinessTracker budgets unchanged.
+- Added an AI-only aggregate `CommandExecutor` tuple limiter with a rotating cursor so one non-human player with many queued crew commands cannot process every tuple in the same turn-start frame.
+- Raised the large-save-only non-human business-module cohort count from twelve to sixteen after the command limiter moved the remaining repeated pause back to BusinessTracker system-turn module updates.
+- Increased the human-turn-start deferred mod-save delay so it can coalesce with later deferred alliance/pact/gang-ops saves instead of causing separate post-return disk-write hitches.
+
+## 2026-05-14 Release Package Alignment
+
+- Rebuilt the active split-plugin set and restaged matching DLLs across the active root package, Personal package, Public root package, and existing nested Public package copy.
+- Added the missing `AfterProhibitionPolitics.dll` to the active root package and root Public package so the packaged plugin set now matches the guide's expected split-module list.
+- Restaged the current `AfterProhibitionAssets` image manifest and images folder beside each packaged `AfterProhibitionAssets.dll`.
+- Added city-generation and startup performance timing so slow 1871-to-1920 simulation stages log as `[PERF][CityGenStage]`, and the post-citygen 89% setup path logs as `[PERF][StartupStage]`.
+- Cached repeated dirty-cash module update reflection and AfterProhibitionEconomy ownership bridge checks used by business-tick safety sweeps.
+- Added a citygen-only marriage matching fast path so the generated-year pass does not rescan and sort the same bachelor pools for every due marriage near 1918-1920.
+- Added a citygen-only birth schedule so generated-year birth processing walks only due parents instead of scanning the full generated population every year.
+- Updated `GameOptimizer` large-map board loading so adaptive load batching applies to New York-sized maps, terrain mesh yield batching stays active while visual fidelity is preserved, and slow board setup steps log as `[PERF][BoardStep]`.
+
+## 2026-05-13 AfterProhibitionEconomy Runtime Sweep Phase 1
+
+- Added `AfterProhibitionEconomy` 0.9.4 Dirty Cash runtime sweep source classification bridge.
+- Added `OwnsDirtyCashRuntimeSweepClassification()` and `GetDirtyCashRuntimeSweepSummary(string source)` so GameplayTweaks can report the remaining runtime sweep boundary without moving mutation yet.
+- Updated the GameplayTweaks economy delegation verification line to report `dirtyCashRuntimeSweeps=bridge-available` when the Economy bridge is present.
+- Kept actual Dirty Cash runtime sweep execution in GameplayTweaks for live validation; this phase is read-only ownership/logging only.
+- Follow-up: added `AfterProhibitionEconomy` 0.9.5 player legal business consumer classification bridge with `OwnsPlayerLegalBusinessConsumerClassification()` and `GetPlayerLegalBusinessConsumerSummary(EntityID buildingId, string moduleId)`.
+- Updated the GameplayTweaks economy delegation verification line to report `playerLegalBusinessConsumer=bridge-available` while actual consumer update execution remains in GameplayTweaks.
+- Staged matching `AfterProhibitionEconomy.dll` and `GameplayTweaks.dll` updates in the active root package, Personal package, Public root package, and existing nested Public package copy. Past Build was left unchanged.
+
+## 2026-05-13 AfterProhibitionCompatibility DLL Detection
+
+- Added `AfterProhibitionCompatibility` 0.7.0 Phase 1 all-plugin-DLL audit logging.
+- New `external-dll-audit` diagnostics separate known external compatibility DLLs, unknown external DLLs, and local After Prohibition/mod-suite DLLs without invoking external plugin code.
+- Added `GetExternalDllAuditSummary()` for reflection-safe bridge diagnostics.
+- Follow-up: added `AfterProhibitionCompatibility` 0.7.1 Dirty Cash DLL checks that separate Dirty Cash Economy DLL/GUID detection, Dirty Cash Volume Fix detection, active Harmony owner patches, and the protection decisions driven by those signals.
+- Follow-up: added `AfterProhibitionCompatibility` 0.7.2 10K/UI enhancer checks that separate direct 10K DLL/token signals, direct PIA UI Enhancer GUID/DLL signals, menu/sidebar tokens, launcher contribution, and route/button/menu protection reasons.
+- Follow-up: added `AfterProhibitionCompatibility` 0.7.3 election/core cheat checks that distinguish core cheat menu presence from election-state and boss-state blockers, with bridge methods for election-specific and boss-specific protection checks.
+- Follow-up: added `AfterProhibitionCompatibility` 0.7.4 territory/gang-war checks that separate GangWars behavior authority, TerritoryExpansion/MafiaHierarchy visual risk, and ticker/outpost UI ownership, with bridge methods for each protection surface.
+- Staged `AfterProhibitionCompatibility.dll` in the active root package, Personal package, Public root package, and existing nested Public package copy. Past Build was left unchanged.
+
+## 2026-05-13 AfterProhibitionFamily Business-Owner Safety Hotfix
+
+- Added `AfterProhibitionFamily` 0.8.0 Phase 1 family-safety classification for business-owner replacement and hiring safeguards.
+- Kept actual owner replacement, hiring execution, business mutation, and economy behavior in `GameplayTweaks`, with a reflection bridge into the Family plugin when it is present.
+- Blocked business-owner and residence-assigned people from Family spouse candidate scoring so shop/business ownership state is not mixed into spouse search.
+- Follow-up: made Family business-owner safety diagnostic-only by default in `GameplayTweaks` and guarded the vanilla potential-owner cache so exhausted owner pools do not block new-game map startup.
+- Follow-up: added `AfterProhibitionFamily` 0.8.1 startup dead-relationship cleanup chunking so large generated dead-reference cleanup runs in bounded passes instead of one post-load sweep.
+- Follow-up: added `AfterProhibitionFamily` 0.8.2 spouse/future-child validation so invalid pending child entries are removed before vanilla birth processing can throw or create invalid children.
+- Follow-up: scoped new-game safehouse reconciliation so it only repairs human business-safehouse startup setup and skips if a different valid safehouse already exists, preserving true relocation/handoff cases.
+- Follow-up: added a `GameplayTweaks` Family ownership audit log that now includes future-kid validation delegation while keeping safehouse repair, business-owner mutation, hiring execution, and economy ownership explicit.
+- Staged matching `AfterProhibitionFamily.dll` and `GameplayTweaks.dll` updates in the active root package, Personal package, and Public package. Past Build was left unchanged.
+
+## 2026-05-13 AfterProhibitionUI Stabilization
+
+- Staged the standalone `AfterProhibitionUI.dll` plugin with the current public package.
+- Moved UI-only crew-pick stale portrait cleanup, connection-card null guards, crew HUD refresh scheduling, aggro crew-pick refresh scheduling, popup docking, retheme bridging, crew inspect relation buttons, crew-sidebar jail visuals, and crew-management jail text visuals into `AfterProhibitionUI`.
+- Kept gameplay state, route authority, custody rules, hostile vehicle reconciliation, pact color semantics, action execution, economy, politics, family behavior, and shop logic in their existing gameplay owners.
+- Updated `GameplayTweaks` diagnostics so the aggro crew-pick refresh patch reports `scheduler=AfterProhibitionUI fallback=GameplayTweaks` when the UI bridge is present.
+- Hardened popup docking so duplicate dock requests are coalesced and oversized modal panels are centered instead of being left partly offscreen.
+- Hardened the retheme bridge so portrait, preview, map, sprite, logo, stamp, deco, pattern, and likely asset-backed images are skipped while panel/button retheme remains delegated.
+- Reduced no-op startup `AggroUI` flush detail while preserving useful dirty/reconcile diagnostics.
+- Latest live validation showed `uiRetheme=delegated`, `crewHudRefresh=delegated`, `aggroUiRefresh=delegated`, and no repeated `CrewPick.go` resolver warnings in the checked log tail.
+
+## 2026-05-12 Family System Split
+
+- Added the standalone `AfterProhibitionFamily.dll` plugin so family and relationship behavior can move out of `GameplayTweaks` in controlled phases.
+- Moved spouse safety, spouse search, pregnancy scheduling bridge, startup parent/generated-person fallback, and dead relationship cleanup into `AfterProhibitionFamily`.
+- Kept UI prompts, crew relationship buttons, safehouse/business startup repair, hiring menus, route logic, economy behavior, and politics behavior outside the Family plugin.
+- Added startup relationship audits that wait for pending dead-relationship cleanup before reporting counts; latest validation showed cleanup reduced dead relationship references to `deadRefs=0`.
+- Added a `GameplayTweaks` delegation summary log showing Family ownership for spouse safety, spouse search, pregnancy bridge, startup generation, and dead cleanup.
+- Staged `AfterProhibitionFamily.dll` with the current Personal and Public release plugin folders.
+
+## 2026-05-05 Route Mode Indicator Pass
+
+- Added route-mode text to crew-sidebar vehicle cards so muscle, delivery, and unassigned-vehicle cards can show `[In route]`, `[Arriving]`, or `[At corner]`.
+- Reused the route authority state from the long-distance movement fixes instead of reintroducing business glow as an arrival signal.
+- Added route-in shop staged-order arrival commit: staged buy/sell orders now revalidate strict physical arrival, driver, building, business, resource, and vanilla buy/sell constraints before executing once on arrival.
+- Added clearer staged-shop diagnostics for replaced staged orders and route-in buy/sell buttons whose picker context cannot open.
+- Bridged route-in shop staging when the remembered conversation node differs from the shop frontage node, and added an immediate commit attempt for orders staged after the segment-arrival callback already fired.
+- Preserved route-in staged shop orders when the active route advances from the remembered conversation node to the staged shop's frontage/access node, so the staged order is not cleared before arrival.
+- Deferred staged shop commit when the segment-arrived callback fires before strict physical presence is available, then retried commit after pending travel clears with recent-finalized route authority.
+- Added a scoped bypass for the generic buy/sell physical gate while a prevalidated staged shop order executes its internal vanilla buy/sell call, preventing staged commits from blocking themselves.
+- Made route-in shop staging transient-only across save/load: staged orders, remembered route-in nodes, and open staging pickers are cleared on load or new-game reset instead of carrying stale route-shop state into another session.
+- Added deduped route-mode label diagnostics so the next run can verify `[In route]`, `[Arriving]`, and `[At corner]` crew-card states against route start, queued resume, segment arrival, and final arrival.
+- Validated route-mode labels in live logs and clarified route policy: old/departure-node actions remain blocked as route-out, while the committed next destination can open route-sim business conversation and stage buy/sell as route-in.
+- Added `VehicleRouteSimulation.EnableRouteSimulatedConvenienceActions` so route-simulated destination conversations and staged shop orders can be disabled from config without changing normal physical-arrival interactions.
+- Validated the default-on route-sim convenience path with the Phase 6B build live: route-in business conversation, staged picker, staged shop commit, queued-resume route labels, and final-arrival labels all appeared in the latest log.
+- Deduped repeated `building-node-preview-blocked` diagnostics while vehicles are correctly blocked from using route-preview nodes as physical presence.
+- Hardened deferred all-player outpost target-respect refresh so stale player/outpost/target entries are skipped with diagnostics instead of aborting the full human territory refresh pass.
+- Deduped stale outpost target-respect skip diagnostics by player/reason so old saves with many stale target entries do not flood the log during load refresh.
+- Cleaned up the route-in staged shop picker return path so it uses the exact `JumpToConvoState(Label, ConvoData)` signature instead of producing a Harmony method lookup warning after a staged order completes.
+- Validated the 2026-05-06 route video/log pass: old/departure shop buy/sell stays blocked as `route-out-wrong-shop`, while the committed next destination can still stage and commit a route-in shop order on arrival.
+- Validated the route-sim convenience config-off path: when `VehicleRouteSimulation.EnableRouteSimulatedConvenienceActions=false`, route-in business conversations and staged shop orders wait for physical arrival, while route labels and strict wrong-shop blocking still work.
+- Continued route handoff validation: a queued route resumed and reached its final node without a loop, while a later queued final goal was still pending at the end of the latest log and remains the next long-run item to verify.
+- Added `route-resume-watchdog` diagnostics before queued route resume path rebuilds, so long-run logs show the committed node/source used for each pending final goal before any resume, defer, block, or clear result.
+- Blocked vanilla same-route `StartDriving` callbacks from interrupting an active queued-resume segment, preventing the route from being reset into a same-node segment after the mod already resumed toward the next hop.
+- Clarified queued-resume diagnostics so intermediate-hop waits now log `segment-committed-awaiting-resume` when the final goal is still ahead, separating normal next-turn resume from a true same-node final-goal loop.
+- Added a delivery-route arrival pump so automated routes can continue spending remaining AP/movement after a vehicle physically reaches a stop, restoring vanilla-style multi-front/resource route progression without loosening manual physical-presence UI guards.
+- Tightened the delivery-route pump after live validation: active delivery routes can repeat legitimate same-day legs without being cleared as `requeue-suppressed`, and the pump now waits when a queued resume still owns the next movement leg.
+- Validated the tightened delivery-route pump in live logs: same-day delivery legs now continue through `route-requeue-allowed`, pause at queued-resume boundaries with `delivery-route-pump-wait`, and then resume movement instead of clearing the route.
+- Added route-sim convenience config state to the startup verification log so route-in shop access can be diagnosed as enabled, disabled by config, or blocked by route authority.
+- Allowed multiple route-in staged shop orders per vehicle: different resources or buy/sell directions can now remain queued together for the same destination, while staging the same shop/resource/direction again replaces only that matching order.
+- Added a Shift-click route-in destination opener for business building picks, limited to the selected human vehicle's active route-in access node, so the player has an intentional way to open the next destination without relying on business glow.
+- Added a cheap HUD readiness gate before deferred load-time territory refreshes, preventing repeated all-player outpost and territory-color recomputation while the save has loaded but the map pick manager is not ready yet.
+- Collapsed routine per-crew loyalty turn diagnostics into a daily summary, keeping individual logs only for actual loyalty decay events so fast turn skipping does less log I/O.
+- Scrubbed stale scavengeable vehicle references before precinct AI request generation and reduced load-postfix territory refreshes to one ready pass, cutting first-turn exception churn and repeated territory recomputation after loading.
+- Collapsed loyalty decay diagnostics fully into the daily loyalty summary and limited low-happiness morale popup refreshes to one crew member per in-game day, reducing mid-turn UI and log churn when many crew are unhappy.
+- Reduced remaining post-load turn hitch suspects by making morale/crew popup docking idempotent, caching territory color refresh reflection, coalescing same-frame territory color refreshes, and staggering gang-collapse full territory rebuilds away from immediate turn completion; TweaksSave performance logs now include elapsed milliseconds.
+- Replaced gang-death deferred territory full rebuilds with targeted defeated-gang territory/building cleanup when possible, avoiding the 3,796-node full-board recompute when the rebuild would report zero ownership switches.
+- Tightened the targeted gang-collapse cleanup follow-up so neutral-claim/reconcile work runs only on the defeated gangs' affected nodes and skips the full-board territory audit for that targeted case.
+- Summarized enemy vehicle representative-swap diagnostics by in-game day/source instead of writing one verification line per AI vehicle swap, reducing turn-skip log I/O during loyalty exits and transfer churn.
+- Cleared deferred territory/outpost diagnostic state on save-load reset, ignored load-postfix outpost drops as rebuild triggers, and skipped the full territory ownership audit after normal load refreshes to reduce overwritten-save post-load stutter.
+- Reduced federal-arrest UI hitching by skipping broad police crew-pick refreshes during direct-arrest UI flushes, deduping same-frame jail reconcile logs, guarding the booze auto-smuggle popup refresh, and forcing sidebar jail bars for crew in deferred safe-federal custody.
+
+## 2026-05-04 Street Credit Load and Route Preview Pass
+
+- Normalized saved street-credit progress on load without minting safehouse `streetcredit` resources again.
+- Cleared stale loaded political-bribe state when the saved bribe has no valid future expiration day.
+- Added safehouse-cash guards to political favor use, matching the political and judge bribe payment checks.
+- Stopped long-distance vehicle travel from refreshing business/corner glow previews against remote route goals while the vehicle is still in transit.
+- Switched active travel display authority to the current segment target node instead of the final route goal, so route UI follows where the vehicle is actually going next.
+- Started route-simulated convenience access with healing: wounded vehicle occupants can be healed when the vehicle is actively routed to a safehouse or controlled building, while cargo/storage actions remain physical-only.
+- Deduped repeated route-sim access/healing diagnostics so long validation runs keep useful route logs without flooding the log file.
+- Started route-simulated business/civic conversations from the committed route destination, while crew/enemy/combat and storage/cargo paths remain tied to physical arrival.
+- Tightened owned-business storage transfer access to use the vehicle's actual snapped world position, so logical route movement cannot keep storage loading/unloading open while the car is still driving.
+- Added shop buy/sell guards so route-simulated business conversations cannot immediately move goods or cash unless the vehicle is physically at that shop.
+- Added route-in shop staging design notes and a `route-shop-stage-blocked` validation log for buy/sell attempts that are correctly identified as future staged route-in actions.
+- Started the route-shop staged-order lifecycle with vehicle-scoped state, destination-change clearing, route-clear clearing, and arrival commit logging.
+- Suppressed repeated owned-business footer refresh exceptions when inventory views are intentionally in no-vehicle/view-only state.
+- Started route-in shop staging from the buy/sell picker: route-sim business conversations now remember the route-in shop node, and matching buy/sell picker choices can stage an order instead of immediately moving cash or goods.
+- Added `route-shop-stage-miss` diagnostics for blocked buy/sell clicks that do not qualify for route-in staging, including expected/final route nodes and mismatch reasons.
+- Preserved route-in shop memory through segment completion for a short window, so buy/sell staging can still open during the logical-arrival/visual-arrival gap; route-out and destination changes still clear it.
+- Added route-in staged-picker outcome diagnostics for empty-quantity rejection, player cancellation, and route-out/destination-change abandonment while the picker is open.
+
+## 2026-05-04 Bribe Cash Guard and Dirty-Cash Source Logging
+
+- Disabled political and judge bribe buttons unless the player safehouse can pay the full clean-cash cost.
+- Added backend safehouse-cash guards for political bribes and judge bribes so the bribe state cannot activate after a failed spend.
+- Added verification logs for blocked and paid political/judge bribes.
+- Added source logging for large dirty-cash additions, including safebox moves, pact trades, gang money-in, money-prefix conversion, and Dirty Cash Economy compatibility routing.
+- Confirmed the current authored `Modules.sim` contains legitimate dirty-cash production recipes at and above `$10,000`, so the new logs identify whether the next jump is recipe output or a separate bug.
+
+## 2026-05-03 Retainer 10k and Old-Save Cooldown Pass
+
+- Added a `$10k` lawyer retainer button next to the `$1k` retainer button.
+- Reused the safehouse-cash affordability guard for both `$1k` and `$10k` retainer payments.
+- Added retainer payment-applied verification logs so stream logs show the exact amount accepted.
+- Clamped old-save odd-job cooldown dates when they are ahead of the current save day, preventing hundreds-of-days wait displays.
+- Added a federal-countdown verification log that states when a crew member is being tracked because local heat reached High.
+
+## 2026-05-03 Retainer and Remote Action Stability Pass
+
+- Blocked enemy crew conversation/action UI from opening when the player vehicle is only routed to the corner but has not physically arrived.
+- Added a backend retainer cash guard so lawyer retainers only increase after the player safehouse can actually pay the $1000 spend.
+- Disabled the Add Retainer button when the player does not have enough safehouse cash for the next $1000 retainer payment.
+- Cleared stale crew-pick text during invalid enemy vehicle pick teardown to reduce lingering on-map portrait artifacts.
+- Added `docs/ai/retainer-delivery-input-dll-plan.md` for the follow-up 10k increments, custom delivery input, resource search, and residential-event verification pass.
+
+## 2026-05-03 Residential Event Stability Pass
+
+- Re-enabled the Cincinnati bourbon residential events now that their localization exists.
+- Fixed bourbon residential event intro localization keys from `npcintro` to `npc-intro`.
+- Added GameplayTweaks diagnostics when the residential-event favor button is hidden, with log reasons for missing host NPCs, missing nearby event residences, or no passing event requirements.
+- Added recovery guards for residential event result generation so missing target NPCs no longer break the result blurb or event payoff flow.
+
+## 2026-04-30 Public Build
+
+### Live Log Check
+
+- Latest live logs did not show the old delivery-route movement interruption loop.
+- Final-goal route commands now defer while a vehicle is actively arriving instead of cancelling the current travel step.
+- Scopeout, wrong-corner rejection, safehouse access filtering, odd-job pay, loyalty turns, pact/gang operations, WarHeat, and CopKilling safety passes are all writing verification logs.
+- Known non-blocking runtime note: `CopKilling AttackAdvisor.OnTurnUpdate swallowed exception during cop-war stabilization` can still appear, but it is caught by the safety wrapper instead of crashing the game.
+- Current route expansion logs can show `expanded=0 skippedNoCorner=...` when the enabled fronts have no valid next expansion corner. That means the route system ran, but there was nowhere legal to expand from that set of fronts.
+
+### StreamingAssets Changes Since Old Beta
+
+The current package keeps the same main StreamingAssets layout as Old Beta, with content changes in these areas:
+
+- `Entities\Buildings.sim`
+- `Entities\Businesses.sim`
+- `Entities\Modules.sim`
+- `Loc\en.txt`
+- `Loc\ko.txt`
+- `Maps\Atlantic-City.sim`
+- `Maps\Chicago.sim`
+- `Maps\Cincinnati.sim`
+- `Maps\Detroit.sim`
+- `Maps\New-York.sim`
+- `Maps\Philadelphia.sim`
+- `Maps\Pittsburgh.sim`
+- `Settings\AI.sim`
+- `Settings\Buffs.sim`
+- `Settings\Gambling.sim`
+- `Settings\People.sim`
+- `Settings\Quests.sim`
+- `Settings\ResEvents.sim`
+- `Settings\Schemes.sim`
+- `Settings\Skills.sim`
+- `UI\ConvoBiz.sim`
+- `UI\ConvoCrew.sim`
+- `UI\ConvoGangs.sim`
+- `UI\ConvoGoons.sim`
+
+The practical content changes inside those files are:
+
+- Buildings and businesses:
+  - bank fronts were moved toward the new bank-counter setup and the Philadelphia-style medium bank building;
+  - bank building placement is now handled through controlled civic-style map buckets instead of generic commercial lot spam;
+  - funeral-home starter businesses can now appear outside New York at a lower population gate;
+  - several businesses now seed legal-front modules such as grocery, florist, funeral, and bank counter instead of generic placeholder storage;
+  - deli/home-booze style businesses now seed bootlegger home-booze source modules;
+  - some player takeover blockers and extreme population gates were reduced so legal fronts and ownership paths can show up earlier;
+  - tobacco/front configuration was retargeted toward the newer tobacconist setup.
+- Modules:
+  - added/retargeted `flavor-bank-counter` for bank-style fronts and permit/account sourcing;
+  - added/retargeted employment-agency style content for labor, talent, and staffing resources;
+  - expanded legal-front module references under the `player-legal-*` naming path, including grocery, restaurant, barber, florist, funeral, cafe, hardware, laundry, car dealership, real estate, wholesale, contractor, gas station, jewelry, hotel, liquor, pub, movie theater, pawnshop, law office, record, film, gym, talent, and money-laundering legal fronts;
+  - updated production and selloff tables for legal goods, building materials, permits, accounts, labor contracts, talent agents, cooking staff, managers, and film/music support resources;
+  - adjusted home-booze and improved home-booze module links so more bootlegging paths tie into the current quest and skill structure.
+- Quests and jobs:
+  - added a connected-connector fake-account scheme that uses funeral homes or churches as paperwork sources and rewards existing account resources;
+  - added bulk rail shipment quest chains for home brew, cider, brick wine, moonshine, bathtub gin, sparkling cider, fake beer, and fake wine;
+  - each rail shipment has short, full-car, and long-order tiers where appropriate, paying out through safehouse delivery;
+  - expanded dirty-cash payouts and laundering-style rewards for gang/backroom job chains;
+  - updated school support quests so school backing, school payout, and local recruit windows can be reached from school conversations;
+  - updated church support quests, including church support, church loans, and church loan repayment;
+  - updated Canada, leader, Gatsby/recruiting, drugs, liquor, and related access checks so more quest starts use the current conversation gating.
+- Conversations and localization:
+  - added rail-shipment conversation text, buttons, tooltips, and quest names;
+  - added school and church support conversation text;
+  - added gang war mediation text;
+  - corrected at least one dirty-cash/laundering line to match the actual $550 amount;
+  - added the route `Expand fronts` tooltip text;
+  - changed some gang/goon conversation checks from relationship tickets toward direct owner relationship checks.
+- Buffs, heat, and relationships:
+  - added pact relationship buffs for joining a pact, killing a pact boss, and killing a pact leader;
+  - added cop-killing relationship pressure buffs for precinct and citywide retaliation;
+  - added political protection and gang-loot heat/buff hooks;
+  - shortened or retuned several older relationship buff durations and deltas so new systems can cycle more often.
+- People, economy, and upkeep:
+  - reduced some legal/professional monthly costs;
+  - retargeted lawyer effects to the newer `player-legal-lawoffice` module;
+  - added upkeep/property-tax style pressure for legal fronts, homes, rentals, backrooms, drug rooms, brothels, parking, taxis, and related owned modules;
+  - reduced some protection/backroom cost pressure from earlier values so the new front economy is less punishing.
+- AI, skills, schemes, and gambling:
+  - increased an AI cap from 4 to 7 while reducing carried cash ranges;
+  - reduced some AI accept costs and made one start score more restrictive;
+  - retargeted scheme, skill, and gambling checks to the current legal-front module names;
+  - expanded gambling tags and legal/illegal business checks so newer fronts can participate in the right content.
+- Maps:
+  - Atlantic City, Chicago, Cincinnati, Detroit, New York, Philadelphia, and Pittsburgh now use `school-large` in the civic generation list instead of the older civic-school-large reference;
+  - those standard maps now give banks dedicated neighborhood and downtown/bizcenter special-building entries with district caps;
+  - most updated maps lower `initialFamiliesRatio` to `0.75`, creating more room for real businesses and the expanded front/business pool.
+
+### Major Runtime Systems
+
+- Added and hardened multi-crew vehicle support:
+  - vehicles can track a driver and passengers;
+  - final-goal travel remembers the intended destination;
+  - vehicle node authority distinguishes physical position, pending target, final-goal preview, and recent arrival;
+  - crew conversations, enemy attacks, business visits, scopeout, and inventory access use stricter node checks.
+- Fixed storage access around safehouses and owned buildings:
+  - safehouse resources require physical safehouse presence;
+  - owned-building storage can remain visible for context, but loading/unloading is disabled after the vehicle leaves;
+  - transfer remains allowed while a selected vehicle is actively traveling to that exact owned storage destination;
+  - wrong-corner preview does not count as physical presence.
+- Fixed map glow and building pick cleanup during travel:
+  - departure-corner businesses no longer stay glowing after the player drives away;
+  - wrong-corner scopeout preview is rejected;
+  - normal business sprites are preserved while movement UI refreshes.
+- Added delivery-route front expansion support:
+  - `Collect front` route steps can show a compact `+` toggle;
+  - enabled route steps are saved in GameplayTweaks save data without changing vanilla route-step serialization;
+  - successful paid front collection can trigger native front expansion when the route front, vehicle cash, and destination are valid;
+  - logs include `FrontRouteExpand` arming, cleanup, skip, and success details.
+- Added business-owner and worker guardrails:
+  - gangs and troublemakers are blocked from invalid business owner/worker assignment paths;
+  - restricted/family-style tags are treated more carefully so AI hiring does not use people who should be reserved for gang, troublemaker, owner, or family roles.
+- Added pact and gang operations systems:
+  - AI pacts can form, score protection needs, build WarHeat, retaliate, and coordinate attacks;
+  - independent gangs now have their own lighter-weight automation channel;
+  - pact colors, pact membership, pact reactions, and compatibility fallback options are logged at startup.
+- Added crew relationship systems:
+  - loyalty, happiness, vacation, gang meeting, snitch exposure, odd-job, spouse search, and street-credit state are saved per crew member;
+  - high happiness can protect against loyalty decay;
+  - low morale and dangerous activity can create long-term crew risk.
+- Added personal and safehouse street credit progression:
+  - fights, kills, deals, pact work, goon work, robbery, laundering, and smuggling-style activity can add progress;
+  - each full personal level awards safehouse `streetcredit` resources;
+  - boss street credit starts above zero so the player has early reputation footing.
+- Added and tuned heat/snitch/cop-killing support:
+  - local illegal sales can raise corner heat;
+  - gang hostility builds WarHeat separately from police heat;
+  - cop assault/killing paths can create national heat, witness/snitch pressure, and retaliation pressure when enabled;
+  - residual cop aggro cleanup prevents stuck combat states after incidents.
+
+### Content and Conversation Additions
+
+- Expanded crew conversation hooks for relationship, work, spouse, snitch, and street-credit systems.
+- Expanded gang conversation hooks for pact membership, pact work, retaliation, territory pressure, and gang deals.
+- Expanded goon/business conversation hooks for illegal jobs, backroom-style interactions, business ownership, and reward flows.
+- Updated quest, residential event, gambling, people, skill, scheme, buff, AI, building, module, and business data to support the newer runtime systems.
+- Updated maps for Atlantic City, Chicago, Cincinnati, Detroit, New York, Philadelphia, and Pittsburgh.
+- Preserved the previous public additions around illegal backrooms, banks, schools, churches, civic buildings, train station rail shipments, political influence, loans, founder traits, born-leader style starts, and broader After Prohibition content.
+
+### Current Beta Notes
+
+- This is still a systems-heavy public beta. The goal is to make the city feel more alive, but balance will keep changing.
+- Pacts and gang operations are active, but the exact aggression, revenge timing, and expansion pressure will continue to be tuned.
+- Gang retaliation now sends AI crew to fronts or businesses before using vanilla front-steal, building-attack, or force-closure commands.
+- Snitch and heat systems are intentionally visible in logs while they are being stabilized.
+- Delivery-route expansion uses vanilla-style expansion rules. If a front has no valid next corner, it will skip instead of forcing an expansion.
+- Storage and scopeout rules are intentionally strict now. A preview can authorize the intended destination action, but it must not pretend the vehicle is physically present at the wrong corner.
+
+### Recent Routes Split Notes
+
+- Added `AfterProhibitionRoutes` as a standalone route plugin and staged it beside `GameplayTweaks` in the Personal and Public release plugin folders.
+- `AfterProhibitionRoutes` currently owns read-only audits and decision/classification bridges for route state, travel continuation, vehicle node authority, delivery-route pump, and route-simulated access.
+- `GameplayTweaks` delegates decision logging to `AfterProhibitionRoutes`, but still fully owns mutating route behavior because full route behavior ownership currently returns false for every route slice.
+- `GameplayTweaks` remains required until a later phase moves actual route mutation into `AfterProhibitionRoutes`.

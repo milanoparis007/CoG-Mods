@@ -6,51 +6,66 @@ This beta public build packages the latest route, robbery, war-heat, front-closu
 
 Major package updates:
 
-- Added the latest `GameplayTweaks.dll` and `CopKilling.dll` to the beta public package.
-- Added the BepInEx preloader patcher DLL and `AssemblyPatchManifest.json`.
-- Added the current `CoG_Data/StreamingAssets` baseline, including entities, settings, maps, localization, queries, and UI simulation files.
-- Added custom asset support files, the `AfterProhibitionAssets` plugin, and the main menu image folder.
-- Added the current beta `GUIDE.txt` and this updated `CHANGELOG.txt` inside the public build folder.
+- Added the latest `GameplayTweaks.dll`.
+- Added the latest `CopKilling.dll`.
+- Added the BepInEx preloader patcher.
+- Added `AssemblyPatchManifest.json`.
+- Added the current `CoG_Data/StreamingAssets`.
+- Added custom asset support files.
+- Added the main menu image folder.
+- Added the beta `GUIDE.txt`.
+- Updated this `CHANGELOG.txt`.
 
 Robbery and meeting flow:
 
-- Enemy robbery pressure now uses a meeting/contact route before the prompt starts, making the encounter feel more physical and less like an instant background event.
-- Robbery attempts now check the player's latest known location and the meeting route window before firing the prompt.
-- Stale robbery routes are cleaned up when the player moves too far away or the enemy cannot reasonably reach the meeting point.
-- Closing or interrupting the robbery prompt now clears pending robbery state more safely, reducing repeated prompts from old context.
-- Robbery war-heat gain is toned down so one failed robbery does not immediately stack too many front closures, business closures, and attacks.
+- Enemy robberies now start from a meeting route.
+- Robbery prompts should feel less instant.
+- Robberies check the player's latest location.
+- Stale robbery routes are cleaned up.
+- Robberies stop retrying when the player is too far away.
+- Closed robbery prompts clear more safely.
+- Robberies add less war heat than before.
 
 Front closures and important businesses:
 
-- Enemy outfits now get more time to reach a front before changing targets or giving up.
-- Non-boss enemy crew members can perform front closures when the outfit has available crew and vehicles.
-- The same enemy actor is less likely to close one front and immediately chain into the next while other vehicles sit unused.
-- Defended-front resolution is clearer, with the defense result showing again instead of every defense looking like a generic attack.
-- If an aggressive enemy reaches a defended front, combat can still happen after the route resolves, closer to vanilla expectations.
-- Important-business closures now participate in war-heat offensive pressure instead of relying only on robbery outcomes.
-- Failed or defended front/business pressure now has better cooldown and retry pacing so outfits do not immediately spam the same target.
+- Enemies get more time to reach fronts.
+- Non-boss crew can close fronts.
+- Crews should not reuse the same closer as often.
+- Defended fronts show clearer results.
+- Aggressive enemies can still attack defended fronts.
+- Important businesses can close from war pressure.
+- Failed closures have better cooldowns.
+- Defended closures have better retry pacing.
 
 Enemy AI routing and vehicles:
 
-- Front-closure and robbery routes have stronger route-authority checks to reduce one-node loops, backtracking, and mid-route target switching.
-- Enemy crew assignment and passenger behavior is tightened so vehicle changes should happen through safer route patterns instead of arbitrary travel swaps.
-- Enemy offensive pressure now works alongside normal AI defensive/protective script behavior instead of replacing the usual safehouse, business, and front-protection movement.
-- Outfit vehicle count now matters more for how many offensive jobs an enemy outfit can reasonably support at once.
+- Front routes should loop less.
+- Robbery routes should backtrack less.
+- Enemies should switch targets less mid-route.
+- Passenger swaps should be safer.
+- Normal AI defense routes still run.
+- Vehicle count matters more for enemy pressure.
 
 Combat, truce, and relations:
 
-- Low boss relations and recent hostile actions can feed later offensive pressure more consistently.
-- Retaliation pressure is kept separate from immediate mid-turn attacks; offensive combat should wait for the correct route or turn resolution.
-- CopKilling truce handling no longer suppresses the normal truce conversation check during the cleanup pass.
-- Truce and robbery-related conversation behavior is being kept under beta testing because it now overlaps with enemy routing and meeting logic.
+- Low boss relations matter more.
+- Recent attacks can lead to more pressure.
+- Retaliation should avoid mid-turn surprise attacks.
+- Combat should wait for the correct route timing.
+- Truce checks are no longer suppressed.
+- Truce and robbery meetings need beta testing.
 
 Beta test focus:
 
-- Watch whether enemy outfits finish front-closure and important-business routes without repeatedly changing targets.
-- Watch whether defended fronts show the correct defense result and only escalate to combat when an aggressive enemy actually reaches the corner.
-- Watch whether robbery prompts appear from believable meeting/contact situations and stop retrying once the player is too far away.
-- Watch whether enemy crews use non-boss members and multiple vehicles without breaking normal safehouse, business, and protection behavior.
-- Keep this build in beta naming until the current route and offensive-pressure behavior is stable enough for a numbered public release.
+- Check if front closures finish.
+- Check if important-business closures finish.
+- Check if defended fronts show the right popup.
+- Check if combat waits for the enemy to arrive.
+- Check if robbery prompts start from believable meetings.
+- Check if robbery prompts stop when the player leaves.
+- Check if non-boss crew members get used.
+- Check if multiple enemy vehicles get used.
+- Keep this as beta until routes feel stable.
 
 ## 2026-06-05 Public Robbery And Log Cleanup Release
 

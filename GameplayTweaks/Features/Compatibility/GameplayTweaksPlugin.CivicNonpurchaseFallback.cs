@@ -5,6 +5,7 @@ using Game.Core;
 using Game.Session.Data;
 using Game.Session.Entities;
 using Game.Session.Player;
+using Game.UI.Session;
 using Game.UI.Session.Convo;
 using HarmonyLib;
 using UnityEngine;
@@ -31,7 +32,9 @@ public partial class GameplayTweaksPlugin
 		{
 			"com-medium-philly-bank",
 			"com-large-downtown-bank",
+			"civic-school-medium",
 			"school-regular",
+			"school-large",
 			"civic-school-large",
 			"worship-regular",
 			"worship-large"
@@ -258,23 +261,34 @@ public partial class GameplayTweaksPlugin
 					return false;
 				}
 
-				try
-				{
-					__result = OnShowResult.SetButtonData(new ConvoDataTicketBuilding(takeover));
-					return false;
-				}
-				catch (Exception ex)
-				{
-					__result = OnShowResult.CONTINUE;
-					LogTicketBuildingGuard("data-constructor-" + ex.GetType().Name, visit, takeover, building, candidate);
-					return false;
-				}
+				__result = OnShowResult.SetButtonData(CreateTicketBuildingData(takeover, building, candidate));
+				return false;
 			}
 			catch (Exception ex)
 			{
 				__result = OnShowResult.CONTINUE;
 				Debug.LogWarning("[GameplayTweaks] StoreTicketBuildingChoice guard failed: " + ex.GetType().Name + ":" + ex.Message);
 				return false;
+			}
+		}
+
+		private static ConvoDataTicketBuilding CreateTicketBuildingData(PlayerTerritory.TakeoverData takeover, Entity building, Entity candidate)
+		{
+			try
+			{
+				return new ConvoDataTicketBuilding(takeover);
+			}
+			catch (Exception ex)
+			{
+				Entity biz = BuildingUtil.FindBizForBuilding(building);
+				LogTicketBuildingGuard("data-constructor-fallback-" + ex.GetType().Name, null, takeover, building, candidate);
+				return new ConvoDataTicketBuilding
+				{
+					takeover = takeover,
+					name = candidate != null ? PersonInfoUtil.GeneratePeepName(candidate, showRank: false) : string.Empty,
+					bizname = biz?.data.biz.bizname ?? string.Empty,
+					sizeAndVert = string.Empty
+				};
 			}
 		}
 
@@ -296,17 +310,29 @@ public partial class GameplayTweaksPlugin
 			}
 
 			Entity biz = BuildingUtil.FindBizForBuilding(building);
-			if (HasTemplate(GetTemplateString(biz), CivicBizTemplates))
+			if (IsKnownCivicNonpurchaseTemplate(GetTemplateString(biz), CivicBizTemplates))
 			{
 				return true;
 			}
 
-			return HasTemplate(GetTemplateString(building), CivicBuildingTemplates);
+			return IsKnownCivicNonpurchaseTemplate(GetTemplateString(building), CivicBuildingTemplates);
 		}
 
-		private static bool HasTemplate(string template, HashSet<string> knownTemplates)
+		private static bool IsKnownCivicNonpurchaseTemplate(string template, HashSet<string> knownTemplates)
 		{
-			return !string.IsNullOrEmpty(template) && !string.Equals(template, "(null)", StringComparison.Ordinal) && knownTemplates.Contains(template);
+			if (string.IsNullOrEmpty(template) || string.Equals(template, "(null)", StringComparison.Ordinal))
+			{
+				return false;
+			}
+
+			if (knownTemplates.Contains(template))
+			{
+				return true;
+			}
+
+			return template.IndexOf("school", StringComparison.OrdinalIgnoreCase) >= 0
+				|| template.IndexOf("worship", StringComparison.OrdinalIgnoreCase) >= 0
+				|| template.IndexOf("church", StringComparison.OrdinalIgnoreCase) >= 0;
 		}
 
 		private static string GetTemplateString(Entity entity)

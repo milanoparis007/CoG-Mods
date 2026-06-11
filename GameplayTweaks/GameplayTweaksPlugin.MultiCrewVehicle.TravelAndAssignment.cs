@@ -935,16 +935,51 @@ internal static class AssignCrewToBuildingPatch
 	internal static class HumanVehicleCommandQueueDriverPatch
 	{
 		[HarmonyPrefix]
-		internal static void HandleAddingCommandPrefix(CommandExecutor __instance, Command cmd)
+		internal static void HandleAddingCommandPrefix(CommandExecutor __instance, Command cmd, bool flush, out EntityID __state)
 		{
+			__state = EntityID.INVALID;
 			try
 			{
 				RetargetVehicleDriverCommand(__instance?.PlayerInfo, cmd, "add-command");
+				if (__instance?.PID.IsHumanPlayer == true
+					&& flush
+					&& cmd?.peepId.IsValid == true
+					&& ShouldSuppressRouteClearForCommandAdd(cmd))
+				{
+					__state = cmd.peepId;
+					MultiCrewVehicleHelper.PushFlushQueueRouteClearSuppression(__state);
+				}
 			}
 			catch (Exception ex)
 			{
 				Debug.LogWarning("[GameplayTweaks] HumanVehicleCommandQueueDriverPatch.HandleAddingCommand: " + ex.Message);
 			}
+		}
+
+		[HarmonyFinalizer]
+		internal static Exception HandleAddingCommandFinalizer(EntityID __state, Exception __exception)
+		{
+			try
+			{
+				if (__state.IsValid)
+				{
+					MultiCrewVehicleHelper.PopFlushQueueRouteClearSuppression(__state);
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] HumanVehicleCommandQueueDriverPatch.HandleAddingCommandFinalizer: " + ex.Message);
+			}
+
+			return __exception;
+		}
+
+		private static bool ShouldSuppressRouteClearForCommandAdd(Command command)
+		{
+			return command is CommandGoto
+				|| command is CommandAutomationStep
+				|| command is AICommandPickUpItem
+				|| command is AICommandDropOffItem;
 		}
 
 		internal static void NormalizeQueuedVehicleDriverCommands(CommandExecutor executor, string source)

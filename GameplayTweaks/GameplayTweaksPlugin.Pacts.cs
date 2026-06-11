@@ -272,6 +272,7 @@ public partial class GameplayTweaksPlugin
 				}
 				ProcessHumanHideoutPrepass(humanPlayer, now);
 				ProcessNationalHeatTurn(humanPlayer, now);
+				ProcessMurderCaseTurn(humanPlayer, now);
 				ReconcileAllCrewJailStates("turn");
 				MarkHumanTurnPhase("prepass");
 				HashSet<long> activeImportantWitnessCrewIds = BuildActiveImportantWitnessCrewIdSet(out int activeImportantWitnessEntries);
@@ -2625,6 +2626,8 @@ public partial class GameplayTweaksPlugin
 						.Where(g => g != null && g.crew != null && !g.crew.IsCrewDefeated && g.crew.LivingCrewCount > 0 && g.PID.id != player.PID.id)
 						.ToList();
 					PlayerInfo target = ChooseDefectionTarget(player, peep, candidates);
+					bool humanCandidate = candidates.Any(g => g?.PID.IsHumanPlayer == true);
+					VerificationLog("Loyalty", $"zero-loyalty-target peep={peep.Id.id} fromGang={player.PID.id} fromHuman={player.PID.IsHumanPlayer} candidates={candidates.Count} humanCandidate={humanCandidate} targetGang={target?.PID.id ?? -1} targetHuman={target?.PID.IsHumanPlayer == true} loyalty={orCreateCrewState.LoyaltyValue:0.000} happiness={orCreateCrewState.HappinessValue:0.000} unhappyStreak={orCreateCrewState.LowHappinessStreak}");
 					string fullName = peep.data.person.FullName;
 					CrewAssignment priorAssignment = player.crew.GetCrewForPeep(peep.Id);
 					EntityID priorVehicleId = priorAssignment.IsValid && priorAssignment.IsInVehicle ? priorAssignment.VehicleID : EntityID.INVALID;

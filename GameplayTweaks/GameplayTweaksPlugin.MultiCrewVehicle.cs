@@ -3701,7 +3701,7 @@ namespace GameplayTweaks
 			return vehicleId.IsValid && _pendingVehicleTravelByVehicleId.ContainsKey((long)vehicleId.id);
 		}
 
-		private static void PushFlushQueueRouteClearSuppression(EntityID peepId)
+		internal static void PushFlushQueueRouteClearSuppression(EntityID peepId)
 		{
 			if (!peepId.IsValid)
 			{
@@ -3718,7 +3718,7 @@ namespace GameplayTweaks
 			}
 		}
 
-		private static void PopFlushQueueRouteClearSuppression(EntityID peepId)
+		internal static void PopFlushQueueRouteClearSuppression(EntityID peepId)
 		{
 			if (!peepId.IsValid)
 			{
@@ -12049,7 +12049,10 @@ namespace GameplayTweaks
 			var handleAddingCommandMethod = typeof(CommandExecutor).GetMethod("HandleAddingCommand", BindingFlags.Instance | BindingFlags.NonPublic);
 			if (handleAddingCommandMethod != null)
 			{
-				harmony.Patch(handleAddingCommandMethod, prefix: new HarmonyMethod(typeof(HumanVehicleCommandQueueDriverPatch), nameof(HumanVehicleCommandQueueDriverPatch.HandleAddingCommandPrefix)));
+				harmony.Patch(
+					handleAddingCommandMethod,
+					prefix: new HarmonyMethod(typeof(HumanVehicleCommandQueueDriverPatch), nameof(HumanVehicleCommandQueueDriverPatch.HandleAddingCommandPrefix)),
+					finalizer: new HarmonyMethod(typeof(HumanVehicleCommandQueueDriverPatch), nameof(HumanVehicleCommandQueueDriverPatch.HandleAddingCommandFinalizer)));
 				Debug.Log("[GameplayTweaks] Multi-crew vehicle: human vehicle command queue driver routing applied");
 			}
 			var flushQueueMethod = typeof(CommandExecutor).GetMethod("FlushQueue", BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(EntityID), typeof(bool) }, null);

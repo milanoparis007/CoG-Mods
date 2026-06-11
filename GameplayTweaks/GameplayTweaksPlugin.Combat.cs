@@ -198,6 +198,11 @@ public partial class GameplayTweaksPlugin
 					orCreateCrewState.HappinessValue = Mathf.Clamp01(orCreateCrewState.HappinessValue - CREW_HAPPINESS_LOSS_KILL * (float)delta * loyaltyMul2);
 					LogStreetCreditGainOncePerDay(val.Id, "kill", delta, STREET_CREDIT_GAIN_KILL);
 					bool hasCopKillFederalWitness = HasActiveImportantWitnessForCrewAndSource(val.Id, NATIONAL_HEAT_SOURCE_COP_KILL);
+					if (!hasCopKillFederalWitness)
+					{
+						float killHeatFloor = delta >= 3 ? 0.75f : (delta == 2 ? 0.5f : 0.25f);
+						SetLocalHeatProgress(orCreateCrewState, Mathf.Max(orCreateCrewState.LocalHeatProgress, killHeatFloor), G.GetNow().days, refreshDecayAnchor: true);
+					}
 					for (int i = 0; i < delta; i++)
 					{
 						if (hasCopKillFederalWitness)
@@ -210,18 +215,6 @@ public partial class GameplayTweaksPlugin
 							orCreateCrewState.HasWitness = true;
 							orCreateCrewState.WitnessThreatAttempted = false;
 							orCreateCrewState.WitnessThreatenedSuccessfully = false;
-							if (orCreateCrewState.WitnessCount >= 3)
-							{
-								SetLocalHeatProgress(orCreateCrewState, 0.75f, G.GetNow().days, refreshDecayAnchor: true);
-							}
-							else if (orCreateCrewState.WitnessCount == 2)
-							{
-								SetLocalHeatProgress(orCreateCrewState, Mathf.Max(orCreateCrewState.LocalHeatProgress, 0.5f), G.GetNow().days, refreshDecayAnchor: true);
-							}
-							else
-							{
-								SetLocalHeatProgress(orCreateCrewState, Mathf.Max(orCreateCrewState.LocalHeatProgress, 0.25f), G.GetNow().days, refreshDecayAnchor: true);
-							}
 							Debug.Log($"[GameplayTweaks] Witness #{orCreateCrewState.WitnessCount} saw {val.data.person.FullName} commit a kill!");
 							LogMurderWitnessCaseDryRun(val.Id, orCreateCrewState, "kill-stat");
 						}
@@ -5090,6 +5083,10 @@ Target:
 				return;
 			AlliancePact pactForVictim = GetPactForPlayer(victimGang.PID);
 			bool attackerIsHuman = attackerPid == humanPlayer.PID;
+			if (attackerIsHuman && EnableCrewStats.Value)
+			{
+				RaiseLocalHeatFloor(attackerPeep.Id, 0.35f);
+			}
 			bool hasWitnessEvidence = attackerIsHuman && HasWitnessEvidenceForAttacker(attackerPeep);
 			VerificationLog("PactRetaliation", $"Witness required check result: {hasWitnessEvidence} attackerPeep={attackerPeep.Id.id} attackerPid={attackerPlayer.PID.id} attackerHuman={attackerIsHuman} victimGang={victimGang.PID.id} pact={(pactForVictim?.PactId ?? "none")}");
 			if (hasWitnessEvidence || (pactForVictim != null && pactForVictim.IsActive))
@@ -5116,7 +5113,6 @@ Target:
 			state.WitnessThreatAttempted = false;
 			state.WitnessThreatenedSuccessfully = false;
 			state.WitnessCount = Math.Max(1, state.WitnessCount);
-			RaiseLocalHeatFloor(attackerPeep.Id, 0.35f);
 			string attackerName = attackerPeep.data?.person?.FullName ?? "Unknown";
 			string victimName = victimGang?.social?.PlayerGroupName ?? "a rival boss";
 			LogGrapevine($"LAW: Boss murder by {attackerName} ({victimName}) raised warrant risk.");
@@ -5166,7 +5162,6 @@ Target:
 				state.WitnessThreatAttempted = false;
 				state.WitnessThreatenedSuccessfully = false;
 				state.WitnessCount = Math.Max(1, state.WitnessCount + 1);
-				RaiseLocalHeatFloor(attackerPeep.Id, 0.35f);
 				return true;
 			}
 			catch

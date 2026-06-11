@@ -279,6 +279,9 @@ public partial class GameplayTweaksPlugin
 				stringBuilder.Append($"\"FAC\":{value.FedArrivalCountdown},\"FI\":{value.FedsIncoming.ToString().ToLower()},");
 				stringBuilder.Append("\"HW\":" + value.HasWitness.ToString().ToLower() + ",\"WC\":" + value.WitnessCount + ",\"FWC\":" + value.FederalWitnessCount + ",\"WTS\":" + value.WitnessThreatenedSuccessfully.ToString().ToLower() + ",");
 				stringBuilder.Append($"\"WTA\":{value.WitnessThreatAttempted.ToString().ToLower()},\"EJY\":{value.ExtraJailYears},");
+				stringBuilder.Append($"\"MWN\":{value.NextMurderWitnessId},\"MCA\":{value.MurderCaseActive.ToString().ToLower()},\"MCP\":{value.MurderCaseProgress.ToString(CultureInfo.InvariantCulture)},\"MCSD\":{value.MurderCaseStartedDay},\"MCMBD\":{value.MurderCaseMinimumBuildDays},\"MCLID\":{value.MurderCaseLastIntakeDay},\"MCFSM\":{value.MurderCaseFailedSilenceMultiplierActive.ToString().ToLower()},\"MWLAD\":{value.MurderWitnessLastActionDay},\"MW\":[");
+				AppendLegacyMurderWitnessRecords(stringBuilder, value.MurderWitnesses);
+				stringBuilder.Append("],");
 				stringBuilder.Append($"\"LR\":{value.LawyerRetainer},\"LRC\":{value.LawyerRetainerConfirmed.ToString().ToLower()},\"LRD\":{value.LastRetainerDeductDay},\"CD\":{value.CaseDismissed.ToString().ToLower()},\"LBST\":{value.LastBoozeSellTurn},\"TBSS\":{value.TotalBoozeSoldStreet},\"TBSL\":{value.TotalBoozeSoldLifetime}}}");
 			}
 			stringBuilder.Append("},\"Pacts\":[");
@@ -345,6 +348,34 @@ public partial class GameplayTweaksPlugin
 		catch (Exception arg)
 		{
 			Debug.LogError($"[GameplayTweaks] Save failed: {arg}");
+		}
+	}
+
+	private static void AppendLegacyMurderWitnessRecords(StringBuilder stringBuilder, List<MurderWitnessRecord> records)
+	{
+		if (stringBuilder == null || records == null)
+		{
+			return;
+		}
+		bool first = true;
+		for (int i = 0; i < records.Count; i++)
+		{
+			MurderWitnessRecord record = records[i];
+			if (record == null)
+			{
+				continue;
+			}
+			if (!first)
+			{
+				stringBuilder.Append(",");
+			}
+			first = false;
+			stringBuilder.Append("{");
+			stringBuilder.Append($"\"ID\":{record.WitnessId},\"CP\":{record.OwningCrewPeepId},\"WR\":{record.Reliability},\"AD\":{record.AddedDay},");
+			stringBuilder.Append($"\"F\":{record.Found.ToString().ToLower()},\"SA\":{record.SearchAttempts},\"TA\":{record.ThreatAttempted.ToString().ToLower()},\"TF\":{record.ThreatFailed.ToString().ToLower()},\"TS\":{record.ThreatenedSuccessfully.ToString().ToLower()},");
+			stringBuilder.Append($"\"SIA\":{record.SilenceAttempted.ToString().ToLower()},\"SIF\":{record.SilenceFailed.ToString().ToLower()},\"SIS\":{record.SilencedSuccessfully.ToString().ToLower()},");
+			stringBuilder.Append($"\"CGM\":{record.CaseGainMultiplier.ToString(CultureInfo.InvariantCulture)},\"CL\":{record.Closed.ToString().ToLower()},\"CPR\":\"{EscapeJsonString(record.CaseProfile ?? "murder")}\",\"LA\":{record.LegacyAnonymous.ToString().ToLower()}");
+			stringBuilder.Append("}");
 		}
 	}
 
@@ -745,6 +776,14 @@ public partial class GameplayTweaksPlugin
 						crewModState.WitnessThreatenedSuccessfully = JBool(j, "WTS", d: false);
 						crewModState.WitnessThreatAttempted = JBool(j, "WTA", d: false);
 						crewModState.ExtraJailYears = JInt(j, "EJY", 0);
+						crewModState.NextMurderWitnessId = Mathf.Max(1, JInt(j, "MWN", 1));
+						crewModState.MurderCaseActive = JBool(j, "MCA", d: false);
+						crewModState.MurderCaseProgress = Mathf.Clamp(JFloat(j, "MCP", 0f), 0f, 100f);
+						crewModState.MurderCaseStartedDay = JInt(j, "MCSD", -1);
+						crewModState.MurderCaseMinimumBuildDays = JInt(j, "MCMBD", -1);
+						crewModState.MurderCaseLastIntakeDay = JInt(j, "MCLID", -1);
+						crewModState.MurderCaseFailedSilenceMultiplierActive = JBool(j, "MCFSM", d: false);
+						crewModState.MurderWitnessLastActionDay = JInt(j, "MWLAD", -1);
 						crewModState.LawyerRetainer = JInt(j, "LR", 0);
 						crewModState.LawyerRetainerConfirmed = JBool(j, "LRC", d: false);
 						crewModState.LastRetainerDeductDay = JInt(j, "LRD", -1);
@@ -2651,6 +2690,14 @@ public partial class GameplayTweaksPlugin
 			{
 				value.HasWitness = true;
 			}
+			try
+			{
+				EnsureMurderWitnessRecordsForScalar(EntityID.FromID(unchecked((ulong)crewState.Key)), value, "load-scalar-migration");
+			}
+			catch
+			{
+				NormalizeMurderWitnessRecordState(value);
+			}
 			value.HideoutDuration = Mathf.Max(1, value.HideoutDuration);
 			value.LoyaltyValue = Mathf.Clamp01(value.LoyaltyValue);
 			value.LoyaltyCap = Mathf.Clamp(value.LoyaltyCap, 0.1f, 1f);
@@ -3089,6 +3136,15 @@ public partial class GameplayTweaksPlugin
 			crewModState.WitnessThreatenedSuccessfully = ToBool(HGet(hashtable, "WTS"), d: false);
 			crewModState.WitnessThreatAttempted = ToBool(HGet(hashtable, "WTA"), d: false);
 			crewModState.ExtraJailYears = ToInt(HGet(hashtable, "EJY"), 0);
+			crewModState.NextMurderWitnessId = Mathf.Max(1, ToInt(HGet(hashtable, "MWN"), 1));
+			crewModState.MurderCaseActive = ToBool(HGet(hashtable, "MCA"), d: false);
+			crewModState.MurderCaseProgress = Mathf.Clamp(ToFloat(HGet(hashtable, "MCP"), 0f), 0f, 100f);
+			crewModState.MurderCaseStartedDay = ToInt(HGet(hashtable, "MCSD"), -1);
+			crewModState.MurderCaseMinimumBuildDays = ToInt(HGet(hashtable, "MCMBD"), -1);
+			crewModState.MurderCaseLastIntakeDay = ToInt(HGet(hashtable, "MCLID"), -1);
+			crewModState.MurderCaseFailedSilenceMultiplierActive = ToBool(HGet(hashtable, "MCFSM"), d: false);
+			crewModState.MurderWitnessLastActionDay = ToInt(HGet(hashtable, "MWLAD"), -1);
+			crewModState.MurderWitnesses = LoadLegacyMurderWitnessRecords(HGet(hashtable, "MW") as ArrayList);
 			crewModState.LawyerRetainer = ToInt(HGet(hashtable, "LR"), 0);
 			crewModState.LawyerRetainerConfirmed = ToBool(HGet(hashtable, "LRC"), d: false);
 			crewModState.LastRetainerDeductDay = ToInt(HGet(hashtable, "LRD"), -1);
@@ -3098,6 +3154,42 @@ public partial class GameplayTweaksPlugin
 			crewModState.TotalBoozeSoldLifetime = ToInt(HGet(hashtable, "TBSL"), 0);
 			SaveData.CrewStates[result] = crewModState;
 		}
+	}
+
+	private static List<MurderWitnessRecord> LoadLegacyMurderWitnessRecords(ArrayList rawRecords)
+	{
+		List<MurderWitnessRecord> records = new List<MurderWitnessRecord>();
+		if (rawRecords == null)
+		{
+			return records;
+		}
+		foreach (object item in rawRecords)
+		{
+			Hashtable hashtable = item as Hashtable;
+			if (hashtable == null)
+			{
+				continue;
+			}
+			MurderWitnessRecord record = new MurderWitnessRecord();
+			record.WitnessId = ToInt(HGet(hashtable, "ID"), 0);
+			record.OwningCrewPeepId = ToLong(HGet(hashtable, "CP"), 0L);
+			record.Reliability = ToInt(HGet(hashtable, "WR"), 0);
+			record.AddedDay = ToInt(HGet(hashtable, "AD"), -1);
+			record.Found = ToBool(HGet(hashtable, "F"), d: false);
+			record.SearchAttempts = Mathf.Max(0, ToInt(HGet(hashtable, "SA"), 0));
+			record.ThreatAttempted = ToBool(HGet(hashtable, "TA"), d: false);
+			record.ThreatFailed = ToBool(HGet(hashtable, "TF"), d: false);
+			record.ThreatenedSuccessfully = ToBool(HGet(hashtable, "TS"), d: false);
+			record.SilenceAttempted = ToBool(HGet(hashtable, "SIA"), d: false);
+			record.SilenceFailed = ToBool(HGet(hashtable, "SIF"), d: false);
+			record.SilencedSuccessfully = ToBool(HGet(hashtable, "SIS"), d: false);
+			record.CaseGainMultiplier = Mathf.Max(0.01f, ToFloat(HGet(hashtable, "CGM"), 1f));
+			record.Closed = ToBool(HGet(hashtable, "CL"), d: false);
+			record.CaseProfile = ToStr(HGet(hashtable, "CPR"), "murder");
+			record.LegacyAnonymous = ToBool(HGet(hashtable, "LA"), d: false);
+			records.Add(record);
+		}
+		return records;
 	}
 
 	private static void LoadLegacyPacts(ArrayList pactsArray)

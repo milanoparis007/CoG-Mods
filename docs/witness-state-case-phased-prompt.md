@@ -88,6 +88,8 @@ Do not include in the first pass:
 - Second search cost: double
 - Normal murder case gain: `1%-3%` per active murder witness per intake
 - Failed silence case gain: `2%-6%` for that witness
+- Reliable witness case weight: faster, about `1.25x`
+- Unreliable witness case weight: slower, about `0.65x`
 - Threaten success: start near current behavior, then tune from logs
 - Silence success: lower than threaten, because it is stronger
 - Murder case arrest trigger: `100%`
@@ -121,9 +123,15 @@ Pass criteria:
 
 ## Phase 2: Per-Witness Save Data
 
-Status: planned.
+Status: implemented as save-safe data plus scalar migration.
 
 Add per-crew murder witness records while keeping old scalar fields as compatibility fallbacks.
+
+Case stacking decision:
+
+- Keep one active murder state case per crew member in this pilot.
+- Multiple murder witnesses stack pressure into that one case.
+- Leave room for different case profiles later, but do not create multiple duplicate murder case rows.
 
 Proposed fields per witness:
 
@@ -157,11 +165,23 @@ Pass criteria:
 - Saving and loading preserves witness records.
 - No arrest behavior changes yet.
 
+Implemented markers:
+
+- `murder-witness-record-created`
+- `murder-witness-record-closed`
+
 ## Phase 3: Search Before Action
 
-Status: planned.
+Status: implemented as the first deterministic search slice.
 
 Replace direct witness action with a search step.
+
+Current implementation:
+
+- The existing witness button becomes `Look For Murder Witness ($5)` when active murder witnesses exist but none are found.
+- Search pays clean safehouse cash and immediately marks one active murder witness as found.
+- Once a murder witness is found, the same button becomes `Threaten Witness`.
+- Federal/protected witnesses keep their existing protected state.
 
 UI behavior:
 
@@ -176,7 +196,7 @@ Search behavior:
 - Cost is per witness search turn.
 - First search uses the base cost.
 - Second search for the same witness costs double.
-- Search can take one or more turns if needed, but first pass can resolve instantly with clear logs.
+- Search resolves the found witness immediately, then pauses further murder-witness actions for that crew member until the next day.
 
 Markers:
 
@@ -194,7 +214,17 @@ Pass criteria:
 
 ## Phase 4: Threaten And Silence Outcomes
 
-Status: planned.
+Status: implemented as the first found-witness outcome slice.
+
+Current implementation:
+
+- A failed threat locks that found murder witness into silence-only state.
+- A crew member can only advance one murder-witness action per day.
+- The witness button shows `Witness Lead Tomorrow` while that daily action lock is active.
+- The witness button becomes `Silence Witness` for that failed-threat witness.
+- Successful silence closes one witness and decrements the non-federal witness count.
+- Failed silence starts the per-crew murder case state, doubles that witness's case multiplier, and makes that witness inaccessible to search again.
+- Full turn-by-turn murder case progression still waits for Phase 5.
 
 Threaten behavior:
 
@@ -227,17 +257,35 @@ Pass criteria:
 
 ## Phase 5: Murder Case Progression
 
-Status: planned.
+Status: implemented as turn-intake, reliability weighting, and case-age custody gating.
 
 Start murder case pressure when a crew member has `3+` active murder witnesses or after a failed silence.
 
-Progression:
+Current implementation:
 
-- Each active murder witness adds `1%-3%` per intake.
-- Failed silence murder witness adds `2%-6%`.
+- One murder case can be active per crew member.
+- Murder witnesses do not raise local heat by existing.
+- Kill and boss-murder consequences can still raise local heat as crime heat.
+- Three active murder witnesses start one murder case for that crew member.
+- The human turn prepass runs one murder case intake per day.
+- Each active murder witness adds slower state-case progress than federal case pressure.
+- Base state-case gain is scaled to half of the old `1%-3%` witness intake before reliability and failed-silence modifiers.
+- Reliable witnesses build the case faster and are harder to threaten.
+- Unreliable witnesses build the case slower and are easier to threaten.
+- Failed silence murder witness adds `2%-6%` through that witness's multiplier.
 - Closed witnesses no longer add progress.
 - Progress belongs to the crew member.
-- At `100%`, trigger local custody/state-case-style behavior for that crew member.
+- At `100%`, local important-witness custody waits until the case has enough age.
+- Reliable-heavy cases can stage after about `90` days.
+- Mixed cases can stage after about `120` days.
+- Unreliable-heavy cases can stage after about `150` days.
+- Once progress and case age are both ready, custody is staged for that crew member with a murder-case sentence boost.
+- Case intake defers if the crew member is missing, dead, hidden, away, already jailed, or already pending custody.
+- Case state closes when custody is staged or no active murder witnesses remain.
+- Witness button can show the current murder case percentage and age window when no immediate witness action is available.
+- Case button labels use `Case 15% (14/150d)` style so a `100%` case does not look ready before the case-age gate is met.
+- Crew HUD shows `State Case` directly below `Federal Case`.
+- CopKilling debug assault testing uses `Ctrl+Shift+F12` so `Ctrl+Shift+F10` remains reserved for murder-witness testing.
 
 Use existing local custody where possible:
 
@@ -250,17 +298,30 @@ Markers:
 
 - `murder-case-started`
 - `murder-case-gain`
+- `murder-case-threshold-deferred`
 - `murder-case-threshold`
 - `murder-case-custody-staged`
 - `murder-case-closed`
+- `murder-witness-threat-roll`
 
 Pass criteria:
 
 - Case progress does not affect the entire outfit.
 - Case progress does not duplicate federal/national heat.
+- Case evidence does not depict local heat; local heat remains the crime/cop-pressure track.
 - Arrest/custody happens once.
 - Case progress pauses or defers cleanly if the crew member is missing, dead, hidden, or already jailed.
 - Attack and cop-assault witnesses do not start murder case progress.
+- Logs show reliable/unreliable witness counts and case-gain differences.
+- Logs show case age and minimum case days before custody can stage.
+- UI shows the same case-age window that the log uses for custody gating.
+- State case progress is shown separately from federal case progress.
+- State case progress should build slower than before and remain visually separate from federal case pressure.
+
+Not in this slice:
+
+- AI witness-search/threaten/silence decisions.
+- Multiple case rows for the same crew member.
 
 ## Phase 6: AI And Balance Follow-Up
 

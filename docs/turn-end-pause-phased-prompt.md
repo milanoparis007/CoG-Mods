@@ -15,9 +15,14 @@ Work in phased stabilization mode. Do not jump to broad rewrites. Each phase sho
 - Repo/staged DLL path:
   - `Things To Have\Current After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`
 - Current relevant repo/staged build:
-  - `GameplayTweaks.dll built/staged=2026-05-17 13:25:49`
+  - `GameplayTweaks.dll built/staged=2026-06-07 08:12:35`
+  - `GameplayTweaks.dll size=2611712`
+  - `GameplayTweaks.dll SHA-256=8CAC3CCFD5E89FCE4A9231E022C07EA9B1415CE93BBE7D9E452D80A42E8E78CB`
+  - `CopKilling.dll built/staged=2026-06-06 19:55:24`
+  - `CopKilling.dll size=139776`
+  - `CopKilling.dll SHA-256=93F291C3218DA91E3FFED7C8074D9D28B3AED7BC28528346E07505F55B78D680`
   - `AfterProhibitionEconomy.dll built/staged=2026-05-17 11:04:17`
-  - Live DLLs may still be older until manually copied into the Steam `BepInEx\plugins` folder.
+  - Steam live `GameplayTweaks.dll` is Phase 8GE at `2026-06-06 22:45:36`, size `2610688`, SHA-256 `9570CA582F8B315B62BA4F23D12274AA9E510515F41BED6A61F4F6AAC4594F18`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GF.
 - Current live After Prohibition suite DLLs observed:
   - `AfterProhibitionAssets.dll` timestamp `2026-05-14 11:07:30`
   - `AfterProhibitionCompatibility.dll` timestamp `2026-05-14 11:07:32`
@@ -84,6 +89,30 @@ Useful log markers:
 - `[PERF][PlayerAIAssignRequests]`
 - `[PERF][PlayerAIDispatch]`
 - `[PERF][ManufactureModuleUpdate]`
+
+Current gameplay-route stabilization note:
+
+- Phase 8GC is staged in the repo/public package but not copied live yet.
+- Phase 8FS follows the live 8FR front-route test where a pending front-route enemy vehicle could still trigger `PerformAICombat` against the player during the human turn when the player drove onto the enemy's corner.
+- Phase 8FT follows the defended-front behavior clarification: a player who successfully defends a front should still get the vanilla-style aggro attack when the enemy actually reached that corner and is hostile.
+- Phase 8FU follows the live 8FT route/reuse check where the same closer could immediately move from one defended/closed front to the next and the expected aggro attack still did not visibly follow the defended-front resolution.
+- Phase 8FV follows the live 8FU route review where the reuse marker appeared, but compact logs hid generic front completion, tracked business assignment, and post-front return skip/queue outcomes.
+- Phase 8FW follows the convo-initiative/truce route review: `ConvoGangs.sim` is UI topic selection only; vanilla movement comes from `SocialAdvisor.StartConvoInitiative`, `ConvoInitiative.meetingPoint`, and the `go-meeting-point` advisor request. GameplayTweaks now reserves one occupied vehicle while an outfit has an active convo initiative and skips crew already assigned to the meeting route; CopKilling now allows `CombatAdvisor.MaybeAskForTruce` to create the truce initiative.
+- Phase 8FX starts the robbery-meeting prelude plan with dry-run markers only. It does not queue movement or delay robbery prompts yet.
+- Phase 8FY follows the live 8FX log: the dry-run marker did not appear because the robbery prompt queues from the AI-human robbery response path first. GameplayTweaks now records data-only pending robbery meeting entries from that response path, including selected meeting actor, vehicle, node, source/mode, priority, and cleanup. Movement and prompt timing remain unchanged.
+- Phase 8FZ follows the successful live 8FY marker check. The selected meeting driver now receives a segmented physical route toward the recorded meeting node, while the pending peep/vehicle is reserved from front/shop and coordinated attack assignment. The existing robbery popup still appears on its legacy next-turn timing so route behavior can be verified before Phase 4 gates the prompt behind arrival.
+- Phase 8GA follows the live 8FZ route check: an approach segment queued, but no arrival was proven and a higher-priority repeat contact switched the actor while the target/node remained unchanged. The pending action now locks its original valid peep/vehicle, logs active route progress, and reports physical cleanup position. Prompt timing remains legacy until arrival is verified.
+- Phase 8GB follows the successful live 8GA route check: actor locking held and the route made physical progress, but the legacy robbery popup still appeared while `arrived=False`. Deferred responses now remain pending during travel and use the unchanged existing popup only after `robbery-meeting-arrived`.
+- Phase 8GC follows the successful live 8GB arrival-gate check: the prompt deferred during travel, showed once after arrival, and refusal resolved through the existing callbacks. The arrived actor had left before display and another fake meeting queued while the first response remained open, so arrival is now revalidated and active robbery responses suppress new fake meetings.
+- Expected next-test suppression marker: `VehicleGroupCombat.AI mode-skip source=PerformAICombat reason=pending-retaliation-route-human-turn`.
+- Expected post-defense behavior: after a real `front-defended`, the log should show `front-defended-aggro-attack` when `AttackAdvisor` finds an aggro target, or `front-defended-aggro-skip` with the reason when it does not. A defended closer should also log `post-front-return-queued ... clearReason=front-defended`.
+- If a human-turn movement edge case still needs protection after a defended front, the narrower marker is `front-defense-human-turn-cooldown` and should only apply to the same front-closer/defender vehicle context.
+- Expected reuse behavior: `front-actor-reuse-penalty` should appear after completed/defended/give-up front/shop actions, and later `front-crew-selected ... recentUse=False` should prefer another vehicle when one is available.
+- Expected route-completion visibility: when a pending front resolves by ownership change, the log should now show `front-closure-completed ... reason=owner-changed-before-cleanup`; business pressure should show `tracked-business-closure`, and every completed/defended action should show either `post-front-return-queued` or `post-front-return-skip`.
+- Expected important-business route marker after a freshly issued final approach: `business-closure-recover-wait ... reason=route-recently-issued` before any later `business-closure-give-up`.
+- Expected convo-initiative protection markers: `front-crew-selection-capacity-blocked ... convoReserve=1`, `front-crew-skip-convo-initiative`, and `front-crew-selected ... convoReserve=...`.
+- Expected truce setup marker: `[CopKilling] CombatAdvisor.MaybeAskForTruce allowed-through`; after that, vanilla should be free to create the truce request ticker and send a peep to the meeting point.
+- Expected robbery-meeting planning marker: `robbery-meeting-dryrun attacker=... defender=... eligible=... reason=...`.
 
 ## Phase 1: Measure SimulationManager Internals
 
@@ -14393,3 +14422,1775 @@ Do not copy to the live Steam install by default unless explicitly requested.
   - validation:
     - this was a docs/package-note pass after the prior successful `AfterProhibitionEconomy` and solution builds;
     - next step is final diff/status validation, then a separate public branch/tag push when the user is ready.
+- Phase 8FA front closure and preserved vehicle-node sync staged on 2026-06-05:
+  - user feedback after the public build:
+    - an enemy crew member moved back and forth at the front/target node and did not close it in a reasonable time;
+    - after the player traveled one corner and ended the turn, cops still treated the player as being on the old corner and arrested them.
+  - latest live evidence:
+    - the live GameplayTweaks build was `2026-06-05 11:16:42`, size `2526208`;
+    - a forced business closure reached its target (`currentNode=NID_20`, `peepNode=NID_20`, `targetNode=NID_20`) but later gave up with `reason=no-attack-cost-timeout` after `waitedDays=21`;
+    - human vehicle travel logged `user-stop-route-preserved ... expectedNode=NID_501 ... reason=active-travel-finalize-pending`, followed by police/fed visit command activity, which means the expected node was preserved but not authoritative soon enough for law checks.
+  - implementation:
+    - business-closure recovery now starts the no-attack-cost wait when the crew is first observed at the target node instead of measuring from the original queued day;
+    - preserved user-stop vehicle travel now syncs the vehicle and all occupants to the expected node, records the node as the committed/recent finalized node, and records an observed arrival before later systems can read stale agent location.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed `Things To Have\Current After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - refreshed the nested public package copy when present;
+    - staged `GameplayTweaks.dll` timestamp `2026-06-05 17:10:00`, size `2527232`;
+    - live Steam DLL was not copied by automation; copy/restart before judging Phase 8FA in-game.
+- Phase 8FA live partial validation on 2026-06-05:
+  - latest live evidence:
+    - build, staged public, nested public package, and Steam live `GameplayTweaks.dll` all matched timestamp `2026-06-05 17:10:00`, size `2527232`;
+    - the current log loaded the 8FA build and showed one forced business closure queued for building `8589941922` at `NID_899`;
+    - that closure completed at the target: `business-closure-direct-completed ... currentNode=NID_899 ... peepNode=NID_899 ... targetNode=NID_899 reason=forced-closed-after-no-attack-cost-wait:24`, followed by `business-closure-completed`, post-front return movement, and ticker removal;
+    - the current log had `0` `business-closure-give-up`, `0` `NullReference`, and `0` `Exception` matches;
+    - the current 8FA log did not include `user-stop-route-preserved`, so the preserved vehicle-node arrest fix still needs one fresh travel/end-turn live repro.
+  - expected next-run signals:
+    - for front/business closures, look for completion or wait-at-target logs rather than same-node `no-attack-cost-timeout`;
+    - for travel/arrest, look for `user-stop-route-preserved ... synced=True` before any police/fed visit or arrest checks.
+- Phase 8FB normal front arrival closure staged on 2026-06-05:
+  - user feedback after 8FA live partial validation:
+    - the remaining failure was not the forced business closure path; normal enemy front closures reached the front node, paused briefly, then left without closing the front and without a player-facing successful-defense result;
+    - a second enemy front attempt showed the same behavior, so the issue was in the delayed `maybe-steal` handoff after physical arrival.
+  - latest live evidence:
+    - the `17:10` live build showed normal front pressure selection for attacker `28`, building `8589943870`, target node `NID_363`, but no compact `front-delayed-action-queued`, `front-closure-completed`, `front-defended`, or give-up result appeared afterward;
+    - that matched the user-visible symptom: the enemy could drive to the front node and leave after the queued command ended without the tracker proving stolen-vs-defended outcome.
+  - implementation:
+    - added a direct outpost-front arrival resolver for pending retaliation fronts once the attacker is physically at the target node;
+    - the resolver uses the base-game `BoardUtil.RivalBlocking` check to decide whether the player's outfit blocks the steal;
+    - if blocked, it increments `CrewStats.FrontsProtected`, clears the pending front as `front-defended`, and keeps the existing player-facing defense result path;
+    - if unblocked, it removes the outpost through `PlayerOutposts.RemoveOutpost(... RemovalReason.Stolen ...)`, clears the pending front as `front-completed`, and queues the existing post-front return movement;
+    - if direct resolution cannot verify the result, it logs `front-closure-direct-failed` and falls back to the existing `AICommandAtOutpost(..., "maybe-steal")` command path.
+  - expected next-run signals:
+    - a successful enemy front closure should now log `front-closure-completed ... reason=arrival-direct-outpost-steal`, followed by `FrontTicker ... reason=front-completed` and post-front return movement;
+    - a defended front should log `front-defended ... reason=rival-blocking` and should show the player's outfit defense result;
+    - if the direct resolver cannot prove either outcome, compact logs should now retain `front-delayed-action-marked`, `front-delayed-action-queued`, and `front-closure-direct-failed` markers for the next triage pass.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed `Things To Have\Current After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - refreshed `Things To Have\Current After Prohibition Mod\Public\Days Of Prohibition v1.3.98\After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - staged `GameplayTweaks.dll` timestamp `2026-06-05 17:27:40`, size `2531328`;
+    - live Steam DLL was not copied by automation; copy/restart before judging Phase 8FB in-game.
+- Phase 8FC pending front turn-start cleanup staged on 2026-06-05:
+  - user feedback after 8FB live test:
+    - same save still showed the same normal front issue, with the enemy front crew driving to the front node, pausing, and leaving without a closure or successful-defense result.
+  - latest live evidence:
+    - build, staged public, nested public package, and Steam live `GameplayTweaks.dll` all matched the 8FB build at timestamp `2026-06-05 17:27:40`, size `2531328`;
+    - current `Player.log` showed the front route was created: `front-crew-selected attacker=28 ... building=8589943870 targetNode=NID_363 currentNode=NID_378`;
+    - the same log showed `front-delayed-action-marked ... notBeforeDay=701429 reason=travel-first` and `Physical front action queued ... mode=goto-front-steal-delayed route=multi-turn-human-front-route`;
+    - the game advanced through later human turns up to day `701533`, but there were no `front-delayed-action-wait`, `front-delayed-action-queued`, `front-closure-completed`, `front-defended`, or `front-closure-direct-failed` markers;
+    - this means the pending front entry was not being serviced after initial route queue, so the issue was the cleanup scheduler rather than the direct stolen-vs-defended resolver itself.
+  - implementation:
+    - pending retaliation front cleanup now also runs during the human turn-start path immediately after deferred front warning prompts;
+    - this gives front travel recovery and direct arrival resolution a deterministic turn-boundary service point even when idle `Update()` visual maintenance is deferred by fast next-turn clicking;
+    - added compact `front-cleanup-turn-start pending=...` logging so the next live log proves whether pending front entries survive to turn start and whether cleanup is being invoked.
+  - expected next-run signals:
+    - after a pending front is queued, the next human turns should show `front-cleanup-turn-start pending=1` or another nonzero pending count until the front is resolved;
+    - once the attacker reaches the front node, expect either `front-closure-completed ... reason=arrival-direct-outpost-steal` or `front-defended ... reason=rival-blocking`;
+    - if the front entry disappears before cleanup, `front-cleanup-turn-start pending=0` will prove the next target is state retention/reset rather than route arrival.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed `Things To Have\Current After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - refreshed `Things To Have\Current After Prohibition Mod\Public\Days Of Prohibition v1.3.98\After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - staged `GameplayTweaks.dll` timestamp `2026-06-05 17:40:02`, size `2531840`;
+    - live Steam DLL was not copied by automation; copy/restart before judging Phase 8FC in-game.
+- Phase 8FD delayed front route segment targeting staged on 2026-06-05:
+  - user feedback after 8FC live test:
+    - the last front attempt did succeed, but the enemy route itself looked a bit off and should be checked before the next pass.
+  - latest live evidence:
+    - Steam live loaded the Phase 8FC `GameplayTweaks.dll` at timestamp `2026-06-05 17:40:02`, size `2531840`;
+    - the current log showed the front route selected attacker `28`, crew `4295015664`, building `8589941358`, final front node `NID_745`, and current node `NID_378`;
+    - the same log showed the delayed route was queued with `route=multi-turn-human-front-route next-turn-approach moves=8 cost=6 lastNode=NID_618`, then later resolved at `currentNode=NID_745`;
+    - the outcome path worked: `front-defended ... blockers=2 ... reason=rival-blocking`, `front-retry-cooldown`, `defense-result-shown`, and ticker removal all appeared;
+    - the route concern is therefore not the closure/defense resolver anymore. It is that the route probe calculated an approach segment ending at `NID_618`, while the visible `CommandGoto` still targeted the final front `NID_745`.
+  - implementation:
+    - delayed human-front routes now resolve the current command goal from the calculated path segment instead of always commanding the final front node immediately;
+    - the pending front tracker keeps the final `TargetNodeId` for stolen-vs-defended resolution, and separately records `DelayedRouteTargetNodeId` for the current route segment command;
+    - queued-command cleanup now treats either the final target or current segment target as an active route, preventing premature cleanup while the enemy is driving the first leg;
+    - delayed requeue, travel recovery, and lost-node reassignment all use the same segment-target helper so subsequent turns continue toward the final front in visible route-sized steps;
+    - compact route breadcrumbs now include `front-route-segment-queued`, `routeTargetNode=...`, and `routeGoal=approach-segment` when the command is intentionally aimed at the segment node.
+  - expected next-run signals:
+    - after copying the staged DLL live and restarting, the next delayed human-front route should log `front-route-segment-queued ... routeTargetNode=<segment> finalTargetNode=<front> routeGoal=approach-segment`;
+    - the paired `Physical front action queued` line should still include `targetNode=<front>` but should also show `routeTargetNode=<segment>` and `routeGoal=approach-segment`;
+    - later turns may show `front-delayed-action-requeued` or `front-travel-requeued` with new segment targets until the crew reaches the final front;
+    - the final result should still be either `front-closure-completed ... reason=arrival-direct-outpost-steal` or `front-defended ... reason=rival-blocking`;
+    - no new save is required for future attempts, but the already-resolved front will not replay. Start a fresh front-pressure attempt after copying the DLL live.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed `Things To Have\Current After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - refreshed `Things To Have\Current After Prohibition Mod\Public\Days Of Prohibition v1.3.98\After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - build and staged public `GameplayTweaks.dll` timestamp `2026-06-05 17:57:50`, size `2533888`;
+    - Steam live remains on Phase 8FC at `2026-06-05 17:40:02`, size `2531840`; copy/restart before judging Phase 8FD in-game.
+- Phase 8FE delayed front route commitment staged on 2026-06-05:
+  - user feedback after 8FD live test:
+    - front closures still had long waits, and some fronts still did not close.
+  - latest live evidence:
+    - build, staged public, nested public package, and Steam live `GameplayTweaks.dll` all matched Phase 8FD at timestamp `2026-06-05 17:57:50`, size `2533888`;
+    - 8FD segment routing markers appeared correctly: `front-route-segment-queued ... routeGoal=approach-segment` and paired `Physical front action queued ... routeTargetNode=...`;
+    - several front outcomes resolved in the same log, including `front-defended` for building `8589943870`, `front-closure-completed ... reason=arrival-direct-outpost-steal` for building `8589940900`, and AI-vs-AI `front-defended` for building `8589940607`;
+    - one player-facing front remained stuck: building `8589938167`, attacker `22`, crew `4295008136`, target node `NID_125`, repeatedly requeued from nearby nodes and reached `requeues=23` without a `front-closure-completed` or `front-defended` result;
+    - this proves the direct stolen-vs-defended resolver works, but the delayed human-front route recovery could still loop for too long when the route kept producing segment legs around the front.
+  - implementation:
+    - reduced delayed human-front moving tolerance from effectively `112` weekly requeues / `784` days to `8` requeues / `56` days;
+    - added a route-commitment threshold at `4` requeues or `28` days for human outpost fronts;
+    - route commitment flushes the stuck travel command and runs the same outpost stolen-vs-defended resolver used on physical arrival;
+    - player blockers still defend the front through `BoardUtil.RivalBlocking`; unblocked committed routes remove the outpost through `PlayerOutposts.RemoveOutpost(... Stolen ...)`;
+    - segment targets are now used only for the first couple of delayed human-front requeues. After that, recovery commands target the final front node so the base `CommandGoto` can own the remaining multi-turn route instead of bouncing between segment goals;
+    - compact logs now retain `front-route-commitment-resolving` before either `front-closure-completed ... reason=route-commitment-outpost-steal` or `front-defended ... reason=route-commitment-rival-blocking`.
+  - expected next-run signals:
+    - the existing stuck building `8589938167` should resolve on the next cleanup pass after copying the staged DLL live and restarting, because it already exceeded the route-commitment threshold;
+    - new delayed human-front attempts should not exceed `4` requeues without either a commitment attempt or a normal physical-arrival result;
+    - successful unblocked commitments should log `front-route-commitment-resolving` followed by `front-closure-completed ... reason=route-commitment-outpost-steal`;
+    - defended commitments should log `front-route-commitment-resolving` followed by `front-defended ... reason=route-commitment-rival-blocking` and the usual defense result;
+    - if a front still loops, the next target is route/current-node authority for that specific crew or vehicle, not the stolen-vs-defended resolver.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed `Things To Have\Current After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - refreshed `Things To Have\Current After Prohibition Mod\Public\Days Of Prohibition v1.3.98\After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - build and staged public `GameplayTweaks.dll` timestamp `2026-06-05 19:09:59`, size `2536448`;
+    - Steam live remains on Phase 8FD at `2026-06-05 17:57:50`, size `2533888`; copy/restart before judging Phase 8FE in-game.
+- Phase 8FF human front target lock and final-approach commitment staged on 2026-06-05:
+  - user feedback after 8FE live test:
+    - the same front-pressure issue remained in a different form: the warned corner kept changing, so the player could not know which corner to defend;
+    - when the player was already at the corner, the enemy often never reached that corner before the target changed.
+  - latest live evidence:
+    - build, staged public, nested public package, and Steam live `GameplayTweaks.dll` all matched Phase 8FE at timestamp `2026-06-05 19:09:59`, size `2536448`;
+    - 8FE did resolve long waits: `front-route-commitment-resolving` appeared, followed by `front-defended ... reason=route-commitment-rival-blocking` and `defense-result-shown`;
+    - however, those defended results happened while the enemy was still on a route node, such as `currentNode=NID_252` for target `NID_363`, `currentNode=NID_58` for target `NID_501`, and `currentNode=NID_618` for target `NID_745`;
+    - after a remote defended result cleared one warning, later pressure could select another front, including repeated pressure by attacker `22` against building `8589940303` and another pending front against building `8589940900`;
+    - this matched the player experience: the defense was counted, but the enemy did not visibly arrive at the corner the player was defending, and the next target could change.
+  - implementation:
+    - added active human-front target locking: while the human player has any pending outpost-front warning, new human outpost-front pressure is suppressed and logs `front-target-locked-existing` instead of choosing a new corner;
+    - the lock is intentionally scoped to human outpost-front pressure only, leaving AI-vs-AI fronts and forced business closures untouched;
+    - route commitment no longer remotely resolves stolen-vs-defended results from the enemy's current route node;
+    - once a human front reaches the commitment threshold, it now flushes stale travel, queues `CommandGoto` to the final warned node, records that final node as `DelayedRouteTargetNodeId`, and logs `front-route-commitment-final-approach`;
+    - only physical arrival at the final warned node can run the blocker-aware resolver and clear the warning as `front-defended` or `front-closure-completed`.
+  - expected next-run signals:
+    - if a front warning is already active and another pressure attempt fires, expect `front-target-locked-existing ... pendingBuilding=<original> requestedBuilding=<new>` and no new warning corner;
+    - commitment should now log `front-route-commitment-final-approach ... targetNode=<warned-corner>` instead of `front-route-commitment-resolving` from a different current node;
+    - the enemy should keep traveling toward the same warned corner even if the player's outfit is already there;
+    - final `front-defended` or `front-closure-completed` should happen only after the enemy reaches the warned front node or the agent fallback reports that node;
+    - if a target still changes before resolution, the next pass should inspect non-mod/vanilla front tickers or any pressure path that bypasses `TryQueuePhysicalRetaliationFrontOrBusinessAction`.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed `Things To Have\Current After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - refreshed `Things To Have\Current After Prohibition Mod\Public\Days Of Prohibition v1.3.98\After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - build and staged public `GameplayTweaks.dll` timestamp `2026-06-05 19:24:29`, size `2539520`;
+    - Steam live remains on Phase 8FE at `2026-06-05 19:09:59`, size `2536448`; copy/restart before judging Phase 8FF in-game.
+- Phase 8FG retaliation crew reservation and business final approach staged on 2026-06-05:
+  - user feedback after 8FF live test:
+    - the important-business closure showed no visible enemy presence at the business;
+    - the enemy route changed when about to close or try to close the front, moving away by about one node and then returning.
+  - latest live evidence:
+    - build, staged public, nested public package, and Steam live `GameplayTweaks.dll` all matched Phase 8FF at timestamp `2026-06-05 19:24:29`, size `2539520`;
+    - 8FF fixed remote front defense: `front-route-commitment-final-approach` appeared for building `8589943870`, then the enemy reached `currentNode=NID_363` and only then logged `front-defended`;
+    - a robbery important-business closure was queued for attacker `22`, crew `4295009478`, building `8589938746`, target `NID_229`;
+    - before that business closure resolved, the same crew `4295009478` was also assigned to front building `8589940303`, target `NID_501`;
+    - the business closure then completed from `currentNode=NID_127` while its target was `NID_229`, proving the important-business route commitment still allowed remote closure;
+    - clearing the business closure also queued `post-front-return-queued` for the same crew while the front route was active, which explains the visible route wobble before the crew returned to finish/defend the front.
+  - implementation:
+    - pending retaliation actions now reserve their assigned crew. `FindRuntimeFrontActionCrew` skips any crew already assigned to another pending retaliation action and logs `front-crew-busy-pending-action`;
+    - the skip applies to both front routes and forced business closures because they share the same physical actor picker;
+    - human-front target locking now treats an active important-business closure as a pending human retaliation action, so new human-front pressure will log `front-target-locked-existing ... pendingKind=business-closure` instead of starting a new corner while the business closure is underway;
+    - robbery important-business route commitment no longer calls `ForceCloseBusiness` remotely from the route node;
+    - after the commitment threshold, it now flushes stale travel, queues `CommandGoto` to the business target node with the forced-close command behind it, and logs `business-closure-route-commitment-final-approach`;
+    - post-action return movement now skips if the same crew still owns another pending retaliation action, preventing one cleanup from interrupting another route.
+  - expected next-run signals:
+    - an important-business closure should no longer complete from a non-target node; before completion, expect `business-closure-route-commitment-final-approach ... targetNode=<business-node>`;
+    - `business-closure-direct-completed` or `business-closure-completed` should appear only after the crew reaches the business node or after the queued attack command completes there;
+    - if front pressure tries to use a crew already assigned to the business closure, expect `front-crew-busy-pending-action` and either another crew selection or no new front route;
+    - if front pressure tries to start while the business closure is still pending, expect `front-target-locked-existing ... pendingKind=business-closure`;
+    - the front route should no longer be interrupted by `post-front-return-queued` from a different pending action for the same crew.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed `Things To Have\Current After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - refreshed `Things To Have\Current After Prohibition Mod\Public\Days Of Prohibition v1.3.98\After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - build and staged public `GameplayTweaks.dll` timestamp `2026-06-05 19:38:50`, size `2540544`;
+    - Steam live remains on Phase 8FF at `2026-06-05 19:24:29`, size `2539520`; copy/restart before judging Phase 8FG in-game.
+- Phase 8FH bounded front pressure, war-heat pacing, and vanilla defense result staged on 2026-06-05:
+  - user feedback after 8FG live test:
+    - one front warning was not reliably indicated after another attempted closure, and enemies could move toward a front, step away, then return or switch pressure;
+    - front closures still waited too long or failed to resolve, while important-business closures also needed enough travel time to visibly reach their target;
+    - robbery and failed-offense heat could stack new front pressure too quickly;
+    - the custom defended-front popup looked like a new attack instead of the original successful front-defense result.
+  - latest live evidence:
+    - build, staged public, nested public package, and Steam live `GameplayTweaks.dll` all matched Phase 8FG at timestamp `2026-06-05 19:38:50`, size `2540544`;
+    - front final approach remained locked to the warned target, but one route reached `24` requeues and later gave up after `56` days because the final-approach helper returned before the outer route limit could run;
+    - failed AI robberies added `18` heat for a high-value failure and `12` for a normal failure, leaving outfits close to or above another independent pressure threshold immediately after the forced retaliation;
+    - defended fronts used the custom `COMBAT_RESULTS` ticker even though the base game uses `OUTPOST_START` with `ui.tickers.outpost.steal-protected`;
+    - important-business final approach completed successfully when the crew reached its target, so the working physical-arrival behavior is retained while its total recovery window is bounded.
+  - implementation:
+    - delayed human-front final approach now allows up to `84` days and `12` route requeues, but checks those limits before issuing another final-node command so it cannot loop indefinitely;
+    - robbery important-business closure recovery receives the same `84`-day / `12`-requeue physical travel window, including AI-vs-AI robbery closures, before a clean give-up;
+    - resolved front and important-business attempts now record both a building cooldown and a `56`-day attacker/defender pair cooldown, so the same enemy cannot immediately choose another player corner after success, defense, or route failure;
+    - pending human front pressure blocks other enemies for the full `84`-day active window, preserving one indicated target until resolution;
+    - independent human-front pressure now requires current war heat to meet the normal pressure floor even when direct hostility already exists, and its dispatch cooldown is now `42` to `84` days;
+    - AI gang robbery heat is reduced to `3`/`5` on success and `6`/`8` on failure; human-contact robbery heat is reduced to `2` for payment/evasion and `4` for refusal;
+    - defended fronts now show the original vanilla protected-front ticker and no longer show the custom combat-results popup for route give-up or stale warning cleanup.
+  - expected next-run signals:
+    - use the same save after copying the staged DLL live and restarting; a new save is not required;
+    - an active warned front should remain the only front target until `front-closure-completed`, `front-defended`, or a bounded `front-delayed-action-abandoned` result;
+    - final approach should never exceed `requeues=12` or `waitedDays=84`;
+    - after resolution, expect `front-retry-cooldown ... scope=building-and-pair ... cooldownDays=56`, and the same enemy should not immediately warn another corner;
+    - low heat should log `Human pressure skipped ... reason=heat-below-orderly-threshold` instead of starting a new front solely because the outfits remain hostile;
+    - a physical player defense should log `defense-result-shown ... style=vanilla-outpost-protected` and display the original protected-front popup;
+    - important-business closure final approach may continue for up to `84` days, but completion must still occur at the business node.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed `Things To Have\Current After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - refreshed `Things To Have\Current After Prohibition Mod\Public\Days Of Prohibition v1.3.98\After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - build and staged public `GameplayTweaks.dll` timestamp `2026-06-05 20:07:46`, size `2540544`;
+    - Steam live remains on Phase 8FG at `2026-06-05 19:38:50`, size `2540544`; copy/restart before judging Phase 8FH in-game.
+- Phase 8FI physical-front warning separation and personality pacing staged on 2026-06-05:
+  - user feedback after 8FH live test:
+    - the player received a defended-front result after stationing a crew at the warned corner even though no enemy crew appeared;
+    - the same corner later produced another defended result;
+    - front/offense reset timing should be shorter and respond to war heat and AI personality.
+  - latest live evidence:
+    - Steam live matched the Phase 8FH build at timestamp `2026-06-05 20:07:46`, size `2540544`;
+    - the same building `8589943870` produced two defended results `77` days apart for attacker `22`;
+    - both entries logged `peep=0`, `mode=vanilla-will-steal`, proving they came from passive base-game warning callbacks and not a routed physical enemy;
+    - the cleanup path treated human physical presence as a completed defense, generated the vanilla protected-front result, and applied a fixed `56`-day pair cooldown despite no enemy arrival.
+  - implementation:
+    - `PlayerAI.ReadCallback("will-steal")` now passes through to the original game ticker and no longer creates a mod pending-front entry without an assigned crew;
+    - any legacy crewless `vanilla-will-steal` entry is removed as `vanilla-passive-warning`, with no defense result and no retry cooldown;
+    - real physical front/business outcomes now calculate retry cooldown from current war heat and the configured coordinated-attack interval, bounded to `14`-`56` days instead of always using `56`;
+    - peaceful and isolationist personalities raise the heat requirement and extend retry pacing; aggressive and expansionist personalities lower the heat requirement and shorten retry pacing;
+    - isolationist handling was added to retaliation scoring, reducing front-closure and territory-expansion preference, while expansionist preference increases both.
+  - expected next-run signals:
+    - use the same save after copying the staged DLL live and restarting; a new save is not required;
+    - base-game warnings may log `vanilla-will-steal-pass-through ... result=base-ticker-only`, but they must not later produce `defense-result-shown ... peep=0`;
+    - a real physical defense must include a valid enemy `peep` and should still show `style=vanilla-outpost-protected`;
+    - resolved physical attempts should log `front-retry-cooldown ... pacing=warheat` with current heat, threshold, and personality flags;
+    - low-heat peaceful/isolationist gangs should log a higher `minHeat`; aggressive/expansionist gangs should be eligible sooner without bypassing war heat entirely.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed `Things To Have\Current After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - refreshed `Things To Have\Current After Prohibition Mod\Public\Days Of Prohibition v1.3.98\After Prohibition Mod\BepInEx\plugins\GameplayTweaks.dll`;
+    - build and staged public `GameplayTweaks.dll` timestamp `2026-06-05 20:45:07`, size `2542592`, SHA-256 `CEAC252A4ECDA61D9E212D0C6B8AD1116A64482600CBEB7DEBDB628C4F3928AE`;
+    - Steam live remains on the intermediate Phase 8FI build at `2026-06-05 20:42:20`, size `2542592`, SHA-256 `5C328A5E586A570666F58E21B4D08D371F45078916A1CE3BD48E703E3BC8B1A5`; copy the staged DLL manually and restart before testing.
+- Phase 8FJ bounded final-approach grace staged on 2026-06-05:
+  - latest live evidence:
+    - Steam live loaded the intermediate Phase 8FI build at timestamp `2026-06-05 20:42:20`, size `2542592`;
+    - the previous false-defense signature was absent: `0` `defense-result-shown ... peep=0` lines and `0` tracked `mode=vanilla-will-steal` entries;
+    - a real physical front was queued for attacker `22`, crew `4295021382`, building `8589941358`, and target `NID_745`;
+    - the crew progressed through physical nodes and reached `NID_618`, but cleanup abandoned the route at exactly `waitedDays=84`, `requeues=11`, one requeue below the `12` limit;
+    - a separate important-business closure also gave up from `NID_515` while targeting `NID_618`, supporting the same narrowly bounded near-target handling.
+  - implementation:
+    - pending retaliation actions now record whether final-approach grace has already been granted;
+    - when the age limit is reached before the requeue limit, the route uses the existing next-turn reachability probe;
+    - if the final target is reachable within the crew's next-turn moves, the system queues exactly one final approach and logs `front-route-commitment-final-approach-grace` or `business-closure-route-commitment-final-approach-grace`;
+    - the grace cannot repeat. If the crew does not physically arrive on that attempt, the normal bounded abandonment path runs on the next cleanup;
+    - routes that remain distant, have no valid path, or already reached their requeue limit receive no extra time.
+  - expected next-run signals:
+    - use the same save after copying the staged DLL live and restarting; a new save is not required;
+    - the next near-target timeout should log `...final-approach-grace ... route=reachable-next-turn ... graceTurns=1`;
+    - arrival after grace should then log `front-closure-completed`, `front-defended`, or `business-closure-completed` at the actual target node;
+    - there must be at most one grace line for each tracked building/action;
+    - distant or still-unreachable routes should continue to abandon at the existing `84`-day / `12`-requeue bounds.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed both public-package `GameplayTweaks.dll` copies;
+    - build and staged public `GameplayTweaks.dll` timestamp `2026-06-05 20:58:00`, size `2544640`, SHA-256 `76CB1729FE2411FDB292C9DCD00CDB4886D2128916767260100ECBF21D8AB0F2`;
+    - Steam live remains on the intermediate Phase 8FI build at `2026-06-05 20:42:20`, size `2542592`; copy the staged DLL manually and restart before testing Phase 8FJ.
+- Phase 8FK non-boss front closer and progress-aware final approach staged on 2026-06-06:
+  - user feedback after the 8FJ live test:
+    - enemy outfits were consistently sending their boss to close the player's front even when other crew were available;
+    - the assigned closer drove away from and back toward the warned corner several times before attacking.
+  - latest live evidence:
+    - build, staged public, nested public package, and Steam live `GameplayTweaks.dll` all matched Phase 8FJ at timestamp `2026-06-05 20:58:00`, size `2544640`, SHA-256 `76CB1729FE2411FDB292C9DCD00CDB4886D2128916767260100ECBF21D8AB0F2`;
+    - attacker `22` selected crew `4295008136` from `2` available candidates for building `8589940900`, but the old `front-crew-selected` breadcrumb did not expose whether either candidate was the boss;
+    - the route locked building `8589940900` and target `NID_618`, then entered final approach at `currentNode=NID_163`, `waitedDays=28`, `requeues=4`;
+    - the same closer later reached `currentNode=NID_269`, proving physical movement occurred, but the route reached `requeues=12` at only `waitedDays=63` and was abandoned as `human-front-route-requeue-limit`;
+    - `CommandGoto` completed with an empty queue after each one-turn leg, so cleanup treated each continuation as a new retry even when the closer had changed nodes.
+  - implementation:
+    - front and important-business actor selection now identifies the outfit boss from `PlayerSocial.PlayerPeepId`;
+    - eligible non-boss crew are preferred before distance/vehicle tie-breaking, while the boss remains a fallback when no eligible non-boss actor is available;
+    - selection breadcrumbs now include `boss`, `eligible`, `nonBossEligible`, and `selection=non-boss-preferred|boss-fallback`;
+    - final-approach tracking records the physical node from which the previous leg was issued;
+    - when the next cleanup observes a different node, the leg is counted as progress and the bounded retry count is not increased;
+    - remaining on the same node still consumes a retry, preserving the existing `12`-retry stall bound;
+    - final-approach continuation no longer flushes an empty queue. A queue flush occurs only when another command is competing for the reserved closer.
+  - expected next-run signals:
+    - use the same save after copying the staged DLL live and restarting; a new save is not required;
+    - a front with an available ordinary crew member should log `front-crew-selected ... boss=False ... nonBossEligible=<positive> selection=non-boss-preferred`;
+    - `selection=boss-fallback` is valid only when `nonBossEligible=0`;
+    - moving final-approach legs should log `progressed=True retryIncremented=False`, so `requeues` remains stable while the closer changes nodes;
+    - a genuine same-node retry should log `stalled=True retryIncremented=True`;
+    - `competingTaskCleared=True` should be exceptional and indicates another AI command tried to take over the reserved closer;
+    - the warned building and `targetNode` must remain unchanged until physical `front-closure-completed`, `front-defended`, or bounded abandonment.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed both repository public-package `GameplayTweaks.dll` copies;
+    - build and staged public `GameplayTweaks.dll` timestamp `2026-06-06 08:47:17`, size `2547200`, SHA-256 `D0FACD78DFD8E7EF2A2A2686C920449C3DB41473231DAF0A836DEABEBF257A3F`;
+    - Steam live remains on Phase 8FJ at `2026-06-05 20:58:00`, size `2544640`; copy the staged DLL manually and restart before testing Phase 8FK.
+- Phase 8FL reliable front warnings and war-heat important-business closures staged on 2026-06-06:
+  - user feedback after the 8FK live test:
+    - a front-closure popup did not appear;
+    - important-business closures should participate in war heat and normal gang wars instead of depending only on robbery retaliation.
+  - latest live evidence:
+    - build, staged public, nested public package, and Steam live `GameplayTweaks.dll` all matched Phase 8FK at timestamp `2026-06-06 08:47:17`, size `2547200`, SHA-256 `D0FACD78DFD8E7EF2A2A2686C920449C3DB41473231DAF0A836DEABEBF257A3F`;
+    - Phase 8FK non-boss selection worked: player-facing and AI-vs-AI front actions logged `boss=False`, positive `nonBossEligible`, and `selection=non-boss-preferred`;
+    - the earlier player-facing front for attacker `22`, defender `1`, building `8589940900` eventually logged `front-delayed-action-abandoned ... reason=human-front-route-requeue-limit` with no closure or defense outcome;
+    - front warning storage could assign `entry.Ticker` even when `Game.ctx.hud.tickers` was unavailable because the add used null-conditional dispatch, preventing the deferred path from retrying that warning;
+    - normal war-heat response scoring treated fronts and closures as one `CloseFront` action, but the explicit important-shop targeter was selected only for robbery-tagged sources;
+    - observed completed important-business closures in this log were AI-vs-AI, so no human completion notice was expected for those specific entries.
+  - implementation:
+    - mod-routed human front warnings are now added immediately through the game's `TickerBar.AddTicker` queue, which already defers non-interactive tickers safely;
+    - when the HUD ticker manager is unavailable, the pending action keeps `Ticker=null` and retries on a later human turn instead of falsely marking the warning as shown;
+    - compact logs retain `warning-deferred` and `deferred-retry-wait` for missing-HUD warning retries;
+    - retaliation scoring now records whether a validated important-shop target exists and gives it a distinct `AttackBuilding` score once current war heat reaches the revenge/coordinated pressure range;
+    - the war-heat shop path uses the existing local closure scan and physical forced-closure routing, so it does not run the robbery-only global map scan or remotely close a shop;
+    - an existing player front or business retaliation locks the new war-heat shop action, preserving one active warned target and avoiding simultaneous front/shop pressure.
+  - expected next-run signals:
+    - the next mod-routed human front should immediately log `GangOps.FrontTicker ... ui=shown`; if the HUD is unavailable, expect `warning-deferred` followed by a later `shown-deferred`;
+    - high war heat with an eligible important shop should log `GangOps.RetaliationScore ... action=AttackBuilding ... reason=warheat-important-business ... importantBusiness=True`;
+    - a selected shop should then log `War-heat important business closure queued` and `tracked-business-closure ... source=...-warheat-business`;
+    - physical completion against the human player should log `notice phase=business-closure-completed ... robberySource=False tickerShown=True`;
+    - if another player retaliation is already active, expect `business-target-locked-existing` and no second route;
+    - a front route that merely abandons still must not report a successful closure or defended result, because neither outcome occurred.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed both repository public-package `GameplayTweaks.dll` copies;
+    - build and staged public `GameplayTweaks.dll` timestamp `2026-06-06 09:17:33`, size `2550784`, SHA-256 `78079AFE0659A37B2A097F1169FAE9F9FD473FB1179AC836A0673FFA3F92A4E2`;
+    - Steam live loaded Phase 8FL at `2026-06-06 09:17:33`, size `2550784`, in the current game process; the next in-game action can test the new behavior directly.
+- Phase 8FM vehicle-scoped enemy combat and safehouse-only AI passenger changes staged on 2026-06-06:
+  - user feedback after the 8FL live test:
+    - selecting an enemy vehicle with one occupant made crew from another enemy vehicle on the same corner eligible in the attack popup;
+    - after ending a turn, enemy occupants changed vehicles without either vehicle returning to an outfit business or safehouse;
+    - recording reviewed: `C:\Users\User\Videos\2026-06-06 09-22-12.mp4`.
+  - latest live evidence:
+    - Steam live loaded Phase 8FL at timestamp `2026-06-06 09:17:33`, size `2550784`, SHA-256 `78079AFE0659A37B2A097F1169FAE9F9FD473FB1179AC836A0673FFA3F92A4E2`;
+    - at `NID_28`, `Attack popup enemies built` reported two raw node targets for primary target `4295009478`, while the popup expanded those vehicles to three visible enemy rows;
+    - the actual fight commit remained vehicle-scoped with one grouped target, confirming the extra eligibility came from popup construction rather than combat execution;
+    - the recording shows Richard Maguire, Joseph Jackson, and Valentin Gerasimov together in the first popup, then a different two-person vehicle grouping after the next turn;
+    - `PassengerMovementCapPatch` called `TryApplyAiVehicleFillPolicy` at every non-human turn start, and that policy reassigned ideal occupants without checking vehicle location.
+  - implementation:
+    - attack-popup construction now resolves the primary target's assigned vehicle and discards node attack targets belonging to other vehicles before `ExpandPopupEnemyTargets` runs;
+    - all living occupants of the selected target vehicle remain eligible, but occupants of a second vehicle on the same corner are no longer included;
+    - interactive non-police AI `AssignCrewToVehicle` calls now require the destination vehicle to be at that outfit's headquarters;
+    - an unassigned crew member must also physically be at headquarters, while a crew member switching vehicles requires both the current and destination vehicles to be at headquarters;
+    - setup-time assignments and police/federal vehicle behavior remain exempt;
+    - the turn-start fill policy uses the same safehouse check, so it can rebalance vehicles after they return home but cannot teleport passengers between remote vehicles.
+  - expected next-run signals:
+    - the attack popup breadcrumb now includes `targetVehicle=<id>` and `skippedOtherVehicles=<count>`;
+    - targeting a one-person enemy vehicle beside another enemy vehicle should show only that selected vehicle's occupant;
+    - legitimate multi-passenger target vehicles should still show all occupants assigned to that same vehicle;
+    - remote turn-start rebalancing should log `ai-vehicle-transfer-blocked` or `ai-vehicle-assignment-blocked` with `destination-not-at-safehouse` or `current-vehicle-not-at-safehouse`;
+    - once the relevant vehicles return to headquarters, an allowed change should log `ai-vehicle-assignment-allowed ... reason=safehouse:<node>`;
+    - use the same save after copying the staged DLL live and restarting; a new save is not required.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed both repository public-package `GameplayTweaks.dll` copies;
+    - build and staged public `GameplayTweaks.dll` timestamp `2026-06-06 09:33:51`, size `2553344`, SHA-256 `AD534B35837657BCEF419412FF3F5088B264BF73085E7E354FC53344DF4C9446`;
+    - Steam live remains on Phase 8FL at `2026-06-06 09:17:33`, size `2550784`; copy the staged DLL manually and restart before testing Phase 8FM.
+- Phase 8FN vehicle-scaled closure capacity and AISim-preserving auto-protect staged on 2026-06-06:
+  - user direction after the 8FM live test:
+    - an outfit with multiple occupied vehicles should be able to keep multiple front or important-business closures active;
+    - an outfit with three occupied vehicles should be able to run two custom closure routes while retaining one vehicle for normal safehouse, business, territory, and protection advisor work;
+    - Gang Ops auto-protect should not directly claim territory, reset support, or interfere with later AISim request/tuple choices.
+  - latest live evidence:
+    - build, both staged public copies, and the Steam live file matched Phase 8FM at timestamp `2026-06-06 09:33:51`, size `2553344`, SHA-256 `AD534B35837657BCEF419412FF3F5088B264BF73085E7E354FC53344DF4C9446`;
+    - Phase 8FM combat filtering worked at `NID_28`: `Attack popup enemies built` logged `targetVehicle=4295028850`, `skippedOtherVehicles=1`, and `count=1`;
+    - attacker `22` kept one important-business closure pending, and later pressure repeatedly logged `business-target-locked-existing`, proving the global pending-action lock serialized all closure work regardless of vehicle count;
+    - Gang Ops auto-protect directly reset outpost support and performed relaxed neutral claims/ownership reconciliation instead of leaving those jobs to `TerritoryAdvisor` and the normal AISim request queue.
+  - implementation:
+    - each outfit now receives `occupied non-ambient vehicles - 1` concurrent custom retaliation slots;
+    - front closures and important-business closures share those slots, and every active action reserves its assigned vehicle so a second target must use a different vehicle;
+    - one occupied vehicle is always excluded from custom closure capacity for normal AISim work;
+    - closure actor selection still prefers non-boss crew, now prefers vehicles with fewer existing advisor tasks, and may preempt a route only when war heat has selected the custom offensive action;
+    - pending buildings are excluded from all front, robbery-shop, and war-heat shop target scans so concurrent actions choose distinct targets;
+    - the former human-wide front/business lock is replaced by outfit capacity checks with compact `front-capacity-blocked`, `business-capacity-blocked`, and `front-crew-selection-capacity-blocked` breadcrumbs;
+    - Gang Ops auto-protect now limits itself to the existing stacked-respect repair on actual outpost target nodes;
+    - auto-protect no longer resets `MoneyStatus`, expands a synthetic protection range, claims neutral nodes, reconciles ownership, or refreshes territory visuals; those decisions remain with normal AISim/scriptdef advisors.
+  - expected next-run signals:
+    - use the same save after restarting the game; a new save is not required;
+    - an outfit with three occupied vehicles should log `front-crew-selected ... occupiedVehicles=3 ... capacity=2`;
+    - while its first action is pending, a second distinct target may log `pendingActions=1 capacity=2` and must use another `vehicle=<id>`;
+    - a third simultaneous action should log `front-capacity-blocked`, `business-capacity-blocked`, or `front-crew-selection-capacity-blocked` with `pendingActions=2 capacity=2`;
+    - the unreserved vehicle should continue receiving normal AISim routes such as safehouse, business, territory, and outpost protection work;
+    - auto-protect may log `gangops-auto-protect-advisor-preserved`, but it must report `supportResets=0 ownershipSwitches=0`;
+    - front and important-business routes must still physically reach their fixed target and resolve through the existing completion, defense, or bounded-abandonment paths.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed both repository public-package `GameplayTweaks.dll` copies;
+    - build and staged public `GameplayTweaks.dll` timestamp `2026-06-06 10:12:19`, size `2554880`, SHA-256 `CA2C7DCFCF7105EA56920E658777184FEBC399DD5FF1ACC9AF6D1C28B5B04834`;
+    - the Steam live file and current game process both loaded Phase 8FN at build timestamp `2026-06-06 10:12:19`; the existing save is ready for the next test.
+- Phase 8FO relationship-weighted war pressure staged on 2026-06-06:
+  - user feedback after the 8FN live test:
+    - no one followed through with another front closure after the important-business closure completed;
+    - the important-business closure did complete;
+    - an enemy outfit with a visible negative relationship buff around an attack still did not seem willing to attack or maintain offensive pressure.
+  - latest live evidence:
+    - Steam live loaded Phase 8FN at timestamp `2026-06-06 10:12:19`, size `2554880`, SHA-256 `CA2C7DCFCF7105EA56920E658777184FEBC399DD5FF1ACC9AF6D1C28B5B04834`;
+    - attacker `22` received robbery relationship buffs against the human player, added raw independent war heat from `0.0` to `12.0`, selected a non-boss closer, and completed the important-business closure at `NID_229`;
+    - the completed business closure then applied a `44`-day pair cooldown using raw heat `4.0` and isolationist pacing;
+    - no later `GangOps` front/business retaliation markers appeared through turn `97`, so the block was not a visible route-followthrough failure in this log but a low raw-heat/pacing gate after the first closure.
+  - implementation:
+    - retaliation scoring now computes `effectiveHeat = raw war heat + relationship heat bonus`, using the attacker's actual boss/player relationship score plus hostile robbery/hitsquad/loan and severe kill/death relationship buffs;
+    - stored war heat is not increased by this relationship bonus, so robberies do not stack persistent heat more heavily;
+    - retaliation score logs now include `effectiveHeat`, `relScore`, `relHostility`, `relHeatBonus`, and `relHostileBuff`;
+    - immediate threshold retaliation now checks the relationship-adjusted heat after resolving the attacker/defender pair, so a negative relationship can trigger revenge even when raw heat is just below the configured threshold;
+    - base `AttackAdvisor` coordinated-attack gating, independent human-front pressure, coordinated target picking, bootstrap checks, warm-war aggro restoration, and front/business retry cooldown pacing now use relationship-adjusted pressure for decisions while preserving raw heat in logs;
+    - front/business retry cooldowns still respect peaceful/isolationist/aggressive/expansionist pacing, but hostile relationships shorten the wait instead of treating the pair as cold.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing; the current Steam live DLL is still Phase 8FN;
+    - after an attack or robbery creates a negative relationship, expect `GangOps.RetaliationScore ... heat=<raw> effectiveHeat=<higher> relScore=<negative> relHostility=... relHeatBonus=...`;
+    - after a completed front or business closure, `front-retry-cooldown` should report both `heat` and `effectiveHeat`, with hostile relation pressure reducing the practical wait;
+    - if a hostile pair crosses the effective revenge threshold, expect `Immediate threshold retaliation ... beforeEffective=... afterEffective=...`;
+    - if the route advisor allows a revenge shooting, expect `AttackAdvisor ... reason=hostile-relation` or a coordinated/retaliation log with matching relationship fields;
+    - if no front/shop follows through, the next log should now show whether the blocker is capacity, target locking, no eligible crew, no physical route, cooldown, or target availability.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed both repository public-package `GameplayTweaks.dll` copies;
+    - build and staged public `GameplayTweaks.dll` timestamp `2026-06-06 10:46:04`, size `2562048`, SHA-256 `4B74FE6A3D15BDF765D7EA7C29F4CFC81829E540EDB8BC4BAE04304F564C590E`;
+    - Steam live remains Phase 8FN at timestamp `2026-06-06 10:12:19`, size `2554880`, SHA-256 `CA2C7DCFCF7105EA56920E658777184FEBC399DD5FF1ACC9AF6D1C28B5B04834`.
+- Phase 8FP persistent hostile-memory and robbery-refusal relationship buffs staged on 2026-06-06:
+  - user feedback after the 8FO live test:
+    - after attacking and killing an enemy crew member, the relationship buff did not appear to stay with the crew/outfit that was attacked;
+    - refusing an AI robbery visibly removed or failed to preserve the hostility buff;
+    - similar removal may happen through another option, but robbery refusal was the confirmed repro.
+  - latest live evidence:
+    - Steam live loaded Phase 8FO at timestamp `2026-06-06 10:46:04`, size `2562048`;
+    - live load logged `Reconciled persistent gang buffs source=load refreshed=0 pruned=17 day=0`, proving the persistent gang-buff ledger could be pruned while the world was still booting;
+    - AI robbery refusal logged war heat and cooldowns but no matching `[GameplayTweaks][Buff] Applied` relationship buff lines in the refusal resolver section;
+    - later `front-retry-cooldown` for attacker `22` showed `heat=0.0 effectiveHeat=0.0 relScore=0 relHostility=0.00 relHeatBonus=0.0 hostileBuff=False`, meaning the relationship-pressure inputs had vanished by then;
+    - `EnforceGangWarFromRetaliationBuffs` explicitly removed retaliation buffs when raw war heat decayed to zero, deleting persistent hostile-memory records through `RemoveDirectedRelationshipBuff`.
+  - implementation:
+    - persistent gang-buff reconciliation now defers when the game day is invalid/startup (`day<=0`) or player/social state is not ready, instead of pruning saved hostility records;
+    - reconcile logs now include `invalid`, `expired`, and `missingPlayers` counts so future logs show why any record was pruned or skipped;
+    - missing player/social references are skipped rather than deleted, preventing transient load or relationship cleanup timing from erasing the ledger;
+    - new hostile robbery/hitsquad/loan relationship buffs get a `180`-day minimum saved/live expiry, while severe leader/boss/gang-death buffs get a `360`-day minimum;
+    - snapshot reconciliation preserves a longer saved expiry and pushes it back into the live buff, so a later snapshot cannot shorten a newly extended hostile memory;
+    - the no-warheat retaliation reconciliation path now clears war state without deleting the retaliation relationship buffs;
+    - AI robbery refusal now explicitly applies robbery hostility from the robber to the human player, and records the player-side attempted-robbery hostility as well.
+  - expected next-run signals:
+    - after restart, load should log `Deferred persistent gang buff reconcile ... reason=world-not-ready` instead of `pruned=17 day=0`;
+    - refusing an AI robbery should log `[GameplayTweaks][Buff] Applied ... relbuff-gangs-robbery1-table-on-finish` and `relbuff-gangs-robbery1-buff`, followed by `AIPlayerRobbery refusal-relationship-buffs ...`;
+    - after killing/attacking an enemy crew member, later front/business/revenge scoring should retain `hostileBuff=True` or nonzero relationship hostility until the saved hostile-memory duration expires;
+    - if raw war heat cools off, expect `PactRetaliation ... retaliation buffs preserved ... reason=no-warheat-evidence` rather than `stale-buffs-cleared`;
+    - if a buff still disappears, the next log should show whether it expired normally, failed to restore, or was removed through a different explicit option.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed both repository public-package `GameplayTweaks.dll` copies;
+    - build and staged public `GameplayTweaks.dll` timestamp `2026-06-06 11:14:59`, size `2564096`, SHA-256 `534408E22966DC472156C82E7DA72236FCCA09D1190CD79F93B66D354720A7FD`;
+    - Steam live remains Phase 8FO at timestamp `2026-06-06 10:46:04`, size `2562048`; copy the staged DLL live and restart before testing Phase 8FP.
+- Phase 8FQ defended-front combat suppression and aggro UI stability staged on 2026-06-06:
+  - user feedback after the 8FP live test:
+    - an enemy crew member still appeared to go back and forth on a route before later behaving like it was trying to close a business;
+    - a defended-front resolution happened normally, but the enemy attack itself fired late afterward;
+    - after that late attack, the enemy followed the moving player and made another during-turn attack, which should not happen after the defended front was already resolved;
+    - when the game window lost focus, and sometimes during play, enemy portraits flipped back to a peaceful-looking state.
+  - latest live evidence:
+    - build, staged public, nested public package, and Steam live `GameplayTweaks.dll` matched Phase 8FP at timestamp `2026-06-06 11:14:59`, size `2564096`, SHA-256 `534408E22966DC472156C82E7DA72236FCCA09D1190CD79F93B66D354720A7FD`;
+    - the refusal relationship-buff path worked in this log: `[GameplayTweaks][Buff] Applied` lines appeared for robbery hostility buffs, followed by `AIPlayerRobbery refusal-relationship-buffs`;
+    - relationship-adjusted pressure also worked: `front-retry-cooldown` showed `heat=0.0 effectiveHeat=29.3 ... relScore=-100 ... hostileBuff=True`;
+    - a physical front resolved as defended for attacker `22`, defender `1`, crew `4295021248`, building `8589941358`, target/current `NID_745`, with `defense-result-shown ... style=vanilla-outpost-protected`;
+    - after that front was defended and removed, `VehicleGroupCombat execute source=PerformAICombat` still fired against the human vehicle, and a later AI combat pass fired again while the player moved;
+    - aggro UI repeatedly logged `AggroUI dirty ... source=activate-war` followed quickly by `AggroUI dirty ... source=clear-war` for the same hostile pair, explaining the peaceful/aggro portrait flicker.
+  - implementation:
+    - when a human front is defended through direct arrival or protected-front clear, the pair now registers a `14`-day `HumanFrontDefenseCombatSuppression` entry keyed by attacker/defender;
+    - the suppression stores the front closer, closer vehicle, defender vehicle, building, blockers, and expiry day, then logs `front-defense-suppression-registered`;
+    - `PerformAICombat` checks this suppression before both grouped and fallback AI combat execution, and returns false with `mode-skip ... reason=front-defense-cooldown` so the defended-front resolution cannot be followed by a late AI attack;
+    - no-warheat retaliation reconciliation was reordered so leader truce and direct truce still clear/skip first, but hostile-memory buffs without raw heat now log `Re-aggro dormant ... reason=no-warheat-evidence` and do not call `ClearWarBetweenPlayers`;
+    - this keeps the aggro UI from being dirtied as `clear-war` immediately after relationship-adjusted pressure marked the pair aggro.
+  - expected next-run signals:
+    - copy the staged DLL live and restart the game so the current process loads the compact-log-filtered Phase 8FQ build;
+    - when the player physically defends a front, expect `front-defense-suppression-registered` immediately after `front-defended` or `front-defense-protected-clear`;
+    - after that defense, a same-pair AI attack should log `VehicleGroupCombat.AI mode-skip ... reason=front-defense-cooldown` instead of `VehicleGroupCombat execute source=PerformAICombat`;
+    - the player should not get a follow-up attack from that same outfit during the immediate movement window after defending the front;
+    - hostile-memory/no-raw-heat reconciliation should show `Re-aggro dormant` and should not immediately pair `activate-war` with `clear-war` for the same outfit unless a truce/leader-truce path exists;
+    - for the route-back-and-forth issue, keep watching for `business-closure-give-up`, `business-closure-route-commitment-final-approach-grace`, `business-closure-direct-completed`, and any repeated same-node route requeues.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed both repository public-package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-06 12:01:07`, size `2569216`, SHA-256 `A8AA2C2511E2F31963DBB9A2AB711A4E810A4552AED0DCEE9F5D6962F1E1F07F`;
+    - Steam live remains the earlier Phase 8FQ file at `2026-06-06 11:56:43`, size `2569216`, SHA-256 `BC824914BAAF0AD0E6D6B17D1C814C777F34EFA340F50A2716EF0407551CC5DF`.
+- Phase 8FR front and important-business route progress accounting staged on 2026-06-06:
+  - user feedback after the 8FQ live test:
+    - the defended-front late-combat/aggro bug appeared improved;
+    - enemy routes still showed some back-and-forth, and the next pass should make sure closure routes complete without being disrupted.
+  - latest live evidence:
+    - Steam live loaded Phase 8FQ at timestamp `2026-06-06 12:01:07`, size `2569216`, SHA-256 `A8AA2C2511E2F31963DBB9A2AB711A4E810A4552AED0DCEE9F5D6962F1E1F07F`;
+    - `front-defense-suppression-registered` appeared after defended-front results, and the selected tail did not show the old rapid `clear-war` aggro flicker;
+    - important-business closure `8589940900` selected peep `4295009478` at `NID_229` for target `NID_618`, then timed out at `NID_77` after `84` days with `business-closure-give-up ... reason=timeout`;
+    - front routes for buildings `8589940303` and `8589943870` progressed across intermediate nodes, then abandoned at `requeues=12` with `reason=human-front-route-requeue-limit`;
+    - the front-route logs showed final-target reissues such as `routeGoal=target`, but later `front-route-commitment-final-approach` still reported `progressed=False` because only commitment-issued final routes were tracked as final approach.
+  - implementation:
+    - delayed front route target tracking now records when a command targets the final front node, including the physical node the command was issued from;
+    - route commitment no longer requires the special `route-commitment-final-approach` mode before recognizing final-approach progress;
+    - front route reassigns, stalled-route repairs, regular requeues, travel recovery, and initial delayed route setup now all update the final-approach marker when their route target is the final front node;
+    - important-business closure tracking now records the initial travel route issue point, so a disrupted business route can distinguish physical progress from a same-node loop;
+    - business closure recovery now avoids charging a retry when the closer advanced since the last final-target command, and gives human/robbery business closures a capped moving-route grace of `126` days before timeout instead of stopping at `84` while progress is still visible.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8FR;
+    - front routes that move after a final-target command should log `front-route-commitment-final-approach ... progressed=True retryIncremented=False`;
+    - important-business recovery should log `business-closure-requeued ... progressed=True retryIncremented=False` or proceed to `business-closure-direct-completed` rather than timing out while moving;
+    - a truly stuck same-node route should still increment retries and can still abandon at the existing requeue limit;
+    - keep watching for `business-closure-give-up`, `front-delayed-action-abandoned`, and whether any `currentNode` repeatedly alternates near the same target without a matching `progressed=True`.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed both repository public-package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-06 12:45:25`, size `2570240`, SHA-256 `EF5AFD8A2853FD43216A17981D0EACE4B1B85F9B81B76044E32782FBEF151AEE`;
+    - Steam live remains Phase 8FQ at `2026-06-06 12:01:07`, size `2569216`, SHA-256 `A8AA2C2511E2F31963DBB9A2AB711A4E810A4552AED0DCEE9F5D6962F1E1F07F`.
+- Phase 8FV route completion evidence staged on 2026-06-06:
+  - user feedback after the 8FU live test:
+    - continue checking logs and start the next route/front pass.
+  - latest live evidence:
+    - Steam live loaded Phase 8FU at timestamp `2026-06-06 14:42:47`, size `2579968`, SHA-256 `22642A3F30115E432E7B6910E858FF8597CA32605285A79B31693F1B77EB0A06`;
+    - the new `front-actor-reuse-penalty` marker appeared after a completed front by attacker `33`, peep `4295009302`, vehicle `4295029528`, building `8589940706`;
+    - a later important-business closure completed for the same peep/vehicle at building `8589940930`, but compact logs did not show the earlier `tracked-business-closure` assignment or whether the front's post-action return was queued or skipped due another pending action;
+    - no 8FU `front-defended` occurred in the latest Player.log, so `front-defended-aggro-attack` / `front-defended-aggro-skip` still needs a fresh defended-front run.
+  - implementation:
+    - compact front-pressure logs now retain `tracked-business-closure`, `post-front-return-queued`, and `post-front-return-skip`;
+    - the generic pending-front cleanup path now logs `front-closure-completed ... reason=owner-changed-before-cleanup` when the front is already no longer owned by the defender before the direct arrival resolver prints its own completion line.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8FV;
+    - a completed front that resolves through ownership-change cleanup should show `front-closure-completed ... reason=owner-changed-before-cleanup`;
+    - if the same closer is allowed to continue into an already-tracked shop route, the log should show `tracked-business-closure` before the later `business-closure-completed`;
+    - every completed/defended front/shop route should show either `post-front-return-queued` or `post-front-return-skip`, making route completion and return behavior auditable;
+    - keep watching for `front-defended-aggro-attack` or `front-defended-aggro-skip` after the next defended player front.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed both repository public-package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-06 19:02:52`, size `2580480`, SHA-256 `2A7E5AB046D71B815ECD8E4260AB476DCA51FDC8346FE5F9AC7C7B758293F246`;
+    - Steam live remains Phase 8FU at `2026-06-06 14:42:47`, size `2579968`, SHA-256 `22642A3F30115E432E7B6910E858FF8597CA32605285A79B31693F1B77EB0A06`.
+- Phase 8FW convo initiative route reserve staged on 2026-06-06:
+  - user feedback after the 8FV live check:
+    - enemy AI should not let front/shop movement interfere with convo initiatives if vanilla already has a movement feature for them;
+    - `ConvoGangs.sim` around the initiative button should be reviewed to see whether it contains a movement primitive;
+    - one enemy did not appear to move to the truce position after asking for a truce.
+  - latest live evidence:
+    - Steam live loaded Phase 8FV `GameplayTweaks.dll` at timestamp `2026-06-06 19:02:52`, size `2580480`, SHA-256 `2A7E5AB046D71B815ECD8E4260AB476DCA51FDC8346FE5F9AC7C7B758293F246`;
+    - Steam live loaded the older `CopKilling.dll` at timestamp `2026-06-05 11:17:00`;
+    - latest closure evidence looked better: `tracked-business-closure`, `business-closure-route-commitment-final-approach-grace`, `business-closure-direct-completed`, `business-closure-completed`, `post-front-return-queued`, and `front-defended-aggro-attack` all appeared;
+    - no live truce initiative execution marker appeared in the sampled log, so this pass follows decompiled routing anchors rather than an observed failed `go-meeting-point` command.
+  - implementation:
+    - `ConvoGangs.sim` was confirmed to be UI topic selection only; its `StoreGangConvoInitiative` path displays topics such as `gang-init-truce`, but movement is created by vanilla `SocialAdvisor.StartConvoInitiative`;
+    - vanilla convo movement uses `ConvoInitiative.meetingPoint`, `SocialAdvisor.ProduceRequests`, advisor priority `GoToMeetingPoint`, AISim script `go-meeting-point`, and `AICommandWaitAtMeetingPoint`;
+    - GameplayTweaks now reserves one occupied vehicle from front/shop retaliation capacity while an attacker has an active convo initiative;
+    - front/shop crew selection now skips a crew member already serving a meeting command, or already busy while a convo initiative still needs a peep sent;
+    - CopKilling no longer returns `false` from `CombatAdvisor.MaybeAskForTruce` during its temporary combat suppression windows, allowing vanilla truce initiative setup to run.
+  - expected next-run signals:
+    - manually refresh the staged `GameplayTweaks.dll` and `CopKilling.dll` live and restart before testing Phase 8FW;
+    - when a truce initiative exists, front/shop pressure should report `convoReserve=1` in capacity/selection logs;
+    - if a meeting-bound crew is considered for front/shop pressure, expect `front-crew-skip-convo-initiative`;
+    - when a front/shop closer is selected, expect `front-crew-selected ... convoReserve=... convoTopic=... convoMeetingNode=...`;
+    - when CopKilling's hook sees a truce request during a suppression window, expect `[CopKilling] CombatAdvisor.MaybeAskForTruce allowed-through` instead of the old skipped marker;
+    - if the truce still does not visibly route, the next log should show whether vanilla created the initiative/ticker and whether any `go-meeting-point` request or command was assigned.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - `dotnet build CopKilling\CopKilling.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - refreshed repo and nested public package `CopKilling.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-06 19:55:14`, size `2582528`, SHA-256 `7FC287ED27AD8A39C1DB976E135C0332859EAA15E1E4A25F13D3E327B9F0CA6B`;
+    - build, staged public, and nested public package `CopKilling.dll` timestamp `2026-06-06 19:55:24`, size `139776`, SHA-256 `93F291C3218DA91E3FFED7C8074D9D28B3AED7BC28528346E07505F55B78D680`;
+    - Steam live remains Phase 8FV for GameplayTweaks and the older CopKilling file until the staged DLLs are manually refreshed live.
+- Phase 8FX robbery meeting dry-run staged on 2026-06-06:
+  - user direction:
+    - create a separate phased prompt for physical robbery meetings;
+    - use the low-to-medium blast-radius route;
+    - start with the first step toward using meeting-style movement before robbery prompts.
+  - implementation:
+    - added `docs\robbery-meeting-phased-prompt.md`;
+    - added a compact `robbery-meeting-dryrun` marker in retaliation scoring;
+    - the marker is runtime-only, logs at most once per attacker/defender/channel every `14` days, and does not queue movement or delay robbery prompts yet.
+  - expected next-run signals:
+    - after hostile trespass, severe negative relationship, direct aggro, or a stronger hostile outfit, watch for `robbery-meeting-dryrun attacker=... defender=... eligible=... reason=...`;
+    - `eligible=True` means the pair is a good candidate for Phase 2 pending robbery-meeting data;
+    - `convoActive=True` or `reason=real-convo-active` means the real vanilla meeting is correctly treated as higher priority.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-06 20:27:09`, size `2585088`, SHA-256 `AB48A22504679832EE257D1EB665EB19FA73AFD449FDC46340E7DB9AE3E60094`;
+    - Steam live was not updated by automation.
+  - live follow-up:
+    - live Steam loaded the `2026-06-06 20:27:09` DLL, but no `robbery-meeting-dryrun` marker appeared;
+    - the actual robbery prompt path logged `AIPlayerRobbery indicator phase=robbery-intent source=human-travel-finalize`, then `deferred phase=response-popup`, then `shown phase=deferred-response`;
+    - next hook should target the AI-human robbery response queue/show path instead of the later retaliation scorer.
+- Phase 8FY robbery meeting pending data staged on 2026-06-06:
+  - implementation:
+    - added GameplayTweaks-owned pending robbery-meeting records next to the deferred AI-human robbery response state;
+    - records selected meeting actor, selected vehicle, target crew/vehicle, meeting node, current actor node, queue/not-before/expiry days, source, mode, reason, priority, and route counters;
+    - skips fake meeting data when a real vanilla convo initiative is active;
+    - clears the data-only meeting when the legacy prompt shows, auto-evasion resolves, deferred response expires, the snapshot clears, or low cash cancels the response;
+    - no route movement and no prompt timing changes yet.
+  - expected next-run signals:
+    - `robbery-meeting-queued ... promptStillLegacy=True result=pending`;
+    - `robbery-meeting-retained` or `robbery-meeting-updated` if repeated same-pair contacts arrive before the prompt shows;
+    - `robbery-meeting-cleared ... reason=legacy-prompt-shown` when the current prompt still appears through the legacy path;
+    - `robbery-meeting-skip-real-convo` if a true truce/tied-house meeting is active.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-06 20:42:26`, size `2591744`, SHA-256 `282A92E7CEC5E8FD4658E1DE9F2A3DA0A88ABCA07E67DCAF36AD8A336B6F4ED8`;
+    - Steam live was still Phase 8FX at `2026-06-06 20:27:09`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8FY.
+- Phase 8FZ robbery meeting physical route staged on 2026-06-06:
+  - live evidence:
+    - Steam loaded the expected Phase 8FY DLL at `2026-06-06 20:42:26`;
+    - `robbery-meeting-queued` selected `meetingPeep=4295009430`, `meetingVehicle=4295028850`, and `meetingNode=NID_385`;
+    - the higher-priority travel-finalize update retained the same actor, vehicle, target, and meeting node;
+    - the pending entry cleared correctly when the legacy prompt showed, and a later pending entry cleared when the robbery pair cooldown invalidated it;
+    - no runtime exception accompanied the pending meeting lifecycle.
+  - implementation:
+    - the selected meeting driver receives a physical `CommandGoto` toward the recorded meeting node;
+    - long routes reuse the existing front-route segment resolver and retain the final meeting node separately;
+    - actor selection excludes pending front/shop actors, real convo meeting actors, retreating crew, non-drivers, and crews without a valid vehicle;
+    - pending robbery meetings reserve their peep/vehicle in front/shop capacity and coordinated attack selection;
+    - the next human-turn check logs arrival, bounded requeue, route blocking, or timeout before the legacy robbery popup is processed;
+    - prompt timing remains unchanged until Phase 4.
+  - expected next-run signals:
+    - `robbery-meeting-route-queued` with `currentNode`, `routeTargetNode`, `meetingNode`, `routeGoal`, and route cost;
+    - `robbery-meeting-arrived` when the physical actor reaches the meeting node before the popup;
+    - `robbery-meeting-route-requeued` only when the route disappeared and the actor is free;
+    - `robbery-meeting-route-blocked` or `robbery-meeting-timeout` for bounded failure evidence;
+    - the normal robbery prompt should still appear on the existing next-turn schedule in this phase.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-06 21:12:58`, size `2600448`, SHA-256 `D5562AA92003CCBAF091FF81CA55A7E70212DDD7BDC8CD91548B72EFE4C6C96C`;
+    - Steam live remained Phase 8FY at `2026-06-06 20:42:26`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8FZ.
+- Phase 8GA robbery meeting actor lock and route progress staged on 2026-06-06:
+  - live evidence:
+    - Steam loaded the expected Phase 8FZ DLL at `2026-06-06 21:12:58`;
+    - `robbery-meeting-route-queued` created an approach segment from `NID_278` toward final meeting node `NID_142` through segment `NID_163`;
+    - no `robbery-meeting-arrived` marker appeared before the legacy prompt showed;
+    - a later higher-priority repeat contact switched the pending actor from peep/vehicle `4295009478/4295029371` to `4295008136/4295028850` despite the same target and meeting node;
+    - legacy cleanup did not report the actor's physical node, so route progress could not be confirmed.
+  - implementation:
+    - same-target/same-node pending meetings retain the original valid peep and vehicle even when a higher-priority contact refreshes metadata;
+    - retained markers include `actorLock=True` and the proposed replacement actor for verification;
+    - active route tasks log `robbery-meeting-route-progress` with previous/current node, route segment target, final meeting node, and no-progress count;
+    - cleanup markers now include physical current node, route target, arrived state, and no-progress count;
+    - prompt timing remains legacy until a live route proves arrival.
+  - expected next-run signals:
+    - repeated contacts should retain identical peep/vehicle with `actorLock=True`;
+    - `robbery-meeting-route-progress ... progressed=True` should prove physical advancement, or `robbery-meeting-arrived` should prove final arrival;
+    - `robbery-meeting-cleared` should show the physical current node if the legacy popup still arrives first;
+    - do not advance to Phase 4 unless arrival or reliable multi-turn continuation is demonstrated.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-06 21:33:19`, size `2602496`, SHA-256 `6838A7361CBD90EBA018F4B4112DD32BD6526827D1804B1683658A5915BB0F2F`;
+    - Steam live remained Phase 8FZ at `2026-06-06 21:12:58`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GA.
+- Phase 8GB robbery meeting arrival-gated prompt staged on 2026-06-06:
+  - live evidence:
+    - Steam loaded the expected Phase 8GA DLL at `2026-06-06 21:33:19`;
+    - repeated contacts retained peep `4295008136` and vehicle `4295028850` with `actorLock=True`;
+    - `robbery-meeting-route-progress` proved physical movement from `NID_278` to `NID_163`, then from `NID_163` to `NID_76`;
+    - the legacy robbery popup still showed and cleared the meeting while `arrived=False`, confirming that prompt timing was the remaining blocker.
+  - implementation:
+    - pending physical robbery meetings now defer the response popup until the selected actor reaches the recorded meeting node;
+    - waiting meetings log `robbery-meeting-prompt-deferred ... result=waiting-for-arrival` and retain the response for the next human turn;
+    - arrived meetings log `robbery-meeting-prompt-ready`, show the existing robbery response popup unchanged, then log `robbery-meeting-prompt-shown`;
+    - expired meetings cancel the deferred response and log `robbery-meeting-prompt-cancelled`;
+    - robbery contacts without a pending physical meeting retain the legacy popup behavior;
+    - pay, refuse, favor, evade, war heat, relationship, and retaliation resolution callbacks remain unchanged.
+  - expected next-run signals:
+    - while the actor is still traveling, expect `robbery-meeting-route-progress` followed by `robbery-meeting-prompt-deferred`, with no robbery popup that turn;
+    - at the meeting node, expect `robbery-meeting-arrived`, then `robbery-meeting-prompt-ready`, then exactly one `robbery-meeting-prompt-shown`;
+    - after the popup response, verify the normal robbery resolution markers and no duplicate prompt;
+    - if the actor cannot arrive before expiry, expect one `robbery-meeting-prompt-cancelled` and no stale deferred response.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-06 21:45:05`, size `2605568`, SHA-256 `BD6D341882821E5AC58419F29A29390F903A554DDC0694ACB2E9C2946AEE5AD0`;
+    - Steam live remains Phase 8GA at `2026-06-06 21:33:19`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GB.
+- Phase 8GC robbery meeting arrival-presence and response-overlap stabilization staged on 2026-06-06:
+  - live evidence:
+    - Steam loaded the expected Phase 8GB DLL at `2026-06-06 21:45:05`;
+    - the response repeatedly logged `robbery-meeting-prompt-deferred` while the selected actor traveled;
+    - the route eventually logged `robbery-meeting-arrived`, followed by `robbery-meeting-prompt-ready` and exactly one `robbery-meeting-prompt-shown`;
+    - refusal resolved through the existing callbacks and applied the normal hostility, war-heat, and pair cooldown state;
+    - prompt cleanup showed the arrived actor had physically left the meeting node before display;
+    - a second meeting route was queued while the first robbery response popup was still active.
+  - implementation:
+    - arrived meetings now revalidate the selected actor's physical node at the safe human-turn service point;
+    - if the actor left, the arrival flag is cleared, `robbery-meeting-arrival-lost` is logged, and bounded routing resumes instead of displaying the prompt;
+    - contacts received while a human robbery response is active now log `robbery-meeting-suppressed ... reason=human-response-active`;
+    - suppressed contacts do not create a new pending meeting or deferred response;
+    - broader Phase 5 personality and frequency tuning remains deferred until this lifecycle pass is verified.
+  - expected next-run signals:
+    - an actor that stays at the meeting node should proceed directly to `robbery-meeting-prompt-ready` and one `robbery-meeting-prompt-shown`;
+    - an actor that leaves should log `robbery-meeting-arrival-lost`, then route/defer again without showing the popup;
+    - contacts while the popup is open should log `robbery-meeting-suppressed ... reason=human-response-active` and no new `robbery-meeting-queued`;
+    - refusal/pay/favor/evasion should continue using the unchanged resolution path.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-06 22:01:48`, size `2606592`, SHA-256 `97D4126113CDBA8586B0AAE95FB55AFF3A7771CEFC1698ACD80F383D588E7654`;
+    - Steam live remains Phase 8GB at `2026-06-06 21:45:05`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GC.
+- Phase 8GD robbery meeting active-route lock staged on 2026-06-06:
+  - live evidence:
+    - Steam loaded the expected Phase 8GC DLL at `2026-06-06 22:01:48`;
+    - `robbery-meeting-arrival-lost` fired when an actor left a meeting node before the prompt could display;
+    - the prompt later waited for a confirmed same-node arrival, logged `robbery-meeting-prompt-ready`, showed exactly one popup, and logged `robbery-meeting-prompt-shown`;
+    - contacts while that popup was active logged `robbery-meeting-suppressed ... reason=human-response-active` and did not queue another meeting;
+    - repeated contacts before arrival still rewrote active pending meetings, changing meeting nodes and sometimes actors while a physical route was already in progress.
+  - implementation:
+    - same-target pending meetings now retain the existing valid meeting actor and meeting node once a route has been issued or arrival has been recorded;
+    - retained active-route contacts refresh priority, expiry, source, mode, reason, and created-day metadata only;
+    - retained markers include `routeLock=True`, `proposedNode=...`, `sameNode=...`, `routeQueued=...`, and `arrived=...`;
+    - target changes can still replace the pending meeting, preserving the existing broader response behavior.
+  - expected next-run signals:
+    - after copying the staged DLL live and restarting, repeated same-target contacts during an active meeting route should log `robbery-meeting-retained ... actorLock=True routeLock=True`;
+    - the same active route should not emit `robbery-meeting-updated` merely because the player moved to a nearby node;
+    - `meetingNode` should remain stable until the actor arrives, loses arrival and re-routes, expires, or the target crew changes;
+    - `robbery-meeting-prompt-ready` and `robbery-meeting-prompt-shown` should still occur only after confirmed physical presence.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-06 22:28:27`, size `2608128`, SHA-256 `E55F12A514DCE9849C586805CF9FDD931F14CF4A3C561D48E68E6E484546B710`;
+    - Steam live remains Phase 8GC at `2026-06-06 22:01:48`, size `2606592`, SHA-256 `97D4126113CDBA8586B0AAE95FB55AFF3A7771CEFC1698ACD80F383D588E7654`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GD.
+- Phase 8GE robbery meeting route segment handoff staged on 2026-06-06:
+  - live evidence:
+    - Steam loaded the expected Phase 8GD DLL at `2026-06-06 22:28:27`;
+    - active-route retention worked, including repeated `robbery-meeting-retained ... actorLock=True routeLock=True` markers where `sameNode=False`;
+    - the same `meetingNode` stayed stable through repeated contacts while the selected actor kept moving;
+    - the route watchdog kept reporting the old approach `routeTargetNode` after the actor reached or moved past that segment, so the route did not cleanly advance to the final meeting node;
+    - after repeated no-progress checks, the same target eventually logged `robbery-meeting-updated` to a different peep in the same vehicle and a new contact node, then immediately arrived there.
+  - implementation:
+    - when a robbery meeting actor reaches an approach segment target that is not the final meeting node, the route now logs `robbery-meeting-route-segment-complete` and queues the next leg toward the original meeting node;
+    - an active route with two consecutive no-progress checks now logs `robbery-meeting-route-stale` and reissues the route instead of waiting for contact churn;
+    - if the originally selected peep becomes invalid but a proposed crew member is in the same vehicle, the pending meeting logs `actorRecovered=True vehicleLock=True routeLock=True`, keeps the original meeting node, and requeues toward it.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GE;
+    - when the actor reaches a segment target, expect `robbery-meeting-route-segment-complete ... result=queue-next-leg`, followed by `robbery-meeting-route-requeued` toward the final meeting node or next segment;
+    - stale active tasks should log `robbery-meeting-route-stale ... result=requeue-required` rather than drifting indefinitely;
+    - same-vehicle actor recovery should log `actorRecovered=True vehicleLock=True routeLock=True` while preserving the original `meetingNode`;
+    - same-target `robbery-meeting-updated` should no longer occur just because the route actor reached a nearby contact node.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-06 22:45:36`, size `2610688`, SHA-256 `9570CA582F8B315B62BA4F23D12274AA9E510515F41BED6A61F4F6AAC4594F18`;
+    - Steam live remains Phase 8GD at `2026-06-06 22:28:27`, size `2608128`, SHA-256 `E55F12A514DCE9849C586805CF9FDD931F14CF4A3C561D48E68E6E484546B710`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GE.
+- Phase 8GF robbery meeting recovery and expiry sync staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GE DLL at `2026-06-06 22:45:36`;
+    - `robbery-meeting-route-segment-complete` appeared at the approach segment, followed by `robbery-meeting-route-requeued` toward the final meeting node;
+    - `robbery-meeting-route-stale` also appeared and reissued the route after repeated no-progress checks;
+    - the route still allowed a same-target `robbery-meeting-updated` when the original actor became invalid and the proposed replacement was in a different vehicle;
+    - a later active physical meeting stayed deferred while moving but its deferred response expiry remained too close to the pending meeting expiry, allowing cancellation shortly after route progress.
+  - implementation:
+    - same-target active meeting recovery now accepts any valid proposed replacement crew/vehicle while preserving the original meeting node;
+    - recovered markers include `actorRecovered=True`, `vehicleRecovered=True`, and `vehicleChanged=...`;
+    - repeated same-pair deferred responses that are kept now extend their `ExpireDay` instead of leaving the original response expiry stale;
+    - before a deferred response expires, it checks an active pending meeting and logs `robbery-meeting-deferred-expiry-extended` when the response expiry is lifted to the physical meeting expiry.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GF;
+    - same-target replacement after an invalid actor should log `robbery-meeting-retained ... actorRecovered=True vehicleRecovered=True routeLock=True` and keep the original `meetingNode`;
+    - repeated contacts should log deferred `expireDay=old->new` if the existing deferred response is kept;
+    - an active physical meeting should not clear from `deferred-response-expired` while its pending meeting is still valid;
+    - if the route still cannot arrive, expect explicit `robbery-meeting-timeout` or `robbery-meeting-prompt-cancelled`, not a route-less prompt.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 08:12:35`, size `2611712`, SHA-256 `8CAC3CCFD5E89FCE4A9231E022C07EA9B1415CE93BBE7D9E452D80A42E8E78CB`;
+    - Steam live remains Phase 8GE at `2026-06-06 22:45:36`, size `2610688`, SHA-256 `9570CA582F8B315B62BA4F23D12274AA9E510515F41BED6A61F4F6AAC4594F18`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GF.
+- Phase 8GG robbery meeting moving-route expiry grace staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GF DLL at `2026-06-07 08:12:35`;
+    - same-pair deferred responses extended their expiry while the pending physical meeting remained active;
+    - a long route toward `meetingNode=NID_618` still logged real physical progress on multiple human-turn checks, including current nodes `NID_363`, `NID_229`, `NID_58`, and `NID_278`;
+    - despite that progress, the pending meeting expired at `expireDay=701764` on day `701771` and then cleared as `deferred-response-expired`.
+  - implementation:
+    - pending robbery meetings now record `LastProgressDay`;
+    - `robbery-meeting-route-progress` with `progressed=True`, `robbery-meeting-route-segment-complete`, and route issue/requeue can extend the pending meeting expiry;
+    - expired-but-recently-moving routes log `robbery-meeting-timeout-deferred ... result=moving-route-kept` and receive another servicing window;
+    - the moving-route grace is capped by `AI_ROBBERY_MEETING_ROUTE_MAX_DAYS = 84` from the original `QueuedDay`.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GG;
+    - when a robbery-meeting actor physically advances, expect `robbery-meeting-expiry-extended ... reason=route-progress` when the old pending expiry would otherwise be too short;
+    - if the service check starts after the old expiry but the route recently moved, expect `robbery-meeting-timeout-deferred ... result=moving-route-kept`;
+    - no active moving meeting should clear as `deferred-response-expired` until the pending meeting is no longer valid or the `84`-day hard cap is reached.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 08:33:09`, size `2613248`, SHA-256 `4807A7374009E823868A51B182AC617FFB3C93F00C607DD5C07A661BC19CE379`;
+    - Steam live remains Phase 8GF at `2026-06-07 08:12:35`, size `2611712`, SHA-256 `8CAC3CCFD5E89FCE4A9231E022C07EA9B1415CE93BBE7D9E452D80A42E8E78CB`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GG.
+- Phase 8GH human front route requeue-limit grace staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GG DLL at `2026-06-07 08:33:09`;
+    - moving robbery meetings logged expiry extension and eventually reached `robbery-meeting-arrived`, `robbery-meeting-prompt-ready`, and `robbery-meeting-prompt-shown`;
+    - the next bottleneck was a human outpost-front route: it queued toward `targetNode=NID_501`, reached an approach node `NID_76`, then abandoned at `waitedDays=35` with `reason=human-front-route-requeue-limit` even though the long-route cap is `84` days;
+    - an older front route also proved the same pattern can move across multiple approach nodes but time out near the cap before final resolution.
+  - implementation:
+    - human-front final-approach commitment now has a one-use route-limit grace before the `84`-day wait cap;
+    - when the retry counter reaches the human max before the wait cap, the closer gets a final-target `CommandGoto`;
+    - the inflated retry count is reset back to `RETALIATION_FRONT_DELAYED_ACTION_HUMAN_ROUTE_COMMIT_REQUEUES`, no-progress checks are cleared, and the existing final-approach grace flag prevents repeated resets;
+    - the new compact marker is `front-route-commitment-requeue-limit-grace`.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GH;
+    - if a human-front route reaches the retry limit early, expect `front-route-commitment-requeue-limit-grace ... oldRequeues=... requeues=4`;
+    - after the grace, the route should continue toward the warned front and eventually log `front-closure-completed`, `front-defended`, or a normal wait-cap timeout;
+    - no route should abandon at `human-front-route-requeue-limit` substantially before the `84`-day cap unless no final approach route is available.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 09:02:43`, size `2614784`, SHA-256 `6A251B24AFBA3FD966D029746667CA559D524DDEB711DEFBA9C15A01B4889399`;
+    - Steam live remains Phase 8GG at `2026-06-07 08:33:09`, size `2613248`, SHA-256 `4807A7374009E823868A51B182AC617FFB3C93F00C607DD5C07A661BC19CE379`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GH.
+- Phase 8GI front wait-limit and business progress grace staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GH DLL at `2026-06-07 09:02:43`;
+    - robbery meeting routing stayed healthy, including `robbery-meeting-arrived`, `robbery-meeting-prompt-ready`, and `robbery-meeting-prompt-shown`;
+    - one human-front route completed at `targetNode=NID_501` with `front-closure-completed ... reason=arrival-direct-outpost-steal`;
+    - another human-front route later abandoned at `waitedDays=84` with `currentNode=NID_0` and `reason=human-front-route-timeout`;
+    - important-business closures logged real route progress but still gave up at the old `21`-day base cap with `progressed=True`.
+  - implementation:
+    - human-front delayed routes now get an extra `28`-day final window once final-approach grace is granted;
+    - if a human-front delayed route reaches route or wait limits and can still build a route, it gets one direct final route and logs `front-delayed-action-limit-grace`;
+    - the limit-grace route resets inflated retry count back to the commitment floor and clears no-progress checks;
+    - progressing important-business closures now use the longer progress cap even when the defender is not human and the source is war-heat pressure rather than robbery;
+    - the business-progress marker is `business-closure-progress-wait-extended`.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GI;
+    - if a human-front route reaches route or wait limits, expect `front-delayed-action-limit-grace ... reason=wait-limit|requeue-limit`;
+    - after the grace, expect `front-closure-completed`, `front-defended`, or a later true timeout rather than an immediate disappear;
+    - for important businesses, expect `business-closure-progress-wait-extended` instead of `business-closure-give-up ... progressed=True ... maxWaitDays=21` while the closer is still advancing.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 09:58:02`, size `2616832`, SHA-256 `603147848AFA0BD4F76EFBC37BB3D89699962D888B9C0D575F6DF03AC3B59524`;
+    - Steam live remains Phase 8GH at `2026-06-07 09:02:43`, size `2614784`, SHA-256 `6A251B24AFBA3FD966D029746667CA559D524DDEB711DEFBA9C15A01B4889399`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GI.
+- Phase 8GJ front final-grace retry cap and lost-node reassignment staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GI DLL at `2026-06-07 09:58:02`;
+    - robbery meeting routes still reached arrival and showed the prompt after physical presence;
+    - one important business closure completed and showed the player-facing closure ticker;
+    - one front route abandoned at `waitedDays=49`, `requeues=12`, `maxWaitDays=112`, which means final grace had already extended the wait cap but the retry counter still killed the route early;
+    - another front route abandoned at `waitedDays=84` with `currentNode=NID_0` and `peepNode=NID_0`, proving the direct route grace could not build from the lost actor state and the lost-node reassignment branch was not reached before timeout.
+  - implementation:
+    - once final-approach grace has been granted, human-front delayed routes no longer abandon from the retry counter before the extended wait cap;
+    - when a human-front route reaches route or wait limit with both actor node values invalid, it now tries `TryReassignLostPendingRetaliationFrontAction` before abandoning;
+    - successful cap-side reassignment logs `front-delayed-action-limit-reassigned`;
+    - ungraced routes can still abandon from retry limit, and truly timed-out final-graced routes still use the wait cap.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GJ;
+    - a final-graced front route should not log `human-front-route-requeue-limit` at `waitedDays` below the extended cap;
+    - a lost-node front at route/wait cap should either log `front-delayed-action-limit-reassigned` or fall through to a clearer abandon after reassignment is unavailable;
+    - successful routes should still resolve through `front-closure-completed` or `front-defended`.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 10:20:22`, size `2617856`, SHA-256 `8880C0A774E9F972BBAB517471BC5A5AF4E18FF903566E3AA0749CD3E6D6007B`;
+    - Steam live remains Phase 8GI at `2026-06-07 09:58:02`, size `2616832`, SHA-256 `603147848AFA0BD4F76EFBC37BB3D89699962D888B9C0D575F6DF03AC3B59524`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GJ.
+- Phase 8GK business closure progress memory staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GJ DLL at `2026-06-07 10:20:22`;
+    - no new human-front delayed-action abandon appeared in the reviewed tail;
+    - defended fronts resolved with `front-defended`, `front-defended-aggro-attack`, vanilla protected-front result, retry cooldown, actor reuse penalty, and post-front return;
+    - one important-business closure logged `business-closure-progress-wait-extended` at `waitedDays=84`;
+    - the same closure later logged `business-closure-route-commitment-final-approach-grace` at `waitedDays=105`;
+    - it then gave up at `waitedDays=112` with `maxWaitDays=84` and `progressed=False`, meaning prior progress/grace was not remembered across the next recovery tick.
+  - implementation:
+    - pending front/shop actions now remember `DelayedFinalApproachProgressObserved`;
+    - business closure recovery sets that flag when final-route progress is observed;
+    - final-approach grace also marks progress observed;
+    - business closure wait caps, route-limit checks, and retry increments now use remembered progress/grace instead of only the current node comparison;
+    - progress/requeue/give-up markers include `progressObserved=...`.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GK;
+    - after a business route logs `business-closure-progress-wait-extended` or final-approach grace, later checks should keep `maxWaitDays=126` and `progressObserved=True`;
+    - the old pattern `business-closure-give-up ... waitedDays=112 maxWaitDays=84 progressed=False` should not recur for the same route after prior progress;
+    - fronts should continue to resolve through `front-closure-completed`, `front-defended`, or clearer reassignment/timeout markers.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 10:44:46`, size `2618368`, SHA-256 `C86F60079EB325541F461EE5385DAA210748758B161A44BAECACFFD32D0C26E7`;
+    - Steam live remains Phase 8GJ at `2026-06-07 10:20:22`, size `2617856`, SHA-256 `8880C0A774E9F972BBAB517471BC5A5AF4E18FF903566E3AA0749CD3E6D6007B`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GK.
+- Phase 8GL reassigned front same-tick timeout guard staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GK DLL at `2026-06-07 10:44:46`;
+    - front defense, aggro follow-up, normal front closure, and robbery-meeting arrival/prompt behavior remained healthy;
+    - lost-node recovery selected replacement peep `4295021237`, queued a valid approach route toward `NID_618`, and logged `front-delayed-action-limit-reassigned`;
+    - the outer cleanup then immediately logged `front-delayed-action-give-up ... reason=route-recently-issued` for the replacement route in the same turn;
+    - no Phase 8GK important-business progress-memory marker appeared in this run, so that path remains pending live verification.
+  - implementation:
+    - `HasDelayedRetaliationFrontActionTimedOut` now returns false while a front route is inside the recent-issue cooldown window;
+    - this protects reassignment and other newly issued recovery routes from same-tick timeout;
+    - normal route recovery, retry limits, and later wait-cap checks remain unchanged.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GL;
+    - after `front-delayed-action-limit-reassigned`, the same cleanup window must not log `front-delayed-action-give-up ... reason=route-recently-issued`;
+    - expect the replacement actor to move, requeue, reach `front-closure-completed` / `front-defended`, or later produce a genuine timeout;
+    - still verify Phase 8GK business routes retain `progressObserved=True` and `maxWaitDays=126` after prior progress.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 11:01:13`, size `2618368`, SHA-256 `659EAA5690746CDC73C68181E47C00D1ADA1E110DD05DE5D44FEA2DD8BC2FBE4`;
+    - Steam live remains Phase 8GK at `2026-06-07 10:44:46`, size `2618368`, SHA-256 `C86F60079EB325541F461EE5385DAA210748758B161A44BAECACFFD32D0C26E7`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GL.
+- Phase 8GM bounded terminal front actor handoff staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GL DLL at `2026-06-07 11:01:13`;
+    - robbery meeting routing still reached one prompt, one front closed normally, and another defended front triggered the aggro follow-up;
+    - no `front-delayed-action-limit-reassigned` occurred, so the exact Phase 8GL same-tick guard was not exercised;
+    - front `8589940900` advanced through `NID_954`, `NID_471`, and `NID_501`, received reachable final-approach grace at day `84`, then moved back to `NID_488`;
+    - the same actor remained at `NID_488` and the warned front was discarded at the full `112`-day cap as `human-front-route-timeout`.
+  - implementation:
+    - pending front actions now track whether a terminal actor reassignment has already been granted;
+    - at the human-front wait cap, a valid-node stalled actor can be replaced by a different eligible crew/vehicle through the existing physical reassignment route;
+    - the replacement receives only the existing `28`-day final window, not a fresh unlimited route lifetime;
+    - the terminal handoff is one-use, so a later failure reaches the normal timeout instead of cycling actors indefinitely.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GM;
+    - a valid-node route that reaches its wait cap should log `front-delayed-action-limit-reassigned ... reason=wait-limit-stalled-actor terminalWindowDays=28`;
+    - the replacement actor should then move and resolve as `front-closure-completed` / `front-defended`, or time out once after the bounded terminal window;
+    - no single pending front should receive repeated terminal actor handoffs;
+    - continue watching for Phase 8GK business markers with `progressObserved=True` and `maxWaitDays=126`.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 11:18:42`, size `2618368`, SHA-256 `246AE1A1F137AC221EE24104516FA82A4B3C6185F04D2B6CA137878C0CA39192`;
+    - Steam live remains Phase 8GL at `2026-06-07 11:01:13`, size `2618368`, SHA-256 `659EAA5690746CDC73C68181E47C00D1ADA1E110DD05DE5D44FEA2DD8BC2FBE4`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GM.
+- Phase 8GN robbery meeting route divergence recovery staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GM DLL at `2026-06-07 11:18:42`;
+    - the terminal front handoff fired once as `front-delayed-action-limit-reassigned ... reason=wait-limit-stalled-actor terminalWindowDays=28`;
+    - the replacement later timed out without another terminal handoff, confirming the reassignment remained bounded;
+    - important business `8589940900` closed successfully through war-heat pressure and showed its player notice;
+    - a robbery meeting targeting `NID_363` moved through `NID_343`, `NID_227`, `NID_342`, `NID_471`, `NID_851`, and `NID_958`;
+    - each node change reset no-progress checks and extended expiry even when the actor was moving farther from the target.
+  - implementation:
+    - pending robbery meetings now remember their last physical distance to the meeting node and a consecutive divergence count;
+    - movement only extends meeting expiry when it is not farther from the target;
+    - two consecutive moves farther from the target log `robbery-meeting-route-diverged` and immediately rebuild the route;
+    - normal segment completion, arrival, stale-task recovery, and the existing `84`-day hard cap remain unchanged.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GN;
+    - route progress markers now include `diverging=... distance=... lastDistance=... divergingChecks=...`;
+    - two consecutive farther moves should produce `robbery-meeting-route-diverged ... result=requeue-required`, followed by `robbery-meeting-route-requeued`;
+    - a diverging route should not receive `reason=route-progress` expiry extension until it moves toward the meeting node again;
+    - the meeting should then reach `robbery-meeting-arrived` / `robbery-meeting-prompt-shown` or hit the existing hard timeout.
+  - validation:
+    - the initial build identified and corrected one nullable world-position expression;
+    - final `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 11:38:36`, size `2619904`, SHA-256 `3052A0D0076D4BF486289FEA912D87631D82931161507929562DE31BE950C54D`;
+    - Steam live remains Phase 8GM in the reviewed log at `2026-06-07 11:18:42`; manually refresh the staged GameplayTweaks DLL live and restart before testing the final Phase 8GN build.
+- Phase 8GO active front final-progress timeout alignment staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GN DLL at `2026-06-07 11:38:36`;
+    - robbery meeting routes logged consecutive `diverging=True` checks, `robbery-meeting-route-diverged`, and immediate `robbery-meeting-route-requeued`, confirming Phase 8GN worked;
+    - an important-business closure retained `progressObserved=True`, used `maxWaitDays=126` at days `84` and `91`, then completed at its target, confirming Phase 8GK's progress memory;
+    - human front `8589940303` showed physical final-approach progress through several nodes and still had an active command;
+    - the outer cleanup nevertheless cleared it at `waitedDays=98 maxDays=84 reason=still-traveling`, while inner route recovery already supports a `112`-day final-progress window.
+  - implementation:
+    - human-front final-route movement now sets `DelayedFinalApproachProgressObserved`;
+    - `HasDelayedRetaliationFrontActionTimedOut` uses `84 + 28` days when final progress, final grace, or terminal reassignment has been observed;
+    - the active-route and recently-issued branches preserve that human-specific effective cap instead of replacing it with `84`;
+    - routes without final progress retain the existing base cap.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GO;
+    - an active progressing human-front route between days `84` and `112` must not log `front-delayed-action-give-up ... maxDays=84 reason=still-traveling`;
+    - it should resolve as `front-closure-completed` / `front-defended`, receive a bounded terminal handoff, or time out at the effective `112`-day cap;
+    - robbery meetings should continue to log divergence requeues without extending expiry for farther movement.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 11:52:25`, size `2619904`, SHA-256 `E819F76970B36B235BD178A1D75AEE80255AA7773A806254B0EBEF6FF25235BB`;
+    - Steam live remains Phase 8GN at `2026-06-07 11:38:36`, size `2619904`, SHA-256 `3052A0D0076D4BF486289FEA912D87631D82931161507929562DE31BE950C54D`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GO.
+- Phase 8GP dead important-business closer handoff staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GO DLL at `2026-06-07 11:52:25`;
+    - the old active human-front outer timeout mismatch did not recur in the reviewed run;
+    - important-business closer `4295021617` logged physical final-approach progress toward building `8589938746`, then died;
+    - the next cleanup removed the still-pending closure as `business-closure-command-finished` instead of assigning another eligible outfit vehicle.
+  - implementation:
+    - important-business recovery now resolves the locked target before validating the assigned actor;
+    - when that actor is missing or dead, the pending closure gets one bounded handoff through the existing front-action crew and route eligibility checks;
+    - the replacement keeps the original queued day, target, progress memory, and prior retry count, so actor death does not refresh the closure lifetime;
+    - `DelayedBusinessActorReassignmentGranted` prevents repeated actor cycling.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GP;
+    - actor death during a pending important-business route should log `business-closure-actor-reassigned` and continue toward the same building with a different peep;
+    - if no eligible replacement exists, or the one allowed handoff was already used, it should log `business-closure-actor-reassign-unavailable` and clear normally;
+    - the replacement route must still complete or give up under the original closure deadline.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 12:13:32`, size `2620928`, SHA-256 `2FC080D0C60DF1774FA93187425D08CDEED4836B8CB7CE5199A8A0C62D550DB2`;
+    - Steam live remains Phase 8GO at `2026-06-07 11:52:25`, size `2619904`, SHA-256 `E819F76970B36B235BD178A1D75AEE80255AA7773A806254B0EBEF6FF25235BB`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GP.
+- Phase 8GQ post-grace human-front target commitment staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GP DLL at `2026-06-07 12:13:32`;
+    - important-business closure `8589938746` completed under Phase 8GP, and the reviewed run did not show the prior dead-business-closer clear;
+    - human front `8589940900` received a terminal actor handoff at day `84`, then a final-grace route with `routeGoal=target`;
+    - the next recovery requeued the same closer back to `routeGoal=approach-segment`, and the front eventually abandoned at the `112`-day cap.
+  - implementation:
+    - `ShouldAllowDelayedHumanFrontSegmentTarget` now refuses segment targets once final-approach grace has been granted;
+    - post-grace requeues stay committed to the final front node instead of stepping back to approach segments;
+    - abandoned-front cleanup now reports the effective human-front cap instead of `maxDays=0`, so future logs distinguish true timeout from bad cleanup.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GQ;
+    - after `front-delayed-action-limit-grace`, later `front-delayed-action-requeued` / stalled-human reissues for that entry should keep `routeGoal=target`;
+    - if a post-grace route times out, `front-delayed-action-give-up` should report `maxDays=112` for the extended human-front window;
+    - defended fronts and important-business closures should retain the Phase 8GP behavior.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 12:46:42`, size `2620928`, SHA-256 `8B7B7B7D84C57775C6D0FFDA0C34D6974AA3D8B735491810BD5103DF5968D6D4`;
+    - Steam live remains Phase 8GP at `2026-06-07 12:13:32`, size `2620928`, SHA-256 `2FC080D0C60DF1774FA93187425D08CDEED4836B8CB7CE5199A8A0C62D550DB2`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GQ.
+- Phase 8GR inner human-front final-progress timeout alignment staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GQ DLL at `2026-06-07 12:46:42`;
+    - post-grace/front-route give-up markers now reported `maxDays=112` instead of `maxDays=0`;
+    - human front `8589940303` logged final-route progress at days `28` and `70`, but the inner recovery branch abandoned at day `84` with `maxWaitDays=84`;
+    - the outer cleanup then reported the correct `112`-day cap, proving the inner and outer timeout rules were still misaligned.
+  - implementation:
+    - inner delayed-front recovery now computes the human-front wait cap after route-commitment recovery can mark final progress;
+    - the same extended-window conditions are used inside and outside: final progress observed, final grace granted, or terminal reassignment granted;
+    - final-progress human fronts now get the `84 + 28` day window before abandonment, even if no explicit grace route has been issued yet.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GR;
+    - a human-front route with prior `front-route-commitment-final-approach ... progressed=True` should not log `front-delayed-action-abandoned ... maxWaitDays=84` at day `84`;
+    - if it still times out after the full extended window, both abandoned and give-up markers should show `maxWaitDays=112` / `maxDays=112`;
+    - Phase 8GQ's post-grace `routeGoal=target` behavior should remain intact.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 13:50:34`, size `2620928`, SHA-256 `53D43A02FA3EB76A7542C93FD5148388AAEA86E5C6D8261989CF71666473837F`;
+    - Steam live remains Phase 8GQ at `2026-06-07 12:46:42`, size `2620928`, SHA-256 `8B7B7B7D84C57775C6D0FFDA0C34D6974AA3D8B735491810BD5103DF5968D6D4`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GR.
+- Phase 8GS terminal human-front replacement distance grace staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GR DLL at `2026-06-07 13:50:34`;
+    - Phase 8GR worked: a progressing human front did not abandon at day `84`, and the eventual abandoned/give-up markers used `maxWaitDays=112` / `maxDays=112`;
+    - the same front's actor was killed mid-route, and the final-cap replacement check found only a candidate at distance `129.8`;
+    - normal human-front replacement selection rejected that candidate against the `120.0` cap, then the route timed out.
+  - implementation:
+    - normal human-front action and normal lost-node replacement selection retain the `120` distance cap;
+    - final wait-limit terminal reassignment now uses a bounded `150` distance cap so a near replacement vehicle can rescue a full-window route;
+    - reassignment unavailable and reassigned markers now include `maxDistance` for future proof.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GS;
+    - regular front selection should still show `maxDistance=120.0` when blocked by distance;
+    - a final wait-limit replacement should log `front-delayed-action-limit-reassigned ... maxCrewDistance=150.0` when a near replacement exists;
+    - if no crew exists within `150`, timeout remains bounded at the existing `112`-day cap.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 14:09:09`, size `2620928`, SHA-256 `001534178EE2A0D9D110238B0FD9D44C5154BC30951EDB56674CC3174922406D`;
+    - Steam live remains Phase 8GR at `2026-06-07 13:50:34`, size `2620928`, SHA-256 `53D43A02FA3EB76A7542C93FD5148388AAEA86E5C6D8261989CF71666473837F`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GS.
+- Phase 8GT terminal-reassigned front target commitment staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GS DLL at `2026-06-07 14:09:09`;
+    - the final wait-limit replacement fired with `front-delayed-action-limit-reassigned ... maxCrewDistance=150.0`;
+    - after that successful terminal handoff, the replacement route was requeued with `routeGoal=approach-segment` and still timed out at the final `112`-day cap;
+    - this matched the earlier final-grace issue, but through the terminal-reassignment path instead.
+  - implementation:
+    - `ShouldAllowDelayedHumanFrontSegmentTarget` now blocks segment targets after terminal reassignment as well as after final grace;
+    - terminal wait-limit reassignment immediately rewrites the replacement's first route to the final target node when a path is available;
+    - a compact `front-delayed-action-terminal-target-route` marker proves the target-committed handoff route was queued.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GT;
+    - after `front-delayed-action-limit-reassigned ... maxCrewDistance=150.0`, look for `front-delayed-action-terminal-target-route ... routeGoal=target`;
+    - later retries for the same entry should keep `routeGoal=target` rather than `approach-segment`;
+    - if the replacement still cannot finish, it remains bounded by the existing final `112`-day cap.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 16:03:53`, size `2621952`, SHA-256 `F4DD3F1DF4ABFD6A410DB26665D84ED4F652062C417ACCB4BC564837540B7111`;
+    - Steam live remains Phase 8GS at `2026-06-07 14:09:09`, size `2620928`, SHA-256 `001534178EE2A0D9D110238B0FD9D44C5154BC30951EDB56674CC3174922406D`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GT.
+- Phase 8GU terminal front capacity-overflow recovery staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GT DLL at `2026-06-07 16:03:53`;
+    - normal front/shop resolution stayed healthy: one important business completed and displayed its notice, one defended front fired the aggro follow-up and vanilla protected-front result, and one front closed by direct arrival;
+    - front `8589941358` reached the full extended human-front cap and tried terminal recovery, but the replacement selector stopped at `front-crew-selection-capacity-blocked ... pendingActions=3 capacity=3 occupiedVehicles=4`;
+    - another pending front for building `8589940900` hit the same selector block later with `pendingActions=3 capacity=1 occupiedVehicles=2`, proving the bottleneck was the normal reserve-cap gate rather than route building or distance.
+  - implementation:
+    - normal front and important-business actor selection still obey the existing retaliation capacity and one-vehicle normal-duty reserve;
+    - the one-shot terminal human-front reassignment path can now bypass the capacity gate after a front has already spent its full wait window;
+    - reserved vehicles, crew busy checks, convo-initiative reservations, boss fallback ordering, and the `150` terminal distance cap still apply;
+    - selection and reassignment logs now include `capacityOverflowAllowed` / `capacityOverflowUsed` so the next run proves whether the bounded overflow was used.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GU;
+    - a final wait-limit front that previously logged `front-crew-selection-capacity-blocked` should now either log `front-crew-selected ... capacityOverflowUsed=True` followed by `front-delayed-action-limit-reassigned ... capacityOverflowAllowed=True`, or fall through to a clearer unavailable marker for distance, busy crew, convo reservation, or no candidate;
+    - ordinary `forced-close`, initial front starts, and non-terminal lost-node recovery should still log capacity blocks normally when the outfit is saturated;
+    - defended fronts and important-business completions should continue to produce the Phase 8GT outcome markers.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 17:44:06`, size `2622464`, SHA-256 `6FA8F15CACB1245A9AFA0AFE98A706F95C46EEA22859908A75492ABF5F593665`;
+    - Steam live remains Phase 8GT at `2026-06-07 16:03:53`, size `2621952`, SHA-256 `F4DD3F1DF4ABFD6A410DB26665D84ED4F652062C417ACCB4BC564837540B7111`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GU.
+- Phase 8GV important-business terminal target route staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GU DLL at `2026-06-07 17:44:06`;
+    - the robbery meeting path arrived and showed the prompt, proving the meeting-route path still works;
+    - front `8589940303` closed through `front-closure-completed ... reason=arrival-direct-outpost-steal`;
+    - AI-vs-AI important business `8589941215` closed and displayed the normal completion/cooldown markers;
+    - human important business `8589940900` logged `business-closure-progress-wait-extended ... waitedDays=84 maxWaitDays=126 progressObserved=True`, then later reached `business-closure-give-up ... waitedDays=126 maxWaitDays=126 progressed=True progressObserved=True reason=timeout` while still off-target.
+  - implementation:
+    - progressing important-business closures now get one bounded terminal target route when they hit the extended progress cap;
+    - the route flushes the stale queue, sends the same closer directly to the business target, keeps the follow-up `AICommandAttackBuilding`, and logs `business-closure-terminal-target-route`;
+    - the terminal route uses the existing `DelayedTerminalReassignmentGranted` guard and rewinds the queued day only enough to give the same `28`-day final window used by front terminal recovery;
+    - if the terminal route cannot be built, `business-closure-terminal-route-unavailable` logs the route reason before the normal give-up marker.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GV;
+    - a progressing important-business closure at `waitedDays=126` should log `business-closure-terminal-target-route ... terminalWindowDays=28` instead of immediately clearing as `business-closure-give-up`;
+    - after that route, expect `business-closure-direct-completed` / `business-closure-completed`, or one later bounded timeout if the target route still cannot finish;
+    - normal business starts, front starts, and the Phase 8GU terminal-front capacity overflow behavior should remain unchanged.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 17:56:25`, size `2624000`, SHA-256 `30EDC6F8D26CC3CE564F6E2AFD82F0F8EE3BBB7D9FFA46B0C7851C2CEB401760`;
+    - Steam live remains Phase 8GU at `2026-06-07 17:44:06`, size `2622464`, SHA-256 `6FA8F15CACB1245A9AFA0AFE98A706F95C46EEA22859908A75492ABF5F593665`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GV.
+- Phase 8GW boss-backed ordinary crew-death relationship buff staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GV DLL at `2026-06-07 17:56:25`;
+    - Phase 8GU's terminal-front capacity path fired: `front-delayed-action-limit-reassigned ... capacityOverflowAllowed=True`;
+    - the reviewed run did not yet exercise Phase 8GV's `business-closure-terminal-target-route`, so that marker remains pending verification;
+    - a human combat kill of enemy peep `4295009478` logged as `death source=PerformAICombat... target=4295009478`, but the boss-death detector correctly rejected it as not the outfit boss;
+    - later persistent-buff reconciliation pruned expired records, and no ordinary crew-death relationship-buff marker existed to keep the enemy boss relationship hostile after the non-boss crew member died.
+  - implementation:
+    - lethal human-vs-AI crew deaths now apply `relbuff-gangs-hitsquad-buff` between the victim outfit and the human player;
+    - the victim-to-human direction is anchored to `GetCrewPeepForPlayer(victimGang)`, so the saved relationship state belongs to the outfit boss/current gang peep instead of the dead crew member;
+    - the reciprocal human-to-victim direction is anchored to the human boss peep for the same reason;
+    - the new compact marker is `crew-death-relationship-buff ... victimBossPeep=... humanBossPeep=... victimToHuman=... humanToVictim=...`.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GW;
+    - after killing a non-boss enemy crew member, expect `crew-death-relationship-buff ... buff=relbuff-gangs-hitsquad-buff`;
+    - the following persistent-buff reconcile should refresh that boss-backed record rather than losing the hostility when the killed peep disappears;
+    - `robbery-meeting-dryrun` and war-heat decisions for that outfit should show `hostileBuff=True` / stronger relationship hostility after the kill.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 18:21:05`, size `2625024`, SHA-256 `985A12FA7876EADE5773EABD38CF91F98AF6D0F3117128D030C2F3F1D897E533`;
+    - Steam live remains Phase 8GV at `2026-06-07 17:56:25`, size `2624000`, SHA-256 `30EDC6F8D26CC3CE564F6E2AFD82F0F8EE3BBB7D9FFA46B0C7851C2CEB401760`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GW.
+- Phase 8GX ordinary crew-death buff semantic correction staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GW DLL at `2026-06-07 18:21:05`;
+    - the latest run showed relationship hostility affecting war heat and retaliation scoring (`hostileBuff=True`, higher `effectiveHeat`, and enforced retaliation war markers);
+    - user review correctly identified that `relbuff-gangs-hitsquad-buff` is the wrong semantic source for ordinary crew death because it belongs to the hit-squad conversation outcome, not normal gang violence;
+    - vanilla/content data already separates `relbuff-gang-injury` (`delta -40`, `dayz 365`) from severe boss/outfit death via `relbuff-gang-death` (`delta -100`, `gang-death` action lifetime), so ordinary non-boss crew violence should not manufacture the hit-squad offer buff.
+  - implementation:
+    - ordinary lethal human-vs-AI non-boss crew kills now apply `relbuff-gang-injury` through the existing boss-backed relationship path instead of `relbuff-gangs-hitsquad-buff`;
+    - `relbuff-gang-injury` is now included in the persistent gang relationship buff list and hostile relationship buff list, so it survives dead-peep cleanup and contributes to war heat/revenge scoring;
+    - the real hit-squad buff remains recognized for actual hit-squad conversation outcomes, but normal crew death no longer creates that misleading buff;
+    - `relbuff-gang-death` remains reserved for the severe boss/outfit death path already handled by immediate gang retaliation.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GX;
+    - after killing a non-boss enemy crew member, expect `crew-death-relationship-buff ... buff=relbuff-gang-injury`;
+    - the following retaliation/robbery/front dry-runs should still show `hostileBuff=True` and relationship heat pressure when appropriate;
+    - hit-squad conversation use should still behave normally and may still produce `relbuff-gangs-hitsquad-buff`, but ordinary crew kills should not.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 19:12:09`, size `2625024`, SHA-256 `F4A5B255DEE08703134071243C312B9067F22A9EF9B2538F46674AA60A5E126C`;
+    - Steam live remains Phase 8GW at `2026-06-07 18:21:05`, size `2625024`, SHA-256 `985A12FA7876EADE5773EABD38CF91F98AF6D0F3117128D030C2F3F1D897E533`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GX.
+- Phase 8GY robbery-meeting dead-actor handoff staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the Phase 8GW DLL at `2026-06-07 18:21:05`, and the long run exposed a clean robbery-meeting route failure;
+    - pending meeting `robber=22 human=1 meetingPeep=4295021656 meetingVehicle=8589997115 meetingNode=NID_618` progressed through route segments and then the meeting peep died in vehicle combat;
+    - after the actor death, the pending meeting remained active and produced repeated `robbery-meeting-route-blocked ... reason=invalid-route-context`, then `robbery-meeting-timeout ... result=route-unavailable`, and finally expired;
+    - a later meeting with `meetingPeep=4295021203` showed the same invalid-route-context shape after that actor died.
+  - implementation:
+    - pending robbery meetings now validate the meeting actor before servicing arrival or route state;
+    - if the actor is dead, missing, no longer in the expected vehicle, or has no physical node, the meeting receives one bounded replacement attempt from the same outfit;
+    - a successful replacement preserves the original target crew, meeting node, queued day, hard expiry, and route lifetime, then logs `robbery-meeting-actor-reassigned`;
+    - if no eligible replacement exists, or the one allowed replacement was already used, the pending meeting logs `robbery-meeting-actor-reassign-unavailable` and clears immediately instead of waiting through invalid route timeouts;
+    - route-blocked logs now include `actorDead=...` for invalid route context so future failures can be classified faster.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GY;
+    - if a meeting actor dies mid-route, expect either `robbery-meeting-actor-reassigned ... result=reassigned` followed by `robbery-meeting-route-requeued`, or `robbery-meeting-actor-reassign-unavailable ... result=clear-required` followed by `robbery-meeting-cleared`;
+    - repeated `robbery-meeting-route-blocked ... reason=invalid-route-context` for the same dead actor should disappear;
+    - ordinary robbery meetings should still reach `robbery-meeting-arrived` / `robbery-meeting-prompt-shown` when the actor survives.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 19:46:43`, size `2629120`, SHA-256 `DB325E0192459CC5542E00B22C7D36BFF0EC60B7A39F7B27E5F3840E6F9B9DF7`;
+    - Steam live remains Phase 8GW at `2026-06-07 18:21:05`, size `2625024`, SHA-256 `985A12FA7876EADE5773EABD38CF91F98AF6D0F3117128D030C2F3F1D897E533`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GY.
+- Phase 8GZ robbery-meeting final target commitment staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GY DLL at `2026-06-07 19:46:43`;
+    - Phase 8GY's dead-actor invalid-route pattern did not recur in the latest reviewed run;
+    - one normal robbery meeting reached `robbery-meeting-arrived` / `robbery-meeting-prompt-shown`, proving the basic meeting route still works;
+    - another pending meeting `meetingPeep=4295008136 meetingNode=NID_142` reached a target route, oscillated near the meeting node at distance `12.0`, later diverged, then requeued back through `routeGoal=approach-segment` before expiring at the hard route window.
+  - implementation:
+    - pending robbery meetings now remember when a final meeting-node route has been committed;
+    - first routes may still use an approach segment, but close-range retries, any route after the first requeue, or any already target-committed meeting now force `ResolveFrontRouteCommandNode(... allowSegmentTarget: false)`;
+    - refreshed pending meetings preserve the final-target commitment so contact rescans cannot downgrade an active meeting back to approach segments;
+    - route logs now include `targetCommitted=...` and `forceTargetRoute=...` to prove whether a retry stayed on the final node.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8GZ;
+    - meetings that requeue after reaching a route target or after getting close to the meeting node should log `robbery-meeting-route-requeued ... routeGoal=target targetCommitted=True forceTargetRoute=True`;
+    - the old pattern of a later `robbery-meeting-route-requeued ... routeGoal=approach-segment` for the same already-committed meeting should disappear;
+    - successful meetings should still show `robbery-meeting-arrived` and `robbery-meeting-prompt-shown`, while impossible meetings remain bounded by the existing hard route timeout.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 20:06:37`, size `2629632`, SHA-256 `16BCF658F28516D25228634973BC7BCD44E683E494A02A5B9A7E6A520871F926`;
+    - Steam live remains Phase 8GY at `2026-06-07 19:46:43`, size `2629120`, SHA-256 `DB325E0192459CC5542E00B22C7D36BFF0EC60B7A39F7B27E5F3840E6F9B9DF7`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8GZ.
+- Phase 8HA robbery-meeting committed-route authority reset staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8GZ DLL at `2026-06-07 20:06:37`, and its hash matched the staged DLL;
+    - Phase 8GZ worked as designed: robbery-meeting retries consistently logged `routeGoal=target targetCommitted=True forceTargetRoute=True`, and no committed route fell back to `approach-segment`;
+    - despite the correct final target, meeting actor `4295008136` repeatedly moved toward the meeting node, reached distance `12.0`, then moved away while `taskActive=True`, eventually expiring after the full `84`-day hard window;
+    - existing front and important-business final route recovery paths already cancel active crew tasks before issuing their authoritative target route, while robbery meetings only used `AddCommandImmediate`.
+  - implementation:
+    - a robbery meeting that is forcing its final target now calls `FlushQueue(meetingCrew.peepId, cancelActive: true)` immediately before issuing the target `CommandGoto`;
+    - initial approach-segment routes remain untouched, preserving normal first-leg AI movement;
+    - only committed/recovery routes receive the queue reset, limiting disruption to an actor already reserved for the pending robbery meeting;
+    - route logs now include `routeAuthorityReset=True` when the committed meeting route replaced competing active work.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HA;
+    - committed retries should log `routeGoal=target ... forceTargetRoute=True routeAuthorityReset=True`;
+    - after the authority reset, distance to the meeting node should trend down to `robbery-meeting-arrived` instead of reaching a near node and then diverging;
+    - if a route still diverges, its new log sequence will prove that movement changed after an explicit active-task cancellation rather than from a stale queued advisor task;
+    - continue observing the isolated `FrontTicker cleanup-entry-failed ... NullReferenceException` marker; it appeared once in this run but was not mixed into the robbery-route patch.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 20:21:46`, size `2629632`, SHA-256 `4DF4F0A17C613C13D9F8D2B383F2ECD26A0AC0091849FF3A2A542534A8D2F841`;
+    - Steam live remains Phase 8GZ at `2026-06-07 20:06:37`, size `2629632`, SHA-256 `16BCF658F28516D25228634973BC7BCD44E683E494A02A5B9A7E6A520871F926`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HA.
+- Phase 8HB terminal front replacement first-route commitment staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8HA DLL at `2026-06-07 20:21:46`, and its hash matched the staged DLL;
+    - Phase 8HA succeeded: committed robbery route `meetingPeep=4295008136 meetingNode=NID_260` logged `routeAuthorityReset=True`, arrived, and showed the robbery prompt;
+    - a second robbery meeting also arrived and showed its prompt, so the robbery-meeting route path is healthy in this run;
+    - front `8589941358` reached its wait-limit replacement path, selected replacement peep `4295021327`, but `front-delayed-action-reassigned-lost-node` initially issued `routeGoal=approach-segment capacityOverflowAllowed=True`;
+    - the later terminal target rewrite did not appear, and the replacement eventually abandoned at the bounded `112`-day limit.
+  - implementation:
+    - `TryReassignLostPendingRetaliationFrontAction` now accepts an explicit `forceTargetRoute` option;
+    - the one-shot terminal wait-limit reassignment passes `forceTargetRoute=True`, so the replacement's first route resolves directly to the final front node;
+    - ordinary lost-node reassignment and important-business actor reassignment retain their existing segment-route behavior;
+    - `front-delayed-action-reassigned-lost-node` now logs `forceTargetRoute=...` to distinguish terminal and ordinary handoffs.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HB;
+    - a wait-limit replacement should log `front-delayed-action-reassigned-lost-node ... routeGoal=target forceTargetRoute=True capacityOverflowAllowed=True`;
+    - the replacement should no longer depend on the secondary `front-delayed-action-terminal-target-route` rebuild to receive its final destination;
+    - ordinary early lost-node replacements should continue to log `forceTargetRoute=False` and may use `routeGoal=approach-segment`;
+    - verify whether the terminal replacement reaches `front-closure-completed` / defended-front resolution before its final bounded timeout.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 21:08:51`, size `2629632`, SHA-256 `D2E7B3A1EACBDED036EA0BA6466FD5E5CD1531F6AD1058A3EA8681705FB7444B`;
+    - Steam live remains Phase 8HA at `2026-06-07 20:21:46`, size `2629632`, SHA-256 `4DF4F0A17C613C13D9F8D2B383F2ECD26A0AC0091849FF3A2A542534A8D2F841`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HB.
+- Phase 8HC held-firm robbery refusal delayed revenge fallback staged on 2026-06-07:
+  - live evidence:
+    - Steam loaded the expected Phase 8HB DLL at `2026-06-07 21:08:51`, and its hash matched the previously staged DLL;
+    - the clean-save soak showed healthy core routes: two robbery meetings arrived and showed prompts, important-business closure completed and returned to safehouse, defended fronts produced the vanilla protected-front result, and direct front closure completed;
+    - Phase 8HB's terminal replacement marker did not appear in this run, so that branch remains pending rather than failed;
+    - a held-firm robbery refusal logged `refusal-attack-initialized ... result=unavailable`, found no important business fallback, then resolved as `refused-business-unavailable-attack-init-failed` while still recording the full robbery pair cooldown;
+    - that left no immediate retaliation, no important-business pressure, and no delayed revenge entry despite the player successfully standing firm.
+  - implementation:
+    - held-firm refusal outcomes that choose attack now fall back to the existing delayed revenge queue when the same-turn attack cannot start and no important-business closure is available;
+    - held-firm refusal outcomes that choose business closure now also fall back to delayed revenge when no business is eligible and the same-turn attack cannot start;
+    - the delayed path uses the existing `QueueAiHumanRobberyRefusalAttack` / immediate revenge queue and keeps the `ai-human-robbery-refused` reason text so the due revenge resolves through the forced robbery-refusal attack path;
+    - war heat is not increased by this fallback; it only prevents a successful held-firm refusal from silently consuming the long robbery cooldown with no follow-through.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HC;
+    - if a held-firm refusal cannot start a same-turn attack and has no eligible important business, expect `Immediate revenge queued ... reason=ai-human-robbery-refused-...-attack-delayed`;
+    - the response log should show `refusal-escalation ... queued=True initializedSameTurn=False dueDay=... action=...attack-delayed-revenge`;
+    - the resolved marker should become `result=refused-attack-delayed-revenge` or `result=refused-business-unavailable-attack-delayed-revenge` instead of `...attack-init-failed`;
+    - on the due turn, expect the existing forced robbery-refusal attack resolution marker rather than another silent cooldown.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-07 21:31:26`, size `2630144`, SHA-256 `55B809863F924AD1E830FBDEA68C78429ACC68D8386B5C5B47CBDFCBB3C8EFCB`;
+    - Steam live remains Phase 8HB at `2026-06-07 21:08:51`, size `2629632`, SHA-256 `D2E7B3A1EACBDED036EA0BA6466FD5E5CD1531F6AD1058A3EA8681705FB7444B`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HC.
+- Phase 8HD robbery-meeting first-requeue target commitment staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded the expected Phase 8HC DLL at `2026-06-07 21:31:26`, and its hash matched the staged DLL;
+    - Phase 8HC's delayed held-firm retaliation branch was not exercised: the only refusal in this run failed its roll, paid cash, and correctly produced no retaliation;
+    - front closure movement remained healthy: defended human fronts reached their target, triggered the aggro attack, displayed the vanilla protected-front result, and returned or cleared the assigned actor;
+    - robbery meeting `meetingPeep=4295018734 meetingNode=NID_529` completed its initial approach segment at day `701064`, but its first requeue still logged `routeGoal=approach-segment targetCommitted=False forceTargetRoute=False`;
+    - the target commitment did not occur until the following stale-route recovery at day `701071`; the meeting eventually arrived at day `701106`, taking `49` days from its original queue;
+    - a later short meeting committed directly and arrived in `7` days, confirming the target route itself works and the avoidable delay was the first-requeue threshold.
+  - implementation:
+    - the robbery meeting target-commit threshold now evaluates the pending requeue count including the route currently being issued;
+    - the initial route may still select an approach segment, preserving normal long-distance movement;
+    - after that first segment completes or the first route needs replacement, the first requeue now forces the final meeting node and performs the existing route-authority reset;
+    - hard expiry, actor reservation, real-conversation exclusion, dead-actor handoff, and prompt timing remain unchanged.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HD;
+    - after an initial `robbery-meeting-route-segment-complete`, the immediately following first `robbery-meeting-route-requeued` should show `routeGoal=target targetCommitted=True forceTargetRoute=True routeAuthorityReset=True requeues=1`;
+    - the old first-requeue marker `routeGoal=approach-segment ... requeues=1` should disappear;
+    - expect fewer stale-route checks and earlier `robbery-meeting-arrived` / `robbery-meeting-prompt-shown`;
+    - continue watching for Phase 8HC's delayed held-firm marker and the currently progressing important-business closure; neither produced a completed failure case requiring another patch in this run.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 07:34:50`, size `2630144`, SHA-256 `A75232B8CAC8E3924CFB590A08579DACEC05E37FD5E88C198D9133BA405C0C8D`;
+    - Steam live remains Phase 8HC at `2026-06-07 21:31:26`, size `2630144`, SHA-256 `55B809863F924AD1E830FBDEA68C78429ACC68D8386B5C5B47CBDFCBB3C8EFCB`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HD.
+- Phase 8HE delayed robbery-refusal forced-attack classification staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded the expected Phase 8HD DLL at `2026-06-08 07:34:50`, and its hash matched the staged DLL;
+    - Phase 8HD succeeded: first follow-up routes after an approach segment logged `routeGoal=target targetCommitted=True forceTargetRoute=True routeAuthorityReset=True requeues=1`, and multiple meetings subsequently arrived and showed prompts;
+    - Phase 8HC also reached its intended queue path: a held-firm refusal with no available same-turn attack or important business logged `result=refused-business-unavailable-attack-delayed-revenge`, `queued=True`, and `dueDay=701212`;
+    - when that revenge became due, it did not log `Forced robbery refusal attack resolved`; instead ordinary revenge selection chose `CloseFront`, logged `front-capacity-blocked ... capacity=0`, and then consumed the entry as `Executed retaliation ... taken=True`;
+    - the queued reason ended in `ai-human-robbery-refused-business-unavailable-attack-delayed`, while `IsForcedRobberyRefusalAttackRevenge` only recognized reasons containing `attack-next-turn`.
+  - implementation:
+    - forced robbery-refusal revenge classification now accepts both the existing `attack-next-turn` follow-through reason and Phase 8HC's `attack-delayed` fallback reason;
+    - due delayed refusals now enter the direct runtime gang-attack branch instead of ordinary front/business retaliation selection;
+    - if no attack or approach crew is available, the existing `attack-unavailable` retry handling keeps the revenge entry pending rather than consuming it;
+    - ordinary revenge entries and non-robbery front/business action selection remain unchanged.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HE;
+    - after a held-firm delayed refusal becomes due, expect `Forced robbery refusal attack resolved ... source=ai-human-robbery-refused-...-attack-delayed`;
+    - a successful dispatch should report `action=attack:<count>`;
+    - an unavailable dispatch should report `action=attack-unavailable` followed by `Unavailable retaliation delayed ... nextDueDay=...`, not `front-capacity-blocked` followed by `taken=True`;
+    - continue observing the separate robbery-meeting case where an initial approach passed within close range and then diverged before its first requeue; that is the next route-focused pass after this retaliation classifier is verified.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 08:01:46`, size `2630144`, SHA-256 `7A5E12E040B6367A661FFD5116D1EE5C0DA68AD72378A5356DFC96BBE887C4A2`;
+    - Steam live remains Phase 8HD at `2026-06-08 07:34:50`, size `2630144`, SHA-256 `A75232B8CAC8E3924CFB590A08579DACEC05E37FD5E88C198D9133BA405C0C8D`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HE.
+- Phase 8HF human enemy-territory shop access staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded the expected Phase 8HE DLL at `2026-06-08 08:01:46`, and its hash matched the previously staged DLL;
+    - a held-firm refusal again queued the Phase 8HC delayed revenge form, but this run did not produce a later `Forced robbery refusal attack resolved` marker for that pair, so Phase 8HE remains pending direct due-entry verification;
+    - the shop denial was captured as `CanBuySellCache blocked-locked ... pid=1 playercan=BuyOrSell tied=-1 territory=33 forcedClosedBy=-1`, proving the only active restriction was enemy territory;
+    - later shop-button activity reached the runtime buy/sell path and displayed `That shop is not available.`;
+    - the authored `ConvoBiz.sim` exposes the intended buy/sell conversation path, but GameplayTweaks' cached availability prefix and human execution gate both treated every `TradeRestrictions.IsLocked` result as final.
+  - implementation:
+    - human `CheckCanBuySell.DoesPass` evaluation now ignores a territory-only trade lock and evaluates the shop's actual buy/sell offers;
+    - human `BuySellUtils.ExecuteHumanBuySell` execution now also permits a territory-only lock, preventing the transaction from being rejected after the picker opens;
+    - tied-house restrictions and important-business forced closures remain blocking, including cases where either is combined with a territory lock;
+    - AI trading behavior is unchanged;
+    - successful execution bypasses log `buy-sell-territory-lock-bypassed` with the building, business, player, source, and territory owner.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HF;
+    - visit a stocked normal shop on enemy turf with the human player's crew and verify the buy/sell picker opens and the purchase completes;
+    - expect `buy-sell-territory-lock-bypassed ... territory=<enemy pid>` during transaction execution;
+    - the old `blocked-locked ... tied=-1 territory=<enemy pid> forcedClosedBy=-1 result=False` marker should not appear for the human player;
+    - a shop with `forcedClosedBy=<pid>` should still display `That shop is closed.`, and a tied-house shop should remain unavailable;
+    - stockless or non-purchase-producing businesses may still have no items; this phase changes territory access, not their inventory/module definitions.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 08:25:11`, size `2630656`, SHA-256 `C57997B8FF974C82D6CC9FD7788AD22FD569C690EDBCE6174873D2667E5DCA5D`;
+    - Steam live remains Phase 8HE at `2026-06-08 08:01:46`, size `2630144`, SHA-256 `7A5E12E040B6367A661FFD5116D1EE5C0DA68AD72378A5356DFC96BBE887C4A2`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HF.
+- Phase 8HG robbery-meeting close-range target handoff staged on 2026-06-08:
+  - live evidence:
+    - the reviewed run still used the Phase 8HE DLL at `2026-06-08 08:01:46`; Phase 8HF had been staged but not copied live;
+    - multiple initial robbery-meeting approach routes passed inside the existing `16`-unit final-target commitment radius while their route target was still a different approach node;
+    - robber `32` reached distance `15.6` from meeting node `NID_314`, then continued to `38.4` and `61.6`, logged `robbery-meeting-route-diverged`, and eventually timed out;
+    - robber `26` reached distance `10.0` from meeting node `NID_440` while following a non-final leg, and another route reached `10.0` from `NID_569` before waiting for stale-route recovery;
+    - the existing first-requeue target commitment works once a segment completes or is declared stale, but it did not interrupt an active approach segment merely because that segment had already passed close enough to the meeting.
+  - implementation:
+    - an active non-final robbery-meeting approach route now detects when its actor is within the existing `AI_ROBBERY_MEETING_TARGET_COMMIT_DISTANCE`;
+    - that close-range condition clears the stale approach-leg state immediately and falls through to the existing final-target route builder in the same service pass;
+    - the authoritative target route still performs the existing queue flush and active-task cancellation, so competing movement cannot carry the actor away again;
+    - initial long-distance approach routing, first-requeue commitment, hard expiry, dead-actor handoff, and real-conversation reservations remain unchanged;
+    - the new marker is `robbery-meeting-route-close-range-handoff ... result=queue-target-leg`.
+  - expected next-run signals:
+    - copy the latest staged DLL live and restart; it contains both Phase 8HF enemy-territory shop access and Phase 8HG close-range meeting handoff;
+    - when an initial approach reaches `distance<=16.0` before its segment target, expect `robbery-meeting-route-close-range-handoff`;
+    - the immediately following route marker should show `routeGoal=target targetCommitted=True forceTargetRoute=True routeAuthorityReset=True`;
+    - the old pattern of reaching `10.0` or `15.6`, then diverging to `38+` and timing out, should disappear;
+    - ordinary approaches that remain outside the commitment radius should continue toward their segment target normally.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 08:28:27`, size `2631680`, SHA-256 `44001563CA90A970BA6038929FCCE5167046BA06B79C619CD3CB27744ADEB689`;
+    - Steam live remains Phase 8HE at `2026-06-08 08:01:46`, size `2630144`, SHA-256 `7A5E12E040B6367A661FFD5116D1EE5C0DA68AD72378A5356DFC96BBE887C4A2`; manually refresh the latest staged GameplayTweaks DLL live and restart before testing Phases 8HF and 8HG.
+- Phase 8HH robbery-meeting initial final-route authority reset staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded the expected Phase 8HG DLL at `2026-06-08 08:28:27`, so the current run tested the close-range handoff build;
+    - important-business closures completed and showed their notice, including `business-closure-completed ... forcedClosedBy=34` and `notice phase=business-closure-completed ... result=shown`;
+    - Phase 8HF preserved forced-closed shop blocking: the remaining `CanBuySellCache blocked-locked` markers had `territory=-1 forcedClosedBy=24/34`, not a territory-only enemy-turf lock;
+    - robbery meeting routes still showed a separate delay pattern where an initial route already targeted the final meeting node but logged `routeAuthorityReset=False`;
+    - after those non-authoritative initial final routes, the actor reached close range (`distance=10.0` to `15.6`) and then drifted away until a later requeue finally logged `routeAuthorityReset=True` and arrived.
+  - implementation:
+    - robbery-meeting routes now cancel the actor's active command whenever the command target is the final meeting node, even on the initial route;
+    - approach-segment routes remain unchanged and still avoid cancelling normal long-distance AI movement;
+    - the existing `targetCommitted=True` flag is now set from the same final-target check used for the authority reset;
+    - this keeps the blast radius to actors already selected for a fake robbery meeting and only when the issued route is the final meeting node.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HH;
+    - initial final-node routes should now log `routeGoal=target targetCommitted=True routeAuthorityReset=True` even when `forceTargetRoute=False`;
+    - the old pattern `routeGoal=target ... routeAuthorityReset=False`, followed by close-range drift and a later requeue, should disappear;
+    - approach-segment first routes should still log `routeAuthorityReset=False`;
+    - successful meetings should continue to log `robbery-meeting-arrived`, `robbery-meeting-prompt-ready`, and `robbery-meeting-prompt-shown`.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 09:19:24`, size `2631680`, SHA-256 `E94222F80726E1CA381EEEDF0E1166FE299220721A28877E216E48D098BB5C72`;
+    - Steam live remains Phase 8HG at `2026-06-08 08:28:27`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HH.
+- Phase 8HI robbery-meeting prompt-radius arrival staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded the expected Phase 8HH DLL at `2026-06-08 09:19:24`, and the live hash matched the staged DLL;
+    - Phase 8HH was active, but the latest long failure was a later stage: final committed robbery-meeting routes reached prompt range and still waited for exact-node arrival;
+    - `meetingPeep=4295020475` reached `distance=10.0` from `meetingNode=NID_103`, kept logging `robbery-meeting-prompt-deferred`, then drifted out to `22.4`, `40.0`, and eventually timed out;
+    - `meetingPeep=4295009584` and `meetingPeep=4295019369` showed the same shape at `distance=10.0` or `12.0`, while other meetings that hit the exact node still prompted normally;
+    - the existing human robbery contact code already treats `AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE` as close enough for the prompt, so the meeting route was stricter than the prompt itself.
+  - implementation:
+    - a pending robbery meeting now counts as arrived when its committed final meeting route is within `AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE`;
+    - approach-segment routes still require either segment completion or the existing close-range handoff before they can prompt;
+    - the new arrival marker keeps the current physical node and logs `result=arrived-nearby` with `distance` and `promptDistance`;
+    - exact-node arrival remains unchanged and still logs `result=arrived`.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HI;
+    - committed meeting routes that reach `distance<=14.0` should log `robbery-meeting-arrived ... result=arrived-nearby`;
+    - the prompt should then proceed through `robbery-meeting-prompt-ready` and `robbery-meeting-prompt-shown`;
+    - the old pattern of `distance=10.0` or `12.0`, repeated `robbery-meeting-prompt-deferred`, drift away, and timeout should disappear;
+    - meetings that never enter prompt radius should still be bounded by the existing hard timeout.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 10:03:32`, size `2632704`, SHA-256 `ACED0DDD86E93D4EB5C91A8501B73C5D7437EE8E0EFB5C49AFFFF2446915D3F7`;
+    - Steam live remains Phase 8HH at `2026-06-08 09:19:24`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HI.
+- Phase 8HJ arrived robbery-meeting deferred-response hold staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded the expected Phase 8HI DLL at `2026-06-08 10:03:32`, and the live hash matched the staged DLL;
+    - Phase 8HI worked: multiple committed meeting routes logged `robbery-meeting-arrived ... result=arrived-nearby`, and later prompts successfully reached `robbery-meeting-prompt-ready` / `robbery-meeting-prompt-shown`;
+    - one arrived-nearby meeting for robber `32` still expired because another robbery prompt was processed first;
+    - that meeting logged `arrived-nearby` at `distance=12.0`, then `arrival-lost` because the actor was not on the exact node, and finally repeated `robbery-meeting-timeout` before `deferred-response-expired`;
+    - the pending meeting service still treated exact-node presence as the only valid held-arrival state, and deferred response expiry was not extended while an already-arrived meeting waited behind another active response.
+  - implementation:
+    - arrived meetings now remain arrived while their actor is either on the exact meeting node or still inside `AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE`;
+    - an arrived pending meeting extends its own expiry while waiting for the popup, bounded by the existing hard meeting route window;
+    - deferred robbery responses linked to arrived pending meetings are extended before the active-response early return can skip the normal prompt loop;
+    - new hold markers use `result=arrived-kept` for arrived pending meetings and `result=arrived-meeting-active` for deferred-response expiry extension.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HJ;
+    - an `arrived-nearby` meeting that waits behind another prompt should not log `arrival-lost` just because it is not on the exact node;
+    - expect either `robbery-meeting-deferred-expiry-extended ... result=arrived-meeting-active` or a later `robbery-meeting-prompt-ready` / `robbery-meeting-prompt-shown`;
+    - the old sequence `arrived-nearby` -> `arrival-lost` -> repeated `robbery-meeting-timeout` -> `deferred-response-expired` should disappear for meetings still inside prompt radius;
+    - meetings outside prompt radius or past the hard route window should still expire normally.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 10:22:40`, size `2634752`, SHA-256 `330FAB3F0DFFDD272F6F51FA2C888DAE6AED320E35D30F0104D08BAE09E98984`;
+    - Steam live remains Phase 8HI at `2026-06-08 10:03:32`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HJ.
+- Phase 8HK robbery-response prompt persistence staged on 2026-06-08:
+  - implementation:
+    - deferred AI-human robbery responses are no longer cleared just because the response popup was shown;
+    - pending fake meetings are cleared once the prompt is visible, so the enemy route is not required to stay parked after the popup has been delivered;
+    - pay, refuse, favor, and standing-order evasion now clear the deferred response and pending meeting only after an explicit response path is chosen;
+    - a shown deferred prompt now advances `NotBeforeDay` and extends expiry, so an accidental right-click dismissal can be retried instead of losing the robbery response;
+    - abandoned active response locks now clear after one in-game day instead of thirty, keeping duplicate suppression on the same turn while allowing dismissed prompts to recover on the next turn.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HK;
+    - when the robbery response popup appears, expect `shown phase=deferred-response ... result=shown-choice-pending` or `robbery-meeting-prompt-shown ... result=shown-after-arrival-choice-pending`;
+    - if the player answers, expect `cleared phase=response-popup ... reason=explicit-pay`, `explicit-refuse`, `explicit-favor`, or `standing-order-evasion` with `result=choice-cleared`;
+    - if the popup is dismissed without answering, the deferred response should remain pending and may reappear after the active lock clears on the next in-game day.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 10:33:40`, size `2635776`, SHA-256 `F4C5ABEB1D0E8969AA6A58B58C3B6E195B31FE859968DD2D9B85486C1C1A25BA`;
+    - Steam live remains whatever DLL was last manually copied; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HK.
+- Phase 8HL arrived robbery-meeting prompt node lock staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded the expected Phase 8HK DLL at `2026-06-08 10:33:40`, and the live hash matched the staged DLL;
+    - Phase 8HK worked: dismissed response popups logged `abandoned-active-locks` and re-shown deferred responses, while explicit refusals logged `cleared phase=response-popup ... reason=explicit-refuse deferredRemoved=True result=choice-cleared`;
+    - a new drift case appeared for robber `28`: the fake meeting routed to and arrived at `NID_987`, but the delivered response popup used `node=NID_583` after later current-contact scans updated the candidate while the original deferred meeting was still pending.
+  - implementation:
+    - when an arrived pending robbery meeting is ready to show a response popup, GameplayTweaks now compares the current prompt candidate node to the meeting node;
+    - if they differ, the response candidate is rebuilt from the deferred robbery snapshot before the popup is shown, and the cash preview is recomputed against that locked meeting snapshot;
+    - non-meeting deferred prompts and arrived meetings whose current node still matches remain unchanged;
+    - the new marker is `robbery-meeting-prompt-node-locked ... result=meeting-snapshot`.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HL;
+    - if later contact scans change the candidate node before an arrived meeting prompts, expect `robbery-meeting-prompt-node-locked` before `prompt phase=response-popup`;
+    - the prompt and any later `resolved phase=response-popup` line should use the original meeting/deferred node, not a newer unrelated contact node;
+    - matching-node prompts should continue without the new lock marker.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 10:44:00`, size `2637312`, SHA-256 `CAFC7FB6D0FEBE08A500ABB20A873A8217D959D6EC5DD0CF8344B631276DEB83`;
+    - Steam live remains Phase 8HK at `2026-06-08 10:33:40`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HL.
+- Phase 8HM robbery-meeting target-vicinity gate staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded the expected Phase 8HL DLL at `2026-06-08 10:44:00`, and the live hash matched the staged DLL;
+    - matching-node arrived meetings continued to prompt normally, but the design issue remains that an arrived fake meeting can still deliver a response from the old meeting point after the player target has left that vicinity;
+    - the clearest live shape was repeated `robbery-meeting-retained ... proposedNode=NID_268 sameNode=False routeQueued=True arrived=False` followed later by `arrived-nearby` and prompt delivery at the original meeting node after many turns.
+  - blast radius:
+    - code surface is low-to-medium because it only touches arrived AI-human robbery meeting prompt delivery;
+    - behavior impact is medium because an arrived meeting no longer guarantees a popup if the human target crew has physically moved away;
+    - it does not change ordinary robbery candidate discovery, broad hostile scans, non-meeting deferred prompts, or all enemy movement.
+  - implementation:
+    - before an arrived fake robbery meeting can show a response popup, GameplayTweaks now resolves the target crew's current strict physical node;
+    - if the target is still on or within `AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE` of the meeting node, prompt delivery proceeds unchanged;
+    - if the target moved away, the pending meeting is retargeted to the target's current physical node, marked not arrived, and requeued through the existing fake meeting route path;
+    - if the target has no strict physical node, the deferred response waits instead of prompting from stale data.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HM;
+    - when the player leaves the old meeting vicinity before prompt delivery, expect `robbery-meeting-prompt-target-moved ... result=requeued-to-target` or `result=waiting-for-route`;
+    - if the target is temporarily not physically resolvable, expect `robbery-meeting-prompt-target-deferred ... result=target-node-unavailable`;
+    - the old pattern of a stale arrived meeting immediately showing `prompt phase=response-popup` after the player leaves should stop.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 11:07:05`, size `2640384`, SHA-256 `2CB285A6C0C8666508D829752685F40A217BFAA0B172E8DCBFA635B63B4AE376`;
+    - Steam live remains Phase 8HL at `2026-06-08 10:44:00`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HM.
+- Phase 8HN robbery-meeting expired cleanup staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded the expected Phase 8HM DLL at `2026-06-08 11:07:05`, and live, build, staged, and nested public DLLs matched;
+    - Phase 8HM target-vicinity gating fired correctly with `robbery-meeting-prompt-target-deferred ... reason=target-vehicle-not-physical result=target-node-unavailable`;
+    - old pending meetings could still repeat `robbery-meeting-timeout ... result=expired` for multiple later turns, then a target-node-unavailable pass could extend the deferred response even though the meeting route was already past its useful window;
+    - the arrived-meeting deferred-response extender also used the pending-meeting key against the deferred-response dictionary, so it could miss linked responses.
+  - implementation:
+    - expired pending fake robbery meetings now clear their linked deferred response and then clear the pending meeting instead of logging `result=expired` forever;
+    - target-node-unavailable prompt deferral is now bounded by the meeting hard route window;
+    - if the target is still not physically resolvable after the meeting expires or passes its hard route window, the meeting logs `robbery-meeting-prompt-target-give-up ... result=expired-cleared` and is removed;
+    - the arrived-meeting deferred-response extender now uses the deferred-response key, not the meeting key.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HN;
+    - stale entries should show one `robbery-meeting-timeout ... result=expired-cleared` plus `cleared phase=deferred-response ... result=meeting-cleared`, then stop repeating on later turns;
+    - target-node-unavailable can still defer while the hard route window is active, but should not push `expireDay` beyond the meeting hard window;
+    - after give-up, a future retry should come from normal robbery eligibility when a human target is physically reachable again, not from the old stale meeting.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 11:31:17`, size `2642432`, SHA-256 `E084B89042B6036EB5C1A509C5F9C4FBEC21179EEB4454826748B557AA0DDA96`;
+    - Steam live still needs the staged GameplayTweaks DLL copied live and the game restarted before testing Phase 8HN.
+- Phase 8HO robbery-meeting hard-expiry clamp staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded the expected Phase 8HN DLL at `2026-06-08 11:31:17`, and live, build, staged, and nested public DLLs matched;
+    - Phase 8HN cleanup worked: the log showed `robbery-meeting-timeout ... result=expired-cleared` followed by `robbery-meeting-cleared ... reason=meeting-route-expired`;
+    - the remaining issue was that later contact refreshes could still push linked deferred/pending expiry beyond the hard meeting window, for example `expireDay=701148->701155` while the pending meeting had `hardExpireDay=701148`, and a later give-up line showed `expireDay=701162 hardExpireDay=701148`.
+  - implementation:
+    - pair-already-queued deferred-response refreshes now clamp their expiry to the linked pending meeting hard window;
+    - pending meeting retain/reassign refreshes now clamp `ExpireDay` through the same hard-window helper;
+    - the pending meeting service, reservations, crew-reservation checks, and not-arrived prompt wait now treat `now > queuedDay + AI_ROBBERY_MEETING_ROUTE_MAX_DAYS` as expired even if a stale soft `ExpireDay` was extended too far;
+    - expired pending meetings are replaced cleanly by new eligibility rather than retaining stale actor/route fields.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HO;
+    - `pair-already-queued` lines linked to pending fake meetings should no longer show an `expireDay` later than that meeting's hard expiry;
+    - stale meetings should clear at or immediately after the hard route window instead of waiting for an overextended soft expiry;
+    - if a robbery retry is still valid after give-up, expect a fresh `robbery-meeting-queued` from normal contact eligibility rather than reuse of stale route state.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 11:53:58`, size `2643456`, SHA-256 `2BCABE9F98FF301C84C4FFD588134AF28C8D7FA4F31BD41F520275A29A9C799B`;
+    - Steam live remains Phase 8HN at `2026-06-08 11:31:17`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HO.
+- Phase 8HP robbery-meeting current-target fallback staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded the expected Phase 8HO DLL at `2026-06-08 11:53:58`, and live, build, staged, and nested public DLLs matched;
+    - Phase 8HO hard expiry worked: `pair-already-queued` lines stayed within the hard meeting window and robber `32` cleared at `hardExpireDay=701057` instead of being overextended;
+    - the remaining blocker was repeated `robbery-meeting-prompt-target-deferred ... reason=target-vehicle-not-physical result=target-node-unavailable` while current candidate scans still had non-snapshot contact nodes, causing arrived meetings to wait until hard expiry instead of prompting or retargeting.
+  - implementation:
+    - arrived robbery meetings now accept the current candidate contact node as a fallback target only when the target's strict physical vehicle node is unavailable;
+    - fallback is rejected when it comes from `deferred-snapshot`, `none`, or an empty source, so stale saved prompt data cannot revive an old location;
+    - if the fallback node is at/near the meeting node, the prompt can proceed and logs `robbery-meeting-prompt-target-fallback ... result=fallback-nearby`;
+    - if the fallback node is away from the meeting, the existing retarget/requeue path is reused with `targetNodeSource=candidate-contact:<source>/target-vehicle-not-physical`.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HP;
+    - repeated `target-vehicle-not-physical` deferrals should be replaced by either `robbery-meeting-prompt-target-fallback ... result=fallback-nearby`, `robbery-meeting-prompt-target-moved ... result=requeued-to-target`, or the existing hard-expiry give-up when no fresh contact node exists;
+    - snapshot-only deferred prompts should continue to defer or expire rather than prompting from stale target data.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 12:28:07`, size `2644992`, SHA-256 `A235CEA983BBAE9326E4660F299704AAAD4AF7601B4679FCED6A32FCC9AEFAB8`;
+    - Steam live remains Phase 8HO at `2026-06-08 11:53:58`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HP.
+- Phase 8HQ robbery-meeting retarget route-authority reset staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded the expected Phase 8HP DLL at `2026-06-08 12:28:07`, and the live hash matched the previous staged build;
+    - Phase 8HP worked: fresh current contact nodes replaced repeated `target-vehicle-not-physical` waits, with `robbery-meeting-prompt-target-fallback ... result=fallback-nearby` followed by `robbery-meeting-prompt-shown ... result=shown-after-arrival-choice-pending`;
+    - the remaining route issue appeared after fallback retargets moved the meeting node, where `robbery-meeting-prompt-target-moved ... result=requeued-to-target` could be followed by `robbery-meeting-route-progress ... routeTargetNode=NID_0 ... result=route-active`;
+    - examples included robber `26` retargeting from `NID_74` to `NID_54`, then tracking an active task with `routeTargetNode=NID_0`, and robber `29` retargeting from `NID_1003` to `NID_998` before drifting through `NID_583` and `NID_451` while still reporting `routeTargetNode=NID_0`.
+  - implementation:
+    - active robbery-meeting route monitoring now only trusts an active peep task when the pending meeting still has `RouteQueued=true` and a nonzero `RouteTargetNodeIndex`;
+    - when an arrived meeting retargets because the human target moved away, GameplayTweaks now flushes the meeting actor's old command queue before rebuilding the route to the new target node;
+    - the retarget log now includes `oldRouteTargetNode` and `routeAuthorityReset`, and the new reset marker is `robbery-meeting-route-authority-reset ... result=reset`;
+    - normal near-target fallback prompts and non-retargeted pending meetings are unchanged.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HQ;
+    - when a target moves away after arrival, expect `robbery-meeting-route-authority-reset ... result=reset` before `robbery-meeting-prompt-target-moved ... routeAuthorityReset=True`;
+    - the follow-up `robbery-meeting-route-requeued` should carry a concrete `routeTargetNode`, and the old repeated `routeTargetNode=NID_0 ... result=route-active` sequence should disappear;
+    - fallback-nearby cases should continue to prompt without requiring a route reset.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 12:59:36`, size `2646528`, SHA-256 `C0D39787B339F64DD65011CF634DAF6A8C76C26242EEDDF9A2BFDFBBBB172025`;
+    - Steam live remains Phase 8HP at `2026-06-08 12:28:07`, size `2644992`, SHA-256 `A235CEA983BBAE9326E4660F299704AAAD4AF7601B4679FCED6A32FCC9AEFAB8`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HQ.
+- Phase 8HR robbery-meeting arrived actor hold staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded the expected Phase 8HQ DLL at `2026-06-08 12:59:36`, and live, build, staged, and nested public DLLs matched;
+    - Phase 8HQ removed the previous `routeTargetNode=NID_0` route-active loop from the latest log slice;
+    - robber `26` and robber `22` both eventually reached `robbery-meeting-prompt-shown ... result=shown-after-arrival-choice-pending`;
+    - the remaining delay was that an actor could arrive within prompt range, wait behind another active response, then move away and log `robbery-meeting-arrival-lost ... result=route-required` before re-routing back to the same meeting.
+  - implementation:
+    - when a robbery-meeting actor reaches the exact meeting node, the active command queue is flushed so the actor holds position for prompt delivery;
+    - when a final target route enters nearby prompt distance, the active command queue is also flushed and the arrival log now includes `routeArrivalHold=True/False`;
+    - an already-arrived pending meeting that is still within prompt range also refreshes this hold while waiting behind another active prompt;
+    - the new hold marker is `robbery-meeting-arrival-hold ... result=held`.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HR;
+    - an arrived meeting waiting behind another prompt should log `robbery-meeting-arrival-hold ... result=held` when it had an active movement task;
+    - `robbery-meeting-arrived ... routeArrivalHold=True` should appear for arrivals where movement was still active;
+    - the old pattern `arrived-nearby` -> `arrival-lost` -> re-route back to the same meeting should be reduced or disappear for actors that remain valid and within prompt range.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 13:21:15`, size `2648064`, SHA-256 `F491A94D1D71BC092418B233854A7416801554639D0F99EED934E1CF50FDE517`;
+    - Steam live remains Phase 8HQ at `2026-06-08 12:59:36`, size `2646528`, SHA-256 `C0D39787B339F64DD65011CF634DAF6A8C76C26242EEDDF9A2BFDFBBBB172025`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HR.
+- Phase 8HS robbery-meeting automation reservation staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded the expected Phase 8HR DLL at `2026-06-08 13:21:15`, and live, build, staged, and nested public DLLs matched;
+    - Phase 8HR worked: arrived actors logged `robbery-meeting-arrival-hold ... result=held` and `routeArrivalHold=True`, and multiple meetings reached `robbery-meeting-prompt-shown ... result=shown-after-arrival-choice-pending`;
+    - one remaining case showed robber `31` held at `NID_443` for meeting `NID_528` on days `701162`, `701169`, and `701176`, then moved to `NID_508` and logged `robbery-meeting-arrival-lost ... result=route-required` on day `701183`;
+    - the actor had already had its command queue flushed by the hold path, so the likely owner was idle vehicle automation reusing a crew member reserved for a pending robbery meeting.
+  - implementation:
+    - the vehicle automation driver patch now skips any crew assignment reserved by a pending AI-human robbery meeting;
+    - this uses the existing `GameplayTweaksPlugin.TurnUpdatePatch.IsCrewReservedForPendingAiHumanRobberyMeeting` reservation helper, so it covers both the selected meeting peep and their reserved vehicle;
+    - the new marker is `robbery-meeting-automation-skip ... reason=pending-meeting-reserved result=skipped`;
+    - retaliation/front action reservations were already using this helper and are unchanged.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HS;
+    - arrived or queued robbery-meeting actors should log `robbery-meeting-automation-skip` if automation tries to reuse them;
+    - the old pattern of a held arrived actor leaving the prompt-radius area before its popup is delivered should be reduced or disappear;
+    - prompt delivery should still proceed through `robbery-meeting-prompt-ready` and `robbery-meeting-prompt-shown`.
+  - validation:
+    - first build caught an unqualified nested-class reference, then `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors after qualifying `GameplayTweaksPlugin.TurnUpdatePatch`;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 13:39:59`, size `2648576`, SHA-256 `5A47636161814E841EEB94E128B772F1CF57921B1B2A0E3BD58F6088E861A717`;
+    - Steam live remains Phase 8HR at `2026-06-08 13:21:15`, size `2648064`, SHA-256 `F491A94D1D71BC092418B233854A7416801554639D0F99EED934E1CF50FDE517`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HS.
+- Phase 8HT robbery-meeting arrived hold grace staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded the expected Phase 8HS DLL at `2026-06-08 13:39:59`, size `2648576`, SHA-256 `5A47636161814E841EEB94E128B772F1CF57921B1B2A0E3BD58F6088E861A717`;
+    - Phase 8HS was active, but the reviewed slice did not show a `robbery-meeting-automation-skip` marker, so idle automation was not proven as the owner of the latest drift;
+    - arrived holds still fired, including robber `20` near `NID_307`, robber `23` exact at `NID_561`, robber `31` exact at `NID_350`, and several later exact or nearby arrivals;
+    - the remaining failure was an already-arrived meeting drifting just outside the `14`-unit prompt radius, logging `robbery-meeting-arrival-lost`, and then re-routing back or timing out;
+    - examples included robber `22` repeatedly cycling between `NID_163` and `NID_175` for meeting `NID_278`, plus robber `28` arriving at `NID_187`, drifting to `NID_185`, and then entering stale/requeue checks.
+  - implementation:
+    - already-arrived robbery meetings now use a separate hold tolerance, `AI_ROBBERY_ARRIVED_HOLD_WORLD_DISTANCE`, set to the existing broader nearby distance of `24` world units;
+    - initial arrival and prompt target validity still use the stricter `AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE` of `14` world units;
+    - when an already-arrived actor is outside prompt distance but still within arrived-hold distance, the meeting stays arrived, its hold/expiry are refreshed, and the route is not rebuilt;
+    - the new marker is `robbery-meeting-arrived-hold-grace ... result=held-nearby`;
+    - `robbery-meeting-arrival-lost` now includes the measured distance and hold distance for the next pass.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HT;
+    - one-node drift after a valid arrival should log `robbery-meeting-arrived-hold-grace` instead of immediately logging `robbery-meeting-arrival-lost`;
+    - the old repeated pattern `arrival-hold` -> `arrival-lost` -> `route-required` for the same nearby actor should be reduced;
+    - true departures beyond `24` world units should still log `robbery-meeting-arrival-lost ... result=route-required` and re-route or expire normally;
+    - prompt delivery should continue through `robbery-meeting-prompt-ready` and `robbery-meeting-prompt-shown` when the human target remains valid.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 14:19:48`, size `2649600`, SHA-256 `51502AFAE582736146AA3BE9B0176D56E62D02A93928C6C0AEC4727E105CE876`;
+    - Steam live remains Phase 8HS at `2026-06-08 13:39:59`, size `2648576`, SHA-256 `5A47636161814E841EEB94E128B772F1CF57921B1B2A0E3BD58F6088E861A717`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HT.
+- Phase 8HU robbery-meeting route observation checkpoint on 2026-06-08:
+  - live evidence:
+    - Steam, build, staged public, and nested public package `GameplayTweaks.dll` all matched Phase 8HT at `2026-06-08 14:19:48`, size `2649600`, SHA-256 `51502AFAE582736146AA3BE9B0176D56E62D02A93928C6C0AEC4727E105CE876`;
+    - Phase 8HT did not reproduce the old `arrival-hold` -> `arrival-lost` loop in the reviewed slice;
+    - multiple meetings reached the expected path: `robbery-meeting-arrival-hold`, `robbery-meeting-arrived`, `robbery-meeting-prompt-ready`, `prompt phase=response-popup`, `robbery-meeting-cleared`, and `robbery-meeting-prompt-shown`;
+    - examples included robber `34` at `NID_529`, robber `25` at `NID_243`, robber `29` at `NID_401`, and robber `21` at `NID_616`;
+    - no `robbery-meeting-arrived-hold-grace` marker appeared, which means this run did not need the new grace path rather than proving it failed;
+    - the only fresh route clue was robber `27`, queued at day `701204`, target `NID_234`, approach segment `NID_63`, still at `NID_65` on day `701211` with `taskActive=True noProgressChecks=1`.
+  - decision:
+    - no gameplay patch was made in this checkpoint;
+    - the robber `27` route has not crossed the existing stale threshold yet, because the code requeues only after `noProgressChecks >= 2`;
+    - changing route behavior after a single no-progress check would risk interrupting normal next-turn approach setup without a completed stuck case.
+  - expected next-run signals:
+    - continue the same save long enough for robber `27` to either progress, stale-requeue, arrive, or expire;
+    - if robber `27` logs `robbery-meeting-route-stale ... noProgressChecks=2` followed by a concrete `robbery-meeting-route-requeued`, the current recovery path is working;
+    - if robber `27` keeps logging `route-active` at `NID_65` beyond the stale threshold, or requeues repeatedly without leaving the same node, the next patch should force an earlier final-target route-authority reset for stuck approach segments;
+    - continue watching for any return of `robbery-meeting-arrival-lost`; if it appears with `distance<=24.0`, Phase 8HT's hold-grace condition needs inspection.
+  - validation:
+    - log-only checkpoint; no source or DLL build changes were made;
+    - current live DLL remains Phase 8HT at `2026-06-08 14:19:48`, size `2649600`, SHA-256 `51502AFAE582736146AA3BE9B0176D56E62D02A93928C6C0AEC4727E105CE876`.
+- Phase 8HV robbery-meeting target-move route-window reset staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded Phase 8HT at `2026-06-08 14:19:48`, and live, build, staged public, and nested public package DLLs matched before this pass;
+    - the Phase 8HU watch case for robber `27` resolved correctly: it completed approach segment `NID_63`, requeued to final target `NID_234` with `targetCommitted=True forceTargetRoute=True routeAuthorityReset=True`, arrived at `NID_234`, and showed the prompt;
+    - Phase 8HT's hold-grace path was also exercised: robber `28` stayed arrived at `distance=23.3` with `robbery-meeting-arrived-hold-grace ... result=held-nearby`, then cleared and showed the prompt;
+    - the new failure was robber `35`, which arrived near the first moved target `NID_977` on day `701288`, then retargeted to `NID_529` while still carrying original `queuedDay=701246` and `hardExpireDay=701330`;
+    - that retargeted route kept progressing through `NID_771`, `NID_765`, `NID_341`, `NID_227`, and `NID_125`, but expired on day `701337` as `meeting-route-expired` before it had enough time to finish the new target route.
+  - implementation:
+    - pending robbery meetings now track a capped `TargetMoveRouteWindowResets` count;
+    - when an arrived meeting retargets because the human target moved, GameplayTweaks can reset that pending meeting's route window to the current day before clamping expiry;
+    - the reset is capped by `AI_ROBBERY_MEETING_TARGET_MOVE_WINDOW_RESETS = 2`, so a moving target can receive bounded follow-up time without allowing an infinite old meeting;
+    - the reset logs `robbery-meeting-target-moved-window-reset ... result=reset`;
+    - the existing `robbery-meeting-prompt-target-moved` log now reports `oldQueuedDay`, `queuedDay`, `routeWindowReset`, and `routeWindowResets`.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HV;
+    - after a late target move, expect `robbery-meeting-target-moved-window-reset` followed by `robbery-meeting-prompt-target-moved ... routeWindowReset=True`;
+    - the hard expiry after target move should be based on the new queued day, not the original meeting queued day;
+    - robber `35`-style routes that continue making progress after a target move should no longer clear solely because the first meeting location's hard window expired;
+    - if the target keeps moving more than the two capped resets, the meeting should still expire normally rather than chasing forever.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 14:56:21`, size `2651136`, SHA-256 `5BFD0974355A8D2CA87393DA6599CC8F7DFAF4F6B82D3B830630916DBFD3A00E`;
+    - Steam live remains Phase 8HT at `2026-06-08 14:19:48`, size `2649600`, SHA-256 `51502AFAE582736146AA3BE9B0176D56E62D02A93928C6C0AEC4727E105CE876`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HV.
+- Phase 8HW robbery-meeting stale-route soft-timeout defer staged on 2026-06-08:
+  - live evidence:
+    - Steam loaded Phase 8HV at `2026-06-08 14:56:21`, size `2651136`, SHA-256 `5BFD0974355A8D2CA87393DA6599CC8F7DFAF4F6B82D3B830630916DBFD3A00E`;
+    - the reviewed log slice did not exercise the Phase 8HV target-move reset path, so no `robbery-meeting-target-moved-window-reset` marker appeared yet;
+    - several robbery meetings still completed normally, including robber `27` arriving at `NID_908` after stale/requeue recovery and robber `29` reaching prompts at `NID_21` and `NID_51`;
+    - the next proven failure was robber `29` for meeting `NID_51`: the route had recent progress and one no-progress check, but the pending meeting soft-expired on day `701015` before the existing stale-route recovery could reach its second no-progress check.
+  - implementation:
+    - active queued robbery-meeting routes that are only soft-expired, still inside the hard route window, and already have `NoProgressChecks > 0` now defer timeout once through the existing expiry-extension helper;
+    - this gives the route service another pass to either detect progress or trigger the existing stale-route requeue path instead of clearing the meeting early;
+    - the new marker is `robbery-meeting-timeout-deferred ... result=stale-route-check-kept`;
+    - hard expiry behavior is unchanged, so meetings can still clear when the bounded route window is genuinely exhausted.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HW;
+    - a case like robber `29` should log `robbery-meeting-timeout-deferred ... result=stale-route-check-kept` instead of immediately clearing after `noProgressChecks=1`;
+    - the next route-service pass should then either log route progress, or `robbery-meeting-route-stale ... noProgressChecks=2` followed by `robbery-meeting-route-requeued`;
+    - if a meeting reaches hard expiry, it should still clear through the normal timeout path.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 15:20:15`, size `2651648`, SHA-256 `A586343619791F9597174DFB57E51EB46F636EF7C944425A2639E04769926161`;
+    - Steam live remains Phase 8HV at `2026-06-08 14:56:21`, size `2651136`, SHA-256 `5BFD0974355A8D2CA87393DA6599CC8F7DFAF4F6B82D3B830630916DBFD3A00E`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HW.
+- Phase 8HX front-closure retry and actor reuse guard staged on 2026-06-08:
+  - live evidence:
+    - Steam still loaded Phase 8HV at `2026-06-08 14:56:21`, so Phase 8HW's robbery-meeting timeout defer had not been tested in this log;
+    - front closure for attacker `27` against building `8589937897` routed as a long human front route, requeued, then committed to final approach after `waitedDays=28`;
+    - the closure was defended at `NID_4`, correctly logged `front-defended`, `front-defended-aggro-attack`, `front-retry-cooldown ... untilDay=701309`, `front-actor-reuse-penalty ... untilDay=701323`, and `post-front-return-queued`;
+    - immediately after that, the same peep and vehicle were selected again for the same building with `recentUse=True recentUseReason=front-defended:building=8589937897:until=701323`, then `tracked-business-closure ... mode=forced-business-close-now` replaced the visible front ticker with a hidden business closure;
+    - separate capacity logs showed single-vehicle attackers blocked by the normal-duty reserve, which is acceptable for one-vehicle outfits but made the same-actor reuse issue more visible on multi-vehicle outfits.
+  - implementation:
+    - forced business closures now respect the same attacker/defender/building retry cooldown used by normal front actions before selecting crew or queuing the closure;
+    - the new marker is `forced-business-retry-blocked ... untilDay=...`;
+    - front action crew selection now prefers fresh non-boss actors, then any fresh eligible actor, before falling back to recently-used actors;
+    - this lets another available vehicle take the next front or business action when possible, while still allowing a recent actor if there is truly no alternative.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HX;
+    - after `front-defended` and `front-retry-cooldown`, a same-building forced closure should log `forced-business-retry-blocked` instead of `tracked-business-closure ... mode=forced-business-close-now`;
+    - when an outfit has another eligible vehicle/crew, the next `front-crew-selected` should avoid `recentUse=True` for the previous front actor;
+    - if every eligible actor is recent or reserved, the selector may still reuse one, but the log should make that visible through `recentUse=True`.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 15:24:31`, size `2652160`, SHA-256 `7CB0EC59F0FED810BABB3A52F5A3305CFDFE79B71DC2F923CEC7FC5A348879B6`;
+    - Steam live remains Phase 8HV at `2026-06-08 14:56:21`, size `2651136`, SHA-256 `5BFD0974355A8D2CA87393DA6599CC8F7DFAF4F6B82D3B830630916DBFD3A00E`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HW/8HX.
+- Phase 8HY robbery-meeting diverging-progress timeout guard staged on 2026-06-08:
+  - live evidence:
+    - Steam, build, staged public, and nested public package DLLs all matched Phase 8HX at `2026-06-08 15:24:31`, size `2652160`, SHA-256 `7CB0EC59F0FED810BABB3A52F5A3305CFDFE79B71DC2F923CEC7FC5A348879B6`;
+    - Phase 8HX front guard looked healthy in this slice: after `front-defended` for attacker `27` and building `8589937897`, no same-building `tracked-business-closure ... mode=forced-business-close-now` appeared, no `recentUse=True` selection appeared, and no capacity-blocked front spam appeared;
+    - Phase 8HV target-move reset was exercised successfully by robber `21`, logging `robbery-meeting-target-moved-window-reset ... result=reset` before requeueing to the new target node;
+    - Phase 8HW stale-route recovery was also exercised: robber `29` hit `robbery-meeting-route-stale ... noProgressChecks=2`, then `robbery-meeting-route-requeued ... result=queued`;
+    - the new route issue was the same robber `29` later soft-expiring at day `701400` while still inside hard expiry and still route-queued, because a diverging physical node change reset `noProgressChecks` but did not refresh `LastProgressDay`, so the timeout path did not treat it as a moving route.
+  - implementation:
+    - any physical node change on a pending robbery-meeting route now refreshes `LastProgressDay`, even when the movement is temporarily diverging from the target;
+    - non-diverging progress still gets the normal immediate `route-progress` expiry extension;
+    - diverging movement still increments `DivergingRouteChecks` and can requeue through the existing divergence path, but it no longer looks inactive to the soft-timeout guard.
+  - expected next-run signals:
+    - copy the staged DLL live and restart before testing Phase 8HY;
+    - if a route changes nodes, then soft-expiry should log `robbery-meeting-timeout-deferred ... result=moving-route-kept` instead of `robbery-meeting-timeout ... result=expired-cleared`;
+    - genuinely stuck routes should still go through `robbery-meeting-route-stale` and `robbery-meeting-route-requeued`;
+    - front closures should continue to avoid `recentUse=True` when a fresh actor exists and should not immediately convert a defended same-building front into a hidden forced business closure.
+  - validation:
+    - `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - refreshed repo and nested public package `GameplayTweaks.dll` copies;
+    - build, staged public, and nested public package `GameplayTweaks.dll` timestamp `2026-06-08 16:08:46`, size `2652160`, SHA-256 `0694E9BA384B5347C602B4FD5DBDE7888C79A66534ABB7845545FB622386D0CD`;
+    - Steam live remains Phase 8HX at `2026-06-08 15:24:31`, size `2652160`, SHA-256 `7CB0EC59F0FED810BABB3A52F5A3305CFDFE79B71DC2F923CEC7FC5A348879B6`; manually refresh the staged GameplayTweaks DLL live and restart before testing Phase 8HY.
+- Phase 8HZ final robbery/front-closure public-build checkpoint on 2026-06-08:
+  - live evidence:
+    - Steam, build, staged public, and nested public package DLLs all matched Phase 8HY at `2026-06-08 16:08:46`, size `2652160`, SHA-256 `0694E9BA384B5347C602B4FD5DBDE7888C79A66534ABB7845545FB622386D0CD`;
+    - current-run robbery route counts after the live 8HY load: `robbery-meeting-route-requeued=3`, `robbery-meeting-prompt-shown=3`, `robbery-meeting-timeout=0`, `meeting-route-expired=0`;
+    - current-run front closure counts after the live 8HY load: `front-crew-selected=1`, `front-defended=7` counting related defense lines, `front-retry-cooldown=1`, `front-actor-reuse-penalty=1`, `recentUse=True=0`, `tracked-business-closure=0`, `front-crew-selection-capacity-blocked=0`, `business-capacity-blocked=0`;
+    - the defended front was low-heat/neutral-relation, so the logged `front-defended-aggro-skip ... reason=no-aggro-target` matched current aggro gating rather than the prior hostile defense attack case;
+    - no `Exception` or `NullReference` lines appeared in the current-run slice after the live 8HY load.
+  - decision:
+    - no source patch was made in this checkpoint;
+    - robbery routes and front closures are clean enough for the next public build push from the current evidence;
+    - keep watching future logs for `robbery-meeting-timeout`, `meeting-route-expired`, `recentUse=True`, `tracked-business-closure` immediately after a same-building `front-defended`, and capacity-blocked front spam.
+  - validation:
+    - final `dotnet build GameplayTweaks\GameplayTweaks.csproj -c Release` passed with `0` warnings and `0` errors;
+    - build, staged public, nested public package, and Steam live `GameplayTweaks.dll` all match timestamp `2026-06-08 16:08:46`, size `2652160`, SHA-256 `0694E9BA384B5347C602B4FD5DBDE7888C79A66534ABB7845545FB622386D0CD`.
+
+- Phase 8GX CopKilling coord-state cleanup staged on 2026-06-11:
+  - the most recent live log still shows repeated `AttackAdvisor.OnTurnUpdate swallowed exception during cop-war stabilization: NullReferenceException` lines;
+  - the live Steam `CopKilling.dll` is still the older `2026-06-11 08:15:06` build at `144384` bytes, while the repo/staged public copies are the newer `2026-06-11 08:30:05` build at `148480` bytes;
+  - the staged fix now sanitizes invalid coordinated-attack state, the finalizer prints the stack trace, and the latest stack trace points at `AttackAdvisor.TryForceClosure()`;
+  - the new guard now skips `TryForceClosure`, `TrySellOutToFeds`, and `TryPickCoord` when the advisor has no valid player territory/headquarters node, which matches the failing decompiled query path;
+  - the same live slice also shows the robbery/front path behaving as expected: `robbery-meeting-dryrun`, `front-crew-selected ... selection=non-boss-preferred`, `robbery important business closure queued`, and no new front-closure regression in that slice;
+  - expected next-run signal: manually refresh the staged `CopKilling.dll` live, restart, and confirm that `AttackAdvisor.TryForceClosure skipped due to invalid state` appears instead of the repeated NRE before the next AI phase;
+  - validation:
+    - `dotnet build CopKilling\CopKilling.csproj -c Release` passed with `0` warnings and `0` errors;
+    - repo and staged `CopKilling.dll` copies were refreshed from the Release build.

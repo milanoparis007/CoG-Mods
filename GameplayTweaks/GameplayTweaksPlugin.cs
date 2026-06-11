@@ -507,6 +507,24 @@ public class CrewModState
 
 	public bool WitnessThreatAttempted;
 
+	public int NextMurderWitnessId = 1;
+
+	public List<MurderWitnessRecord> MurderWitnesses = new List<MurderWitnessRecord>();
+
+	public bool MurderCaseActive;
+
+	public float MurderCaseProgress;
+
+	public int MurderCaseStartedDay = -1;
+
+	public int MurderCaseMinimumBuildDays = -1;
+
+	public int MurderCaseLastIntakeDay = -1;
+
+	public bool MurderCaseFailedSilenceMultiplierActive;
+
+	public int MurderWitnessLastActionDay = -1;
+
 	// Federal witness entries are non-threatenable and tied to national-heat cop-kill evidence.
 	public int FederalWitnessCount;
 
@@ -584,6 +602,42 @@ public class CrewModState
 			HideoutReturnsRaw = value.days;
 		}
 	}
+}
+
+[Serializable]
+public class MurderWitnessRecord
+{
+	public int WitnessId;
+
+	public long OwningCrewPeepId;
+
+	public int Reliability;
+
+	public int AddedDay = -1;
+
+	public bool Found;
+
+	public int SearchAttempts;
+
+	public bool ThreatAttempted;
+
+	public bool ThreatFailed;
+
+	public bool ThreatenedSuccessfully;
+
+	public bool SilenceAttempted;
+
+	public bool SilenceFailed;
+
+	public bool SilencedSuccessfully;
+
+	public float CaseGainMultiplier = 1f;
+
+	public bool Closed;
+
+	public string CaseProfile = "murder";
+
+	public bool LegacyAnonymous;
 }
 [Serializable]
 public class AlliancePact
@@ -1231,7 +1285,7 @@ internal static class ModConstants
 [BepInDependency("afterprohibition.family", BepInDependency.DependencyFlags.SoftDependency)]
 public partial class GameplayTweaksPlugin : BaseUnityPlugin
 {
-	internal const int TweaksSaveVersionCurrent = 5;
+	internal const int TweaksSaveVersionCurrent = 9;
 
 	internal const int GangOpsDefaultsProfileVersionCurrent = 13;
 
@@ -1269,7 +1323,31 @@ public partial class GameplayTweaksPlugin : BaseUnityPlugin
 
 	private const int MurderWitnessCaseDryRunLogCooldownDays = 1;
 
+	private const int MurderWitnessSearchBaseCost = 5;
+
+	private const float MurderWitnessSilenceSuccessChance = 0.4f;
+
+	private const int MurderWitnessReliabilityReliable = 1;
+
+	private const int MurderWitnessReliabilityUnreliable = 2;
+
+	private const float MurderWitnessReliableRollChance = 0.55f;
+
+	private const int MurderCaseCustodySentenceYears = 12;
+
+	private const int MurderCaseTrialDays = 7;
+
+	private const int MurderCaseReliableMinimumDays = 90;
+
+	private const int MurderCaseMixedMinimumDays = 120;
+
+	private const int MurderCaseUnreliableMinimumDays = 150;
+
+	private const float MurderCaseProgressGainScale = 0.5f;
+
 	private static readonly Dictionary<string, int> MurderWitnessCaseDryRunLastDayByPeep = new Dictionary<string, int>(StringComparer.Ordinal);
+
+	private static readonly Dictionary<string, int> MurderWitnessResetDeferredLastDayByPeep = new Dictionary<string, int>(StringComparer.Ordinal);
 
 	internal const int AI_PACT_SLOT_COUNT = 4;
 
@@ -5153,6 +5231,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 
 		private static Text _federalCaseText;
 
+		private static Text _stateCaseText;
+
 		private static Text _snitchStatusText;
 
 		private static Text _happinessMoodText;
@@ -6801,12 +6881,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			state.WitnessThreatAttempted = false;
 			state.WitnessThreatenedSuccessfully = false;
 			int murderWitnesses = GetNonFederalMurderWitnessCount(state);
-			float heatFloor = murderWitnesses >= MurderWitnessCaseThreshold
-				? 0.75f
-				: (murderWitnesses == 2 ? 0.5f : 0.25f);
-			SetLocalHeatProgress(state, Mathf.Max(state.LocalHeatProgress, heatFloor), G.GetNow().days, refreshDecayAnchor: true);
 			string name = peep.data?.person?.FullName ?? "Unknown";
-			VerificationLog("MurderWitness", $"murder-witness-debug-added peep={peep.Id.id} name=\"{name}\" murderWitnesses={murderWitnesses} totalWitnesses={state.WitnessCount} federal={state.FederalWitnessCount} source={source} result=added");
+			VerificationLog("MurderWitness", $"murder-witness-debug-added peep={peep.Id.id} name=\"{name}\" murderWitnesses={murderWitnesses} totalWitnesses={state.WitnessCount} federal={state.FederalWitnessCount} localHeat={state.LocalHeatProgress:0.000} source={source} result=added");
 			LogMurderWitnessCaseDryRun(peep.Id, state, "debug-add");
 			if (_popupVisible && (UnityEngine.Object)(object)_handlerPopup != (UnityEngine.Object)null && _selectedPeep != null && _selectedPeep.Id == peep.Id)
 			{
@@ -7138,6 +7214,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			((Graphic)_nationalHeatText).color = new Color(0.93f, 0.75f, 0.2f);
 			_federalCaseText = CreateLabel(transform, "FederalCase", "Federal Case: 0% | Next Intake: --", 10, (FontStyle)0);
 			((Graphic)_federalCaseText).color = new Color(0.95f, 0.62f, 0.22f);
+			_stateCaseText = CreateLabel(transform, "StateCase", "State Case: None", 10, (FontStyle)0);
+			((Graphic)_stateCaseText).color = new Color(0.75f, 0.78f, 0.92f);
 			_snitchStatusText = CreateLabel(transform, "SnitchStatus", "SNITCH EXPOSED", 10, (FontStyle)1);
 			((Graphic)_snitchStatusText).color = new Color(0.95f, 0.35f, 0.3f);
 			((Component)_snitchStatusText).gameObject.SetActive(false);
@@ -8313,6 +8391,11 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 				_federalCaseText.text = GetFederalCaseUiLabel();
 				((Component)_federalCaseText).gameObject.SetActive(true);
 			}
+			if ((UnityEngine.Object)(object)_stateCaseText != (UnityEngine.Object)null)
+			{
+				_stateCaseText.text = GetStateCaseUiLabel(orCreateCrewState);
+				((Component)_stateCaseText).gameObject.SetActive(true);
+			}
 			if ((UnityEngine.Object)(object)_snitchStatusText != (UnityEngine.Object)null)
 			{
 				bool snitchExposed = orCreateCrewState.SnitchExposed;
@@ -8367,14 +8450,58 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			((Selectable)_btnBribeJudge).interactable = !orCreateCrewState.JudgeBribeActive && orCreateCrewState.LocalHeatLevel != WantedLevel.None && CanPayCleanSafehouse(humanPlayerForPayments, num2);
 			if ((UnityEngine.Object)(object)_btnThreatenWitness != (UnityEngine.Object)null)
 			{
+				EnsureMurderWitnessRecordsForScalar(_selectedPeep.Id, orCreateCrewState, "ui-refresh");
+				EnsureMurderWitnessActionableRecords(_selectedPeep.Id, orCreateCrewState, "ui-refresh");
 				int threatenableWitnesses = GetThreatenableWitnessCount(orCreateCrewState);
+				int activeMurderWitnessRecords = CountActiveMurderWitnessRecords(orCreateCrewState);
+				int openMurderWitnessRecords = CountOpenMurderWitnessRecords(orCreateCrewState);
+				int murderWitnesses = Math.Max(GetNonFederalMurderWitnessCount(orCreateCrewState), openMurderWitnessRecords);
+				int foundMurderWitnesses = CountFoundActiveMurderWitnessRecords(orCreateCrewState);
+				int foundThreatenableMurderWitnesses = CountFoundThreatenableMurderWitnessRecords(orCreateCrewState);
+				int foundSilenceOnlyMurderWitnesses = CountFoundSilenceOnlyMurderWitnessRecords(orCreateCrewState);
+				int searchableMurderWitnesses = CountSearchableMurderWitnessRecords(orCreateCrewState);
+				string murderWitnessStatus = GetMurderWitnessCountStatus(orCreateCrewState);
+				bool needsMurderWitnessSearch = murderWitnesses > 0 && searchableMurderWitnesses > 0;
+				bool canPayMurderWitnessSearch = CanPayMurderWitnessSearch(humanPlayerForPayments, MurderWitnessSearchBaseCost);
+				bool murderWitnessActionCooldown = murderWitnesses > 0 && IsMurderWitnessActionCooldownActive(orCreateCrewState);
 				bool hasAnyThreatenable = threatenableWitnesses > 0;
 				bool hasFederalWitness = orCreateCrewState.FederalWitnessCount > 0;
-				((Component)_btnThreatenWitness).gameObject.SetActive(hasAnyThreatenable || hasFederalWitness || orCreateCrewState.WitnessThreatenedSuccessfully);
-				((Selectable)_btnThreatenWitness).interactable = hasAnyThreatenable;
-				if (hasAnyThreatenable)
+				((Component)_btnThreatenWitness).gameObject.SetActive(murderWitnesses > 0 || hasAnyThreatenable || hasFederalWitness || orCreateCrewState.WitnessThreatenedSuccessfully);
+				((Selectable)_btnThreatenWitness).interactable = needsMurderWitnessSearch
+					? true
+					: (!murderWitnessActionCooldown
+						&& (foundSilenceOnlyMurderWitnesses > 0 || (hasAnyThreatenable && (murderWitnesses <= 0 || foundThreatenableMurderWitnesses > 0))));
+				if (murderWitnessActionCooldown)
 				{
-					_txtThreatenWitness.text = $"Threaten Witness ({threatenableWitnesses})";
+					_txtThreatenWitness.text = needsMurderWitnessSearch
+						? (canPayMurderWitnessSearch
+							? $"Look For Murder Witness ({murderWitnessStatus}, ${MurderWitnessSearchBaseCost})"
+							: $"Need ${MurderWitnessSearchBaseCost} Clean Cash ({murderWitnessStatus})")
+						: (orCreateCrewState.MurderCaseActive
+							? $"Lead Tomorrow - {GetMurderCaseButtonStatus(orCreateCrewState)}"
+							: "Witness Lead Tomorrow");
+				}
+				else if (needsMurderWitnessSearch)
+				{
+					_txtThreatenWitness.text = canPayMurderWitnessSearch
+						? $"Look For Murder Witness ({murderWitnessStatus}, ${MurderWitnessSearchBaseCost})"
+						: $"Need ${MurderWitnessSearchBaseCost} Clean Cash ({murderWitnessStatus})";
+				}
+				else if (foundSilenceOnlyMurderWitnesses > 0)
+				{
+					_txtThreatenWitness.text = $"Silence Witness ({foundSilenceOnlyMurderWitnesses}, {murderWitnessStatus})";
+				}
+				else if (murderWitnesses > 0 && searchableMurderWitnesses <= 0 && foundMurderWitnesses <= 0)
+				{
+					_txtThreatenWitness.text = orCreateCrewState.MurderCaseActive
+						? $"{GetMurderCaseButtonStatus(orCreateCrewState)} | {murderWitnessStatus}"
+						: $"Murder Case Pending | {murderWitnessStatus}";
+				}
+				else if (hasAnyThreatenable)
+				{
+					_txtThreatenWitness.text = foundThreatenableMurderWitnesses > 0
+						? $"Threaten Witness ({foundThreatenableMurderWitnesses}, {murderWitnessStatus})"
+						: $"Threaten Witness ({threatenableWitnesses})";
 				}
 				else if (hasFederalWitness)
 				{
@@ -8890,8 +9017,33 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			{
 				return;
 			}
+			EnsureMurderWitnessRecordsForScalar(_selectedPeep.Id, orCreateCrewState, "witness-action");
+			EnsureMurderWitnessActionableRecords(_selectedPeep.Id, orCreateCrewState, "witness-action");
+			int activeMurderWitnessRecords = CountActiveMurderWitnessRecords(orCreateCrewState);
+			int openMurderWitnessRecords = CountOpenMurderWitnessRecords(orCreateCrewState);
+			int murderWitnesses = Math.Max(GetNonFederalMurderWitnessCount(orCreateCrewState), openMurderWitnessRecords);
+			VerificationLog("MurderWitness", $"murder-witness-button-click peep={_selectedPeep.Id.id} murderWitnesses={murderWitnesses} activeRecords={activeMurderWitnessRecords} openRecords={openMurderWitnessRecords} searchableRecords={CountSearchableMurderWitnessRecords(orCreateCrewState)} foundThreatenable={CountFoundThreatenableMurderWitnessRecords(orCreateCrewState)} foundSilenceOnly={CountFoundSilenceOnlyMurderWitnessRecords(orCreateCrewState)} cooldown={IsMurderWitnessActionCooldownActive(orCreateCrewState)} clean={GetPlayerCleanCash()}");
+			MurderWitnessRecord searchRecord = GetFirstSearchableMurderWitnessRecord(orCreateCrewState);
+			if (murderWitnesses > 0 && searchRecord != null)
+			{
+				TryFindMurderWitnessForSelectedPeep(orCreateCrewState);
+				return;
+			}
+			MurderWitnessRecord silenceRecord = GetFirstFoundSilenceOnlyMurderWitnessRecord(orCreateCrewState);
+			MurderWitnessRecord threatRecord = GetFirstFoundThreatenableMurderWitnessRecord(orCreateCrewState);
+			if (murderWitnesses > 0 && IsMurderWitnessActionCooldownActive(orCreateCrewState))
+			{
+				VerificationLog("MurderWitness", $"murder-witness-action-locked peep={_selectedPeep.Id.id} day={GetCurrentDaySafe()} activeRecords={activeMurderWitnessRecords} searchableRecords={CountSearchableMurderWitnessRecords(orCreateCrewState)} foundThreatenable={CountFoundThreatenableMurderWitnessRecords(orCreateCrewState)} foundSilenceOnly={CountFoundSilenceOnlyMurderWitnessRecords(orCreateCrewState)} reason=one-action-per-day");
+				RefreshHandlerUI();
+				return;
+			}
+			if (silenceRecord != null)
+			{
+				TrySilenceMurderWitnessForSelectedPeep(orCreateCrewState, silenceRecord);
+				return;
+			}
 			int threatenableWitnesses = GetThreatenableWitnessCount(orCreateCrewState);
-			if (threatenableWitnesses <= 0)
+			if (threatenableWitnesses <= 0 || (murderWitnesses > 0 && threatRecord == null))
 			{
 				return;
 			}
@@ -8909,8 +9061,14 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			{
 			}
 			float num = (flag ? 0.25f : 0.5f);
+			if (murderWitnesses > 0 && threatRecord != null)
+			{
+				num = GetMurderWitnessThreatFailureChance(num, threatRecord);
+				VerificationLog("MurderWitness", $"murder-witness-threat-roll peep={_selectedPeep.Id.id} witnessId={threatRecord.WitnessId} reliability={GetMurderWitnessReliabilityLabel(threatRecord)} failureChance={num:0.00}");
+			}
 			if (SharedRng.NextDouble() >= (double)num)
 			{
+				int nonFederalWitnessesBefore = GetNonFederalMurderWitnessCount(orCreateCrewState);
 				orCreateCrewState.WitnessCount--;
 				orCreateCrewState.WitnessThreatenedSuccessfully = true;
 				if (orCreateCrewState.WitnessCount <= orCreateCrewState.FederalWitnessCount)
@@ -8918,23 +9076,143 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 					orCreateCrewState.WitnessCount = Mathf.Max(0, orCreateCrewState.FederalWitnessCount);
 					orCreateCrewState.HasWitness = orCreateCrewState.FederalWitnessCount > 0;
 				}
-				if (orCreateCrewState.LocalHeatLevel > WantedLevel.None)
-				{
-					SetLocalHeatProgress(orCreateCrewState, Mathf.Clamp01(orCreateCrewState.LocalHeatProgress - 0.25f), G.GetNow().days, refreshDecayAnchor: true);
-				}
 				if (orCreateCrewState.WitnessCount <= 0 && orCreateCrewState.FederalWitnessCount <= 0)
 				{
 					orCreateCrewState.FedsIncoming = false;
 					orCreateCrewState.FedArrivalCountdown = 0;
 				}
+				if (threatRecord != null)
+				{
+					CloseMurderWitnessRecord(_selectedPeep.Id, orCreateCrewState, threatRecord, "threat-witness", "threat-success");
+				}
+				else if (nonFederalWitnessesBefore > GetNonFederalMurderWitnessCount(orCreateCrewState))
+				{
+					CloseOneMurderWitnessRecord(_selectedPeep.Id, orCreateCrewState, "threat-witness");
+				}
+				if (murderWitnesses > 0)
+				{
+					MarkMurderWitnessActionDay(orCreateCrewState);
+				}
+				TryResetMurderCaseIfNoActiveWitnesses(_selectedPeep.Id, orCreateCrewState, "all-witnesses-closed");
 				Debug.Log($"[GameplayTweaks] Successfully threatened witness for {_selectedPeep.data.person.FullName} ({orCreateCrewState.WitnessCount} remaining)");
 			}
 			else
 			{
+				if (threatRecord != null)
+				{
+					threatRecord.ThreatAttempted = true;
+					threatRecord.ThreatFailed = true;
+					VerificationLog("MurderWitness", $"murder-witness-threat-failed peep={_selectedPeep.Id.id} witnessId={threatRecord.WitnessId} reliability={GetMurderWitnessReliabilityLabel(threatRecord)} result=silence-only");
+				}
 				orCreateCrewState.ExtraJailYears += SharedRng.Next(1, 4);
 				SetLocalHeatProgress(orCreateCrewState, Mathf.Clamp01(orCreateCrewState.LocalHeatProgress + 0.15f), G.GetNow().days, refreshDecayAnchor: true);
+				if (murderWitnesses > 0)
+				{
+					MarkMurderWitnessActionDay(orCreateCrewState);
+				}
 				Debug.Log($"[GameplayTweaks] Failed to threaten witness! {_selectedPeep.data.person.FullName} faces {orCreateCrewState.ExtraJailYears} extra years!");
 			}
+			RefreshHandlerUI();
+		}
+
+		private static void TryFindMurderWitnessForSelectedPeep(CrewModState state)
+		{
+			if (_selectedPeep == null || state == null)
+			{
+				return;
+			}
+			EnsureMurderWitnessRecordsForScalar(_selectedPeep.Id, state, "search-start");
+			EnsureMurderWitnessActionableRecords(_selectedPeep.Id, state, "search-start");
+			MurderWitnessRecord record = GetFirstSearchableMurderWitnessRecord(state);
+			if (record == null)
+			{
+				VerificationLog("MurderWitness", $"murder-witness-search-blocked peep={_selectedPeep.Id.id} reason=no-active-records");
+				RefreshHandlerUI();
+				return;
+			}
+			if (record.Found)
+			{
+				VerificationLog("MurderWitness", $"murder-witness-search-found peep={_selectedPeep.Id.id} witnessId={record.WitnessId} alreadyFound=True");
+				RefreshHandlerUI();
+				return;
+			}
+			int cost = MurderWitnessSearchBaseCost * (record.SearchAttempts <= 0 ? 1 : 2);
+			PlayerInfo humanPlayer = G.GetHumanPlayer();
+			if (!CanPayMurderWitnessSearch(humanPlayer, cost))
+			{
+				VerificationLog("MurderWitness", $"murder-witness-search-blocked peep={_selectedPeep.Id.id} witnessId={record.WitnessId} cost={cost} clean={GetPlayerCleanCash()} reason=insufficient-clean-cash");
+				RefreshHandlerUI();
+				return;
+			}
+			VerificationLog("MurderWitness", $"murder-witness-search-started peep={_selectedPeep.Id.id} witnessId={record.WitnessId} reliability={GetMurderWitnessReliabilityLabel(record)} attemptsBefore={record.SearchAttempts} cost={cost}");
+			try
+			{
+				humanPlayer.finances.DoChangeMoneyOnSafehouse(new Price((Fixnum)(-cost)), (MoneyReason)1);
+			}
+			catch (Exception ex)
+			{
+				VerificationLog("MurderWitness", $"murder-witness-search-blocked peep={_selectedPeep.Id.id} witnessId={record.WitnessId} cost={cost} reason=payment-failed error={ex.GetType().Name}:{ex.Message}");
+				RefreshHandlerUI();
+				return;
+			}
+			record.SearchAttempts++;
+			record.Found = true;
+			MarkMurderWitnessActionDay(state);
+			VerificationLog("MurderWitness", $"murder-witness-search-paid peep={_selectedPeep.Id.id} witnessId={record.WitnessId} reliability={GetMurderWitnessReliabilityLabel(record)} cost={cost} attempts={record.SearchAttempts}");
+			VerificationLog("MurderWitness", $"murder-witness-search-found peep={_selectedPeep.Id.id} witnessId={record.WitnessId} reliability={GetMurderWitnessReliabilityLabel(record)} found=True activeRecords={CountActiveMurderWitnessRecords(state)} foundRecords={CountFoundActiveMurderWitnessRecords(state)}");
+			RefreshHandlerUI();
+		}
+
+		private static void TrySilenceMurderWitnessForSelectedPeep(CrewModState state, MurderWitnessRecord record)
+		{
+			if (_selectedPeep == null || state == null || record == null)
+			{
+				return;
+			}
+			record.SilenceAttempted = true;
+			bool success = SharedRng.NextDouble() < MurderWitnessSilenceSuccessChance;
+			if (success)
+			{
+				record.SilencedSuccessfully = true;
+				record.Closed = true;
+				if (GetNonFederalMurderWitnessCount(state) > 0)
+				{
+					state.WitnessCount = Mathf.Max(state.FederalWitnessCount, state.WitnessCount - 1);
+				}
+				if (state.WitnessCount <= 0 && state.FederalWitnessCount <= 0)
+				{
+					state.HasWitness = false;
+					state.FedsIncoming = false;
+					state.FedArrivalCountdown = 0;
+				}
+				VerificationLog("MurderWitness", $"murder-witness-silence-success peep={_selectedPeep.Id.id} witnessId={record.WitnessId} reliability={GetMurderWitnessReliabilityLabel(record)} remainingMurderWitnesses={GetNonFederalMurderWitnessCount(state)}");
+				TryResetMurderCaseIfNoActiveWitnesses(_selectedPeep.Id, state, "all-witnesses-silenced");
+			}
+			else
+			{
+				record.SilenceFailed = true;
+				record.Found = false;
+				if (GetNonFederalMurderWitnessCount(state) > 0)
+				{
+					state.WitnessCount = Mathf.Max(state.FederalWitnessCount, state.WitnessCount - 1);
+				}
+				record.CaseGainMultiplier = Mathf.Max(record.CaseGainMultiplier, 2f);
+				bool wasCaseActive = state.MurderCaseActive;
+				state.MurderCaseActive = true;
+				state.MurderCaseFailedSilenceMultiplierActive = true;
+				if (state.MurderCaseStartedDay < 0)
+				{
+					state.MurderCaseStartedDay = G.GetNow().days;
+				}
+				EnsureMurderCaseMinimumBuildDaysLocked(state);
+				if (!wasCaseActive)
+				{
+					VerificationLog("MurderWitness", $"murder-case-started peep={_selectedPeep.Id.id} activeRecords={CountActiveMurderWitnessRecords(state)} progress={state.MurderCaseProgress:0.0} minCaseDays={GetMurderCaseMinimumBuildDays(state)} source=failed-silence");
+				}
+				VerificationLog("MurderWitness", $"murder-witness-silence-failed peep={_selectedPeep.Id.id} witnessId={record.WitnessId} reliability={GetMurderWitnessReliabilityLabel(record)} caseActive={state.MurderCaseActive} multiplier={record.CaseGainMultiplier:0.0} result=case-started");
+				VerificationLog("MurderWitness", $"murder-witness-case-only peep={_selectedPeep.Id.id} witnessId={record.WitnessId} remainingOpenWitnesses={CountOpenMurderWitnessRecords(state)} scalarWitnesses={GetNonFederalMurderWitnessCount(state)} activeRecords={CountActiveMurderWitnessRecords(state)} reason=failed-silence");
+			}
+			MarkMurderWitnessActionDay(state);
 			RefreshHandlerUI();
 		}
 
@@ -8962,25 +9240,30 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 	{
 		if (peep == null || peep.data?.person == null)
 		{
+			VerificationLog("Loyalty", "defection-offer-skipped reason=missing-peep");
 			return;
 		}
 		if (_defectionOfferActive)
 		{
+			VerificationLog("Loyalty", $"defection-offer-skipped peep={peep.Id.id} fromGang={fromGang?.PID.id ?? -1} reason=already-active");
 			return;
 		}
 		int days = G.GetNow().days;
 		if (_lastDefectionOfferDay >= 0 && days == _lastDefectionOfferDay)
 		{
+			VerificationLog("Loyalty", $"defection-offer-skipped peep={peep.Id.id} fromGang={fromGang?.PID.id ?? -1} reason=same-day-throttle day={days}");
 			return;
 		}
 		PlayerInfo humanPlayer = G.GetHumanPlayer();
 		if (humanPlayer == null || humanPlayer.crew == null || humanPlayer.crew.IsCrewDefeated)
 		{
+			VerificationLog("Loyalty", $"defection-offer-skipped peep={peep.Id.id} fromGang={fromGang?.PID.id ?? -1} reason=invalid-human-player");
 			return;
 		}
 		Canvas overlay = GetOrCreateOverlayCanvas();
 		if ((UnityEngine.Object)(object)overlay == (UnityEngine.Object)null)
 		{
+			VerificationLog("Loyalty", $"defection-offer-skipped peep={peep.Id.id} fromGang={fromGang?.PID.id ?? -1} reason=missing-overlay");
 			return;
 		}
 		GameObject popup = new GameObject("DefectionOfferPopup", new Type[5]
@@ -9017,6 +9300,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		GameObject row = CreateHorizontalRow(popup.transform, "Defect_Row");
 		_defectionOfferActive = true;
 		_lastDefectionOfferDay = days;
+		VerificationLog("Loyalty", $"defection-offer-shown peep={peep.Id.id} fromGang={fromGang?.PID.id ?? -1} day={days}");
 		Button acceptBtn = CreateButton(row.transform, "Defect_Accept", "Accept", delegate
 		{
 			try
@@ -15741,6 +16025,19 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			}
 		}
 
+		private static bool CanPayMurderWitnessSearch(PlayerInfo player, int amount)
+		{
+			if (player?.finances == null || amount <= 0)
+			{
+				return false;
+			}
+			if (CanPayCleanSafehouse(player, amount))
+			{
+				return true;
+			}
+			return GetPlayerCleanCash() >= amount;
+		}
+
 		private static bool CanPayLawyerRetainer(PlayerInfo player, int amount)
 		{
 			return CanPayCleanSafehouse(player, amount);
@@ -19514,6 +19811,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 
 	private static int _loyaltyTurnSummaryDecay;
 
+	private static int _loyaltyTurnSummaryNearDefection;
+
+	private static int _loyaltyTurnSummaryZeroReady;
+
 	private static float _loyaltyTurnSummaryMinHappiness = 1f;
 
 	private static float _loyaltyTurnSummaryMinLoyalty = 1f;
@@ -19523,6 +19824,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 	private static long _loyaltyTurnSummaryMaxDecayPeepId = -1L;
 
 	private static long _loyaltyTurnSummaryLowestPeepId = -1L;
+
+	private static int _loyaltyTurnSummaryLowestOwnerId = -1;
+
+	private static bool _loyaltyTurnSummaryLowestOwnerHuman;
 
 	private static int _lastGlobalScavengeableVehicleScrubFrame = -1;
 
@@ -24753,20 +25058,603 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		return Math.Max(0, state.WitnessCount - Math.Max(0, state.FederalWitnessCount));
 	}
 
+	private static int GetCurrentDaySafe()
+	{
+		try
+		{
+			return G.GetNow().days;
+		}
+		catch
+		{
+			return -1;
+		}
+	}
+
+	private static bool IsMurderWitnessActionCooldownActive(CrewModState state)
+	{
+		int nowDay = GetCurrentDaySafe();
+		return state != null && nowDay >= 0 && state.MurderWitnessLastActionDay == nowDay;
+	}
+
+	private static void MarkMurderWitnessActionDay(CrewModState state)
+	{
+		if (state == null)
+		{
+			return;
+		}
+		int nowDay = GetCurrentDaySafe();
+		if (nowDay >= 0)
+		{
+			state.MurderWitnessLastActionDay = nowDay;
+		}
+	}
+
+	private static int RollMurderWitnessReliability()
+	{
+		return SharedRng.NextDouble() < MurderWitnessReliableRollChance
+			? MurderWitnessReliabilityReliable
+			: MurderWitnessReliabilityUnreliable;
+	}
+
+	private static bool IsReliableMurderWitness(MurderWitnessRecord record)
+	{
+		return record == null || record.Reliability == MurderWitnessReliabilityReliable;
+	}
+
+	private static string GetMurderWitnessReliabilityLabel(MurderWitnessRecord record)
+	{
+		return IsReliableMurderWitness(record) ? "reliable" : "unreliable";
+	}
+
+	private static float GetMurderWitnessCaseGainWeight(MurderWitnessRecord record)
+	{
+		return IsReliableMurderWitness(record) ? 1.25f : 0.65f;
+	}
+
+	private static float GetMurderWitnessThreatFailureChance(float baseFailureChance, MurderWitnessRecord record)
+	{
+		float adjustment = IsReliableMurderWitness(record) ? 0.1f : -0.15f;
+		return Mathf.Clamp(baseFailureChance + adjustment, 0.15f, 0.75f);
+	}
+
+	private static bool IsMurderWitnessRecordActive(MurderWitnessRecord record)
+	{
+		return record != null
+			&& !record.Closed
+			&& string.Equals(record.CaseProfile ?? "murder", "murder", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static bool IsMurderWitnessRecordActionable(CrewModState state)
+	{
+		return GetFirstSearchableMurderWitnessRecord(state) != null
+			|| GetFirstFoundThreatenableMurderWitnessRecord(state) != null
+			|| GetFirstFoundSilenceOnlyMurderWitnessRecord(state) != null;
+	}
+
+	private static bool EnsureMurderWitnessActionableRecords(EntityID peepId, CrewModState state, string source)
+	{
+		if (state?.MurderWitnesses == null)
+		{
+			return false;
+		}
+		NormalizeMurderWitnessRecordState(state);
+		SyncMurderWitnessScalarToOpenRecords(peepId, state, source);
+		bool changed = false;
+		string sourceTag = string.IsNullOrEmpty(source) ? "unknown" : source;
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (!IsMurderWitnessRecordActive(record))
+			{
+				continue;
+			}
+			if (record.ThreatenedSuccessfully || record.SilencedSuccessfully)
+			{
+				record.Closed = true;
+				changed = true;
+				VerificationLog("MurderWitness", $"murder-witness-record-closed peep={(peepId.IsNotValid ? 0UL : peepId.id)} witnessId={record.WitnessId} reliability={GetMurderWitnessReliabilityLabel(record)} source={sourceTag} result=normalize-completed");
+			}
+		}
+		if (changed)
+		{
+			TryResetMurderCaseIfNoActiveWitnesses(peepId, state, "all-witnesses-closed");
+		}
+		if (CountActiveMurderWitnessRecords(state) <= 0 || IsMurderWitnessRecordActionable(state))
+		{
+			return changed;
+		}
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (!IsMurderWitnessRecordActive(record) || record.SilenceFailed)
+			{
+				continue;
+			}
+			record.Found = false;
+			record.ThreatAttempted = false;
+			record.ThreatFailed = false;
+			record.SilenceAttempted = false;
+			record.SilencedSuccessfully = false;
+			record.ThreatenedSuccessfully = false;
+			VerificationLog("MurderWitness", $"murder-witness-record-reopened peep={(peepId.IsNotValid ? 0UL : peepId.id)} witnessId={record.WitnessId} reliability={GetMurderWitnessReliabilityLabel(record)} source={sourceTag} activeRecords={CountActiveMurderWitnessRecords(state)} result=searchable");
+			return true;
+		}
+		return changed;
+	}
+
+	private static void SyncMurderWitnessScalarToOpenRecords(EntityID peepId, CrewModState state, string source)
+	{
+		if (state?.MurderWitnesses == null || state.MurderWitnesses.Count == 0)
+		{
+			return;
+		}
+		bool hasCaseOnlyRecord = false;
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (record != null && string.Equals(record.CaseProfile ?? "murder", "murder", StringComparison.OrdinalIgnoreCase) && record.SilenceFailed)
+			{
+				hasCaseOnlyRecord = true;
+				break;
+			}
+		}
+		if (!hasCaseOnlyRecord)
+		{
+			return;
+		}
+		int openRecords = CountOpenMurderWitnessRecords(state);
+		int desiredTotal = Mathf.Max(0, state.FederalWitnessCount) + openRecords;
+		if (state.WitnessCount == desiredTotal)
+		{
+			return;
+		}
+		int before = state.WitnessCount;
+		state.WitnessCount = desiredTotal;
+		state.HasWitness = state.WitnessCount > 0;
+		string sourceTag = string.IsNullOrEmpty(source) ? "unknown" : source;
+		VerificationLog("MurderWitness", $"murder-witness-scalar-synced peep={(peepId.IsNotValid ? 0UL : peepId.id)} before={before} after={state.WitnessCount} openRecords={openRecords} activeRecords={CountActiveMurderWitnessRecords(state)} source={sourceTag} reason=case-only-witness");
+	}
+
+	private static int CountActiveMurderWitnessRecords(CrewModState state)
+	{
+		if (state?.MurderWitnesses == null)
+		{
+			return 0;
+		}
+		int count = 0;
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			if (IsMurderWitnessRecordActive(state.MurderWitnesses[i]))
+			{
+				count++;
+			}
+		}
+		return count;
+	}
+
+	private static bool IsMurderWitnessRecordOpenForPlayer(MurderWitnessRecord record)
+	{
+		return IsMurderWitnessRecordActive(record)
+			&& !record.SilenceFailed
+			&& !record.SilencedSuccessfully
+			&& !record.ThreatenedSuccessfully;
+	}
+
+	private static int CountOpenMurderWitnessRecords(CrewModState state)
+	{
+		if (state?.MurderWitnesses == null)
+		{
+			return 0;
+		}
+		int count = 0;
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			if (IsMurderWitnessRecordOpenForPlayer(state.MurderWitnesses[i]))
+			{
+				count++;
+			}
+		}
+		return count;
+	}
+
+	private static MurderWitnessRecord GetFirstActiveMurderWitnessRecord(CrewModState state, bool requireFound)
+	{
+		if (state?.MurderWitnesses == null)
+		{
+			return null;
+		}
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (!IsMurderWitnessRecordActive(record))
+			{
+				continue;
+			}
+			if (requireFound && !record.Found)
+			{
+				continue;
+			}
+			return record;
+		}
+		return null;
+	}
+
+	private static int CountFoundActiveMurderWitnessRecords(CrewModState state)
+	{
+		if (state?.MurderWitnesses == null)
+		{
+			return 0;
+		}
+		int count = 0;
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (IsMurderWitnessRecordActive(record) && record.Found)
+			{
+				count++;
+			}
+		}
+		return count;
+	}
+
+	private static bool HasFoundThreatenableMurderWitness(CrewModState state)
+	{
+		return GetFirstFoundThreatenableMurderWitnessRecord(state) != null;
+	}
+
+	private static MurderWitnessRecord GetFirstFoundThreatenableMurderWitnessRecord(CrewModState state)
+	{
+		if (state?.MurderWitnesses == null)
+		{
+			return null;
+		}
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (IsMurderWitnessRecordActive(record)
+				&& record.Found
+				&& !record.ThreatFailed
+				&& !record.ThreatenedSuccessfully
+				&& !record.SilenceAttempted)
+			{
+				return record;
+			}
+		}
+		return null;
+	}
+
+	private static MurderWitnessRecord GetFirstSearchableMurderWitnessRecord(CrewModState state)
+	{
+		if (state?.MurderWitnesses == null)
+		{
+			return null;
+		}
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (IsMurderWitnessRecordActive(record)
+				&& !record.Found
+				&& !record.SilenceAttempted
+				&& !record.ThreatenedSuccessfully)
+			{
+				return record;
+			}
+		}
+		return null;
+	}
+
+	private static int CountSearchableMurderWitnessRecords(CrewModState state)
+	{
+		if (state?.MurderWitnesses == null)
+		{
+			return 0;
+		}
+		int count = 0;
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (IsMurderWitnessRecordActive(record)
+				&& !record.Found
+				&& !record.SilenceAttempted
+				&& !record.ThreatenedSuccessfully)
+			{
+				count++;
+			}
+		}
+		return count;
+	}
+
+	private static MurderWitnessRecord GetFirstFoundSilenceOnlyMurderWitnessRecord(CrewModState state)
+	{
+		if (state?.MurderWitnesses == null)
+		{
+			return null;
+		}
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (IsMurderWitnessRecordActive(record)
+				&& record.Found
+				&& record.ThreatFailed
+				&& !record.SilenceAttempted)
+			{
+				return record;
+			}
+		}
+		return null;
+	}
+
+	private static int CountFoundThreatenableMurderWitnessRecords(CrewModState state)
+	{
+		if (state?.MurderWitnesses == null)
+		{
+			return 0;
+		}
+		int count = 0;
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (IsMurderWitnessRecordActive(record)
+				&& record.Found
+				&& !record.ThreatFailed
+				&& !record.ThreatenedSuccessfully
+				&& !record.SilenceAttempted)
+			{
+				count++;
+			}
+		}
+		return count;
+	}
+
+	private static int CountFoundSilenceOnlyMurderWitnessRecords(CrewModState state)
+	{
+		if (state?.MurderWitnesses == null)
+		{
+			return 0;
+		}
+		int count = 0;
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (IsMurderWitnessRecordActive(record)
+				&& record.Found
+				&& record.ThreatFailed
+				&& !record.SilenceAttempted)
+			{
+				count++;
+			}
+		}
+		return count;
+	}
+
+	private static void CountActiveMurderWitnessReliability(CrewModState state, out int reliableCount, out int unreliableCount)
+	{
+		reliableCount = 0;
+		unreliableCount = 0;
+		if (state?.MurderWitnesses == null)
+		{
+			return;
+		}
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (!IsMurderWitnessRecordActive(record))
+			{
+				continue;
+			}
+			if (IsReliableMurderWitness(record))
+			{
+				reliableCount++;
+			}
+			else
+			{
+				unreliableCount++;
+			}
+		}
+	}
+
+	private static void NormalizeMurderWitnessRecordState(CrewModState state)
+	{
+		if (state == null)
+		{
+			return;
+		}
+		if (state.MurderWitnesses == null)
+		{
+			state.MurderWitnesses = new List<MurderWitnessRecord>();
+		}
+		int nextId = Math.Max(1, state.NextMurderWitnessId);
+		for (int i = state.MurderWitnesses.Count - 1; i >= 0; i--)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (record == null)
+			{
+				state.MurderWitnesses.RemoveAt(i);
+				continue;
+			}
+			if (record.WitnessId <= 0)
+			{
+				record.WitnessId = nextId++;
+			}
+			nextId = Math.Max(nextId, record.WitnessId + 1);
+			if (record.Reliability != MurderWitnessReliabilityReliable && record.Reliability != MurderWitnessReliabilityUnreliable)
+			{
+				record.Reliability = RollMurderWitnessReliability();
+			}
+			if (string.IsNullOrWhiteSpace(record.CaseProfile))
+			{
+				record.CaseProfile = "murder";
+			}
+			record.CaseGainMultiplier = Mathf.Max(0.01f, record.CaseGainMultiplier);
+			if (record.SilenceFailed
+				&& !record.SilencedSuccessfully
+				&& !record.ThreatenedSuccessfully
+				&& string.Equals(record.CaseProfile ?? "murder", "murder", StringComparison.OrdinalIgnoreCase))
+			{
+				record.Closed = false;
+				record.Found = false;
+			}
+		}
+		state.NextMurderWitnessId = nextId;
+		state.MurderCaseProgress = Mathf.Clamp(state.MurderCaseProgress, 0f, 100f);
+		if (!state.MurderCaseActive && state.MurderCaseProgress > 0f)
+		{
+			state.MurderCaseActive = true;
+		}
+		EnsureMurderCaseMinimumBuildDaysLocked(state);
+	}
+
+	internal static void EnsureMurderWitnessRecordsForScalar(EntityID peepId, CrewModState state, string source)
+	{
+		if (state == null)
+		{
+			return;
+		}
+		NormalizeMurderWitnessRecordState(state);
+		int targetCount = GetNonFederalMurderWitnessCount(state);
+		int activeCount = CountActiveMurderWitnessRecords(state);
+		if (targetCount <= activeCount)
+		{
+			return;
+		}
+		int addedDay = GetCurrentDaySafe();
+		long owner = peepId.IsNotValid ? 0L : unchecked((long)peepId.id);
+		string sourceTag = string.IsNullOrEmpty(source) ? "unknown" : source;
+		while (activeCount < targetCount)
+		{
+			MurderWitnessRecord record = new MurderWitnessRecord();
+			record.WitnessId = Math.Max(1, state.NextMurderWitnessId++);
+			record.OwningCrewPeepId = owner;
+			record.Reliability = RollMurderWitnessReliability();
+			record.AddedDay = addedDay;
+			record.CaseProfile = "murder";
+			record.LegacyAnonymous = true;
+			state.MurderWitnesses.Add(record);
+			activeCount++;
+			VerificationLog("MurderWitness", $"murder-witness-record-created peep={owner} witnessId={record.WitnessId} reliability={GetMurderWitnessReliabilityLabel(record)} activeRecords={activeCount} scalarWitnesses={targetCount} source={sourceTag} legacyAnonymous={record.LegacyAnonymous}");
+		}
+	}
+
+	internal static void CloseOneMurderWitnessRecord(EntityID peepId, CrewModState state, string source)
+	{
+		if (state?.MurderWitnesses == null)
+		{
+			return;
+		}
+		NormalizeMurderWitnessRecordState(state);
+		MurderWitnessRecord record = null;
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord candidate = state.MurderWitnesses[i];
+			if (IsMurderWitnessRecordActive(candidate))
+			{
+				record = candidate;
+				break;
+			}
+		}
+		if (record == null)
+		{
+			return;
+		}
+		CloseMurderWitnessRecord(peepId, state, record, source, "threat-success");
+	}
+
+	private static void CloseMurderWitnessRecord(EntityID peepId, CrewModState state, MurderWitnessRecord record, string source, string result)
+	{
+		if (state == null || record == null || !IsMurderWitnessRecordActive(record))
+		{
+			return;
+		}
+		record.Closed = true;
+		record.ThreatenedSuccessfully = string.Equals(result, "threat-success", StringComparison.OrdinalIgnoreCase);
+		record.ThreatAttempted = record.ThreatAttempted || record.ThreatenedSuccessfully;
+		string sourceTag = string.IsNullOrEmpty(source) ? "unknown" : source;
+		string resultTag = string.IsNullOrEmpty(result) ? "closed" : result;
+		VerificationLog("MurderWitness", $"murder-witness-record-closed peep={(peepId.IsNotValid ? 0UL : peepId.id)} witnessId={record.WitnessId} reliability={GetMurderWitnessReliabilityLabel(record)} source={sourceTag} result={resultTag}");
+	}
+
+	private static bool TryResetMurderCaseIfNoActiveWitnesses(EntityID peepId, CrewModState state, string reason)
+	{
+		if (state == null)
+		{
+			return false;
+		}
+		NormalizeMurderWitnessRecordState(state);
+		if (CountActiveMurderWitnessRecords(state) > 0)
+		{
+			return false;
+		}
+		if (!AreAllMurderWitnessesResolvedSuccessfully(state))
+		{
+			LogMurderCaseResetDeferred(peepId, reason);
+			return false;
+		}
+		if (!state.MurderCaseActive && state.MurderCaseProgress <= 0f)
+		{
+			return false;
+		}
+		ResetMurderCaseState(peepId, state, GetCurrentDaySafe(), reason);
+		return true;
+	}
+
+	private static void LogMurderCaseResetDeferred(EntityID peepId, string source)
+	{
+		int nowDay = GetCurrentDaySafe();
+		string key = $"{(peepId.IsNotValid ? 0UL : peepId.id)}:{source ?? "unknown"}";
+		if (nowDay >= 0
+			&& MurderWitnessResetDeferredLastDayByPeep.TryGetValue(key, out int lastDay)
+			&& nowDay - lastDay < 28)
+		{
+			return;
+		}
+		if (nowDay >= 0)
+		{
+			MurderWitnessResetDeferredLastDayByPeep[key] = nowDay;
+		}
+		VerificationLog("MurderWitness", $"murder-case-reset-deferred peep={(peepId.IsNotValid ? 0UL : peepId.id)} reason=unresolved-witness-evidence source={source}");
+	}
+
+	private static bool AreAllMurderWitnessesResolvedSuccessfully(CrewModState state)
+	{
+		if (state?.MurderWitnesses == null || state.MurderWitnesses.Count == 0)
+		{
+			return false;
+		}
+		bool sawMurderWitness = false;
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (record == null || !string.Equals(record.CaseProfile ?? "murder", "murder", StringComparison.OrdinalIgnoreCase))
+			{
+				continue;
+			}
+			sawMurderWitness = true;
+			if (IsMurderWitnessRecordActive(record)
+				|| record.SilenceFailed
+				|| (!record.ThreatenedSuccessfully && !record.SilencedSuccessfully))
+			{
+				return false;
+			}
+		}
+		return sawMurderWitness;
+	}
+
 	internal static void LogMurderWitnessCaseDryRun(EntityID peepId, CrewModState state, string source)
 	{
 		if (peepId.IsNotValid || state == null)
 		{
 			return;
 		}
+		EnsureMurderWitnessRecordsForScalar(peepId, state, source);
 		int murderWitnesses = GetNonFederalMurderWitnessCount(state);
+		int activeRecords = CountActiveMurderWitnessRecords(state);
 		string sourceTag = string.IsNullOrEmpty(source) ? "unknown" : source;
 		bool debugSource = sourceTag.StartsWith("debug", StringComparison.OrdinalIgnoreCase);
 		if (murderWitnesses < MurderWitnessCaseThreshold)
 		{
 			if (debugSource)
 			{
-				VerificationLog("MurderWitness", $"murder-witness-action-current-state peep={peepId.id} murderWitnesses={murderWitnesses} totalWitnesses={state.WitnessCount} federal={state.FederalWitnessCount} threshold={MurderWitnessCaseThreshold} source={sourceTag} result=below-threshold");
+				VerificationLog("MurderWitness", $"murder-witness-action-current-state peep={peepId.id} murderWitnesses={murderWitnesses} activeRecords={activeRecords} totalWitnesses={state.WitnessCount} federal={state.FederalWitnessCount} threshold={MurderWitnessCaseThreshold} source={sourceTag} result=below-threshold");
 			}
 			return;
 		}
@@ -24777,11 +25665,315 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			return;
 		}
 		MurderWitnessCaseDryRunLastDayByPeep[cooldownKey] = nowDay;
-		int minGain = murderWitnesses;
-		int maxGain = murderWitnesses * 3;
-		VerificationLog("MurderWitness", $"murder-witness-case-threshold-check peep={peepId.id} murderWitnesses={murderWitnesses} totalWitnesses={state.WitnessCount} federal={state.FederalWitnessCount} threshold={MurderWitnessCaseThreshold} source={sourceTag} result=eligible");
+		CountActiveMurderWitnessReliability(state, out int reliableCount, out int unreliableCount);
+		float minGain = CalculateMurderCaseGainBound(state, maxRoll: false);
+		float maxGain = CalculateMurderCaseGainBound(state, maxRoll: true);
+		int minCaseDays = GetMurderCaseMinimumBuildDays(state);
+		VerificationLog("MurderWitness", $"murder-witness-case-threshold-check peep={peepId.id} murderWitnesses={murderWitnesses} activeRecords={activeRecords} reliable={reliableCount} unreliable={unreliableCount} totalWitnesses={state.WitnessCount} federal={state.FederalWitnessCount} threshold={MurderWitnessCaseThreshold} source={sourceTag} result=eligible casePolicy=single-per-crew");
 		VerificationLog("MurderWitness", $"murder-witness-case-dryrun-start peep={peepId.id} source={sourceTag} result=projected-only");
-		VerificationLog("MurderWitness", $"murder-witness-case-dryrun-gain peep={peepId.id} murderWitnesses={murderWitnesses} minGain={minGain} maxGain={maxGain} source={sourceTag} result=projected-only");
+		VerificationLog("MurderWitness", $"murder-witness-case-dryrun-gain peep={peepId.id} murderWitnesses={murderWitnesses} activeRecords={activeRecords} reliable={reliableCount} unreliable={unreliableCount} minGain={minGain:0.0} maxGain={maxGain:0.0} gainScale={MurderCaseProgressGainScale:0.00} minCaseDays={minCaseDays} source={sourceTag} result=projected-only");
+	}
+
+	private static void ProcessMurderCaseTurn(PlayerInfo humanPlayer, SimTime now)
+	{
+		if (humanPlayer?.crew == null || SaveData?.CrewStates == null || SaveData.CrewStates.Count == 0)
+		{
+			return;
+		}
+		foreach (KeyValuePair<long, CrewModState> pair in SaveData.CrewStates.ToList())
+		{
+			if (pair.Key <= 0L || pair.Value == null)
+			{
+				continue;
+			}
+			try
+			{
+				EntityID peepId = EntityID.FromID(unchecked((ulong)pair.Key));
+				ProcessMurderCaseTurnForCrew(humanPlayer, peepId, pair.Value, now);
+			}
+			catch (Exception ex)
+			{
+				VerificationLog("MurderWitness", $"murder-case-turn-skipped peep={pair.Key} reason=exception error={ex.GetType().Name}:{ex.Message}");
+			}
+		}
+	}
+
+	private static void ProcessMurderCaseTurnForCrew(PlayerInfo humanPlayer, EntityID peepId, CrewModState state, SimTime now)
+	{
+		if (humanPlayer?.crew == null || peepId.IsNotValid || state == null)
+		{
+			return;
+		}
+		if (!humanPlayer.crew.GetCrewForPeep(peepId).IsValid)
+		{
+			return;
+		}
+		EnsureMurderWitnessRecordsForScalar(peepId, state, "murder-case-turn");
+		int activeRecords = CountActiveMurderWitnessRecords(state);
+		if (activeRecords <= 0)
+		{
+			TryResetMurderCaseIfNoActiveWitnesses(peepId, state, "all-witnesses-resolved-successfully");
+			return;
+		}
+
+		bool thresholdEligible = activeRecords >= MurderWitnessCaseThreshold;
+		if (!state.MurderCaseActive && !thresholdEligible)
+		{
+			return;
+		}
+
+		Entity peep = null;
+		try
+		{
+			peep = peepId.FindEntity();
+		}
+		catch
+		{
+		}
+		if (peep == null || peep.data?.person == null)
+		{
+			VerificationLog("MurderWitness", $"murder-case-gain-deferred peep={peepId.id} activeRecords={activeRecords} progress={state.MurderCaseProgress:0.0} reason=missing-peep");
+			return;
+		}
+		if (!peep.data.person.IsAlive)
+		{
+			ResetMurderCaseState(peepId, state, now.days, "peep-dead");
+			return;
+		}
+		bool inCustody = state.InJail || JailSystem.IsInJail(peepId) || IsLocalImportantWitnessCustodyPendingToday(peepId) || IsSafeFederalArrestPendingToday(peepId);
+		if (inCustody)
+		{
+			VerificationLog("MurderWitness", $"murder-case-gain-deferred peep={peepId.id} activeRecords={activeRecords} progress={state.MurderCaseProgress:0.0} reason=in-custody");
+			return;
+		}
+		if (state.OnHideout || state.HideoutPending || state.OnVacation || state.VacationPending)
+		{
+			StartMurderCaseIfNeeded(peepId, state, now.days, activeRecords, "deferred-away");
+			VerificationLog("MurderWitness", $"murder-case-gain-deferred peep={peepId.id} activeRecords={activeRecords} progress={state.MurderCaseProgress:0.0} reason=away-state");
+			return;
+		}
+
+		StartMurderCaseIfNeeded(peepId, state, now.days, activeRecords, thresholdEligible ? "threshold" : "existing");
+		if (!state.MurderCaseActive)
+		{
+			return;
+		}
+		if (state.MurderCaseLastIntakeDay == now.days)
+		{
+			return;
+		}
+
+		float before = Mathf.Clamp(state.MurderCaseProgress, 0f, 100f);
+		float gain = RollMurderCaseGain(state);
+		state.MurderCaseProgress = Mathf.Clamp(before + gain, 0f, 100f);
+		state.MurderCaseLastIntakeDay = now.days;
+		CountActiveMurderWitnessReliability(state, out int reliableCount, out int unreliableCount);
+		int caseAgeDays = GetMurderCaseAgeDays(state, now.days);
+		int minCaseDays = GetMurderCaseMinimumBuildDays(state);
+		VerificationLog("MurderWitness", $"murder-case-gain peep={peepId.id} activeRecords={activeRecords} reliable={reliableCount} unreliable={unreliableCount} gain={gain:0.0} gainScale={MurderCaseProgressGainScale:0.00} before={before:0.0} after={state.MurderCaseProgress:0.0} caseAgeDays={caseAgeDays} minCaseDays={minCaseDays} failedSilenceMultiplier={state.MurderCaseFailedSilenceMultiplierActive}");
+		if (state.MurderCaseProgress < 100f)
+		{
+			return;
+		}
+		if (caseAgeDays < minCaseDays)
+		{
+			VerificationLog("MurderWitness", $"murder-case-threshold-deferred peep={peepId.id} activeRecords={activeRecords} reliable={reliableCount} unreliable={unreliableCount} progress={state.MurderCaseProgress:0.0} caseAgeDays={caseAgeDays} minCaseDays={minCaseDays} reason=case-age");
+			return;
+		}
+
+		VerificationLog("MurderWitness", $"murder-case-threshold peep={peepId.id} activeRecords={activeRecords} reliable={reliableCount} unreliable={unreliableCount} progress={state.MurderCaseProgress:0.0} caseAgeDays={caseAgeDays} minCaseDays={minCaseDays}");
+		StageMurderCaseCustody(humanPlayer, peep, state, now);
+	}
+
+	private static void StartMurderCaseIfNeeded(EntityID peepId, CrewModState state, int nowDay, int activeRecords, string source)
+	{
+		if (state == null || state.MurderCaseActive)
+		{
+			return;
+		}
+		state.MurderCaseActive = true;
+		if (state.MurderCaseStartedDay < 0)
+		{
+			state.MurderCaseStartedDay = nowDay;
+		}
+		EnsureMurderCaseMinimumBuildDaysLocked(state);
+		string sourceTag = string.IsNullOrEmpty(source) ? "unknown" : source;
+		VerificationLog("MurderWitness", $"murder-case-started peep={(peepId.IsNotValid ? 0UL : peepId.id)} activeRecords={activeRecords} progress={state.MurderCaseProgress:0.0} minCaseDays={GetMurderCaseMinimumBuildDays(state)} source={sourceTag}");
+	}
+
+	private static int GetMurderCaseAgeDays(CrewModState state, int nowDay)
+	{
+		if (state == null)
+		{
+			return 0;
+		}
+		if (state.MurderCaseStartedDay < 0)
+		{
+			state.MurderCaseStartedDay = nowDay;
+		}
+		return Mathf.Max(0, nowDay - state.MurderCaseStartedDay);
+	}
+
+	private static int GetMurderCaseMinimumBuildDays(CrewModState state)
+	{
+		if (state?.MurderCaseActive == true && state.MurderCaseMinimumBuildDays > 0)
+		{
+			return state.MurderCaseMinimumBuildDays;
+		}
+		return CalculateMurderCaseMinimumBuildDaysFromActiveWitnesses(state);
+	}
+
+	private static int CalculateMurderCaseMinimumBuildDaysFromActiveWitnesses(CrewModState state)
+	{
+		CountActiveMurderWitnessReliability(state, out int reliableCount, out int unreliableCount);
+		if (reliableCount > unreliableCount)
+		{
+			return MurderCaseReliableMinimumDays;
+		}
+		if (unreliableCount > reliableCount)
+		{
+			return MurderCaseUnreliableMinimumDays;
+		}
+		return MurderCaseMixedMinimumDays;
+	}
+
+	private static void EnsureMurderCaseMinimumBuildDaysLocked(CrewModState state)
+	{
+		if (state == null || !state.MurderCaseActive || state.MurderCaseMinimumBuildDays > 0)
+		{
+			return;
+		}
+		state.MurderCaseMinimumBuildDays = CalculateMurderCaseMinimumBuildDaysFromActiveWitnesses(state);
+	}
+
+	private static string GetMurderCaseButtonStatus(CrewModState state)
+	{
+		if (state == null || !state.MurderCaseActive)
+		{
+			return "Murder Case Pending";
+		}
+		int ageDays = GetMurderCaseAgeDays(state, G.GetNow().days);
+		int minDays = GetMurderCaseMinimumBuildDays(state);
+		return $"Case {state.MurderCaseProgress:0}% ({ageDays}/{minDays}d)";
+	}
+
+	private static string GetMurderWitnessCountStatus(CrewModState state)
+	{
+		if (state == null)
+		{
+			return $"Witnesses 0/{MurderWitnessCaseThreshold}";
+		}
+		int openRecords = CountOpenMurderWitnessRecords(state);
+		int scalarWitnesses = GetNonFederalMurderWitnessCount(state);
+		int witnessCount = Math.Max(openRecords, scalarWitnesses);
+		return $"Witnesses {witnessCount}/{MurderWitnessCaseThreshold}";
+	}
+
+	private static float RollMurderCaseGain(CrewModState state)
+	{
+		if (state?.MurderWitnesses == null)
+		{
+			return 0f;
+		}
+		float gain = 0f;
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (!IsMurderWitnessRecordActive(record))
+			{
+				continue;
+			}
+			int baseGain = SharedRng.Next(1, 4);
+			float multiplier = Mathf.Max(1f, record.CaseGainMultiplier);
+			gain += baseGain * multiplier * GetMurderWitnessCaseGainWeight(record) * MurderCaseProgressGainScale;
+		}
+		return gain;
+	}
+
+	private static float CalculateMurderCaseGainBound(CrewModState state, bool maxRoll)
+	{
+		if (state?.MurderWitnesses == null)
+		{
+			return 0f;
+		}
+		float gain = 0f;
+		int roll = maxRoll ? 3 : 1;
+		for (int i = 0; i < state.MurderWitnesses.Count; i++)
+		{
+			MurderWitnessRecord record = state.MurderWitnesses[i];
+			if (!IsMurderWitnessRecordActive(record))
+			{
+				continue;
+			}
+			float multiplier = Mathf.Max(1f, record.CaseGainMultiplier);
+			gain += roll * multiplier * GetMurderWitnessCaseGainWeight(record) * MurderCaseProgressGainScale;
+		}
+		return gain;
+	}
+
+	private static void StageMurderCaseCustody(PlayerInfo humanPlayer, Entity peep, CrewModState state, SimTime now)
+	{
+		if (humanPlayer?.crew == null || peep == null || state == null)
+		{
+			return;
+		}
+		state.TrialDaysRemaining = Mathf.Max(state.TrialDaysRemaining, MurderCaseTrialDays);
+		state.ExtraJailYears = Mathf.Max(state.ExtraJailYears, MurderCaseCustodySentenceYears);
+		state.CaseDismissed = false;
+		state.FedsIncoming = false;
+		state.FedArrivalCountdown = 0;
+		bool staged = ExecuteLocalImportantWitnessArrest(humanPlayer, peep, "murder-case");
+		if (!staged)
+		{
+			VerificationLog("MurderWitness", $"murder-case-custody-deferred peep={peep.Id.id} progress={state.MurderCaseProgress:0.0} reason=stage-failed");
+			return;
+		}
+		CloseMurderCaseAfterCustody(peep.Id, state, now.days);
+		VerificationLog("MurderWitness", $"murder-case-custody-staged peep={peep.Id.id} trialDays={state.TrialDaysRemaining} sentenceYears={state.ExtraJailYears}");
+	}
+
+	private static void CloseMurderCaseAfterCustody(EntityID peepId, CrewModState state, int nowDay)
+	{
+		if (state == null)
+		{
+			return;
+		}
+		if (state.MurderWitnesses != null)
+		{
+			for (int i = 0; i < state.MurderWitnesses.Count; i++)
+			{
+				MurderWitnessRecord record = state.MurderWitnesses[i];
+				if (IsMurderWitnessRecordActive(record))
+				{
+					record.Closed = true;
+				}
+			}
+		}
+		state.MurderCaseActive = false;
+		state.MurderCaseProgress = 0f;
+		state.MurderCaseStartedDay = -1;
+		state.MurderCaseMinimumBuildDays = -1;
+		state.MurderCaseLastIntakeDay = nowDay;
+		state.MurderCaseFailedSilenceMultiplierActive = false;
+		state.WitnessCount = Mathf.Max(0, state.FederalWitnessCount);
+		state.HasWitness = state.WitnessCount > 0;
+		VerificationLog("MurderWitness", $"murder-case-closed peep={(peepId.IsNotValid ? 0UL : peepId.id)} reason=custody-staged");
+	}
+
+	private static void ResetMurderCaseState(EntityID peepId, CrewModState state, int nowDay, string reason)
+	{
+		if (state == null)
+		{
+			return;
+		}
+		state.MurderCaseActive = false;
+		state.MurderCaseProgress = 0f;
+		state.MurderCaseStartedDay = -1;
+		state.MurderCaseMinimumBuildDays = -1;
+		state.MurderCaseLastIntakeDay = nowDay;
+		state.MurderCaseFailedSilenceMultiplierActive = false;
+		string reasonTag = string.IsNullOrEmpty(reason) ? "unknown" : reason;
+		VerificationLog("MurderWitness", $"murder-case-closed peep={(peepId.IsNotValid ? 0UL : peepId.id)} reason={reasonTag}");
 	}
 
 	private static WantedLevel HeatLevelFromProgress(float progress)
@@ -25324,7 +26516,9 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		{
 			return 0;
 		}
-		return Mathf.Max(0, state.WitnessCount - Mathf.Max(0, state.FederalWitnessCount));
+		int scalarWitnesses = Mathf.Max(0, state.WitnessCount - Mathf.Max(0, state.FederalWitnessCount));
+		int openMurderWitnessRecords = CountOpenMurderWitnessRecords(state);
+		return Mathf.Max(scalarWitnesses, openMurderWitnessRecords);
 	}
 
 	private static int CountActiveImportantWitnessEntries()
@@ -26765,11 +27959,15 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		_loyaltyTurnSummaryHighHappiness = 0;
 		_loyaltyTurnSummaryHold = 0;
 		_loyaltyTurnSummaryDecay = 0;
+		_loyaltyTurnSummaryNearDefection = 0;
+		_loyaltyTurnSummaryZeroReady = 0;
 		_loyaltyTurnSummaryMinHappiness = 1f;
 		_loyaltyTurnSummaryMinLoyalty = 1f;
 		_loyaltyTurnSummaryMaxDecay = 0f;
 		_loyaltyTurnSummaryMaxDecayPeepId = -1L;
 		_loyaltyTurnSummaryLowestPeepId = -1L;
+		_loyaltyTurnSummaryLowestOwnerId = -1;
+		_loyaltyTurnSummaryLowestOwnerHuman = false;
 	}
 
 	private static void FlushLoyaltyTurnSummary(string source)
@@ -26778,12 +27976,12 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		{
 				VerificationLog(
 				"Loyalty",
-				$"turn-summary day={_loyaltyTurnSummaryDay} total={_loyaltyTurnSummaryTotal} high={_loyaltyTurnSummaryHighHappiness} hold={_loyaltyTurnSummaryHold} decay={_loyaltyTurnSummaryDecay} minHappiness={_loyaltyTurnSummaryMinHappiness:0.000} minLoyalty={_loyaltyTurnSummaryMinLoyalty:0.000} lowestPeep={_loyaltyTurnSummaryLowestPeepId} maxDecay={_loyaltyTurnSummaryMaxDecay:0.000} maxDecayPeep={_loyaltyTurnSummaryMaxDecayPeepId} source={source}");
+				$"turn-summary day={_loyaltyTurnSummaryDay} total={_loyaltyTurnSummaryTotal} high={_loyaltyTurnSummaryHighHappiness} hold={_loyaltyTurnSummaryHold} decay={_loyaltyTurnSummaryDecay} nearDefection={_loyaltyTurnSummaryNearDefection} zeroReady={_loyaltyTurnSummaryZeroReady} minHappiness={_loyaltyTurnSummaryMinHappiness:0.000} minLoyalty={_loyaltyTurnSummaryMinLoyalty:0.000} lowestPeep={_loyaltyTurnSummaryLowestPeepId} lowestOwner={_loyaltyTurnSummaryLowestOwnerId} lowestOwnerHuman={_loyaltyTurnSummaryLowestOwnerHuman} maxDecay={_loyaltyTurnSummaryMaxDecay:0.000} maxDecayPeep={_loyaltyTurnSummaryMaxDecayPeepId} source={source}");
 		}
 		ResetLoyaltyTurnSummary();
 	}
 
-	private static void RecordLoyaltyTurnSummary(Entity peep, SimTime now, float happiness, float loyalty, string result, float decay, int streak)
+	private static void RecordLoyaltyTurnSummary(Entity peep, SimTime now, PlayerInfo owner, float happiness, float loyalty, string result, float decay, int streak)
 	{
 		int day = now.days;
 		if (_loyaltyTurnSummaryDay != int.MinValue && _loyaltyTurnSummaryDay != day)
@@ -26808,12 +28006,22 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		{
 			_loyaltyTurnSummaryHold++;
 		}
+		if (loyalty <= 0.15f)
+		{
+			_loyaltyTurnSummaryNearDefection++;
+		}
+		if (loyalty <= 0f)
+		{
+			_loyaltyTurnSummaryZeroReady++;
+		}
 
 		if (happiness < _loyaltyTurnSummaryMinHappiness || loyalty < _loyaltyTurnSummaryMinLoyalty)
 		{
 			_loyaltyTurnSummaryMinHappiness = Mathf.Min(_loyaltyTurnSummaryMinHappiness, happiness);
 			_loyaltyTurnSummaryMinLoyalty = Mathf.Min(_loyaltyTurnSummaryMinLoyalty, loyalty);
 			_loyaltyTurnSummaryLowestPeepId = peep != null && !peep.Id.IsNotValid ? unchecked((long)peep.Id.id) : -1L;
+			_loyaltyTurnSummaryLowestOwnerId = owner?.PID.id ?? -1;
+			_loyaltyTurnSummaryLowestOwnerHuman = owner?.PID.IsHumanPlayer == true;
 		}
 		if (decay > _loyaltyTurnSummaryMaxDecay)
 		{
@@ -26876,7 +28084,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			EnsureVerifyStats().LoyaltyDecayEvents++;
 		}
 		CrewRelationshipHandlerPatch.TryQueueLowHappinessPrompt(peep, state, humanPlayer, now);
-		RecordLoyaltyTurnSummary(peep, now, happiness, state.LoyaltyValue, result, num2, state.LowHappinessStreak);
+		RecordLoyaltyTurnSummary(peep, now, humanPlayer, happiness, state.LoyaltyValue, result, num2, state.LowHappinessStreak);
 	}
 
 	private static Entity GetHumanBossPeep(PlayerInfo humanPlayer)
@@ -26974,6 +28182,14 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		{
 			return false;
 		}
+		EnsureMurderWitnessRecordsForScalar(peep.Id, state, "ai-threat-check");
+		int murderWitnesses = GetNonFederalMurderWitnessCount(state);
+		int activeMurderRecords = CountActiveMurderWitnessRecords(state);
+		if (activeMurderRecords > 0)
+		{
+			VerificationLog("MurderWitness", $"ai-murder-witness-action-deferred gang={gang.PID.id} peep={peep.Id.id} murderWitnesses={murderWitnesses} activeRecords={activeMurderRecords} reason=phase6-human-flow-only");
+			return false;
+		}
 		if (GetThreatenableWitnessCount(state) <= 0)
 		{
 			return false;
@@ -26987,10 +28203,6 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			{
 				state.WitnessCount = Mathf.Max(0, state.FederalWitnessCount);
 				state.HasWitness = state.FederalWitnessCount > 0;
-			}
-			if (state.LocalHeatLevel > WantedLevel.None)
-			{
-				SetLocalHeatProgress(state, Mathf.Clamp01(state.LocalHeatProgress - 0.25f), now.days, refreshDecayAnchor: true);
 			}
 			if (state.WitnessCount <= 0 && state.FederalWitnessCount <= 0)
 			{
@@ -27749,6 +28961,17 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		int num = (SaveData.NextSnitchCollectionDay < 0) ? -1 : Mathf.Max(0, SaveData.NextSnitchCollectionDay - G.GetNow().days);
 		string text = (num < 0) ? "--" : (num + "d");
 		return $"Federal Case: {Mathf.Clamp(SaveData.SnitchCaseProgress, 0f, 100f):0}% | Next Intake: {text}";
+	}
+
+	private static string GetStateCaseUiLabel(CrewModState state)
+	{
+		if (state == null || !state.MurderCaseActive)
+		{
+			return "State Case: None";
+		}
+		int ageDays = GetMurderCaseAgeDays(state, G.GetNow().days);
+		int minDays = GetMurderCaseMinimumBuildDays(state);
+		return $"State Case: {Mathf.Clamp(state.MurderCaseProgress, 0f, 100f):0}% | Trial Window: {ageDays}/{minDays}d";
 	}
 
 	internal static bool IsHumanBoss(Entity peep, PlayerInfo humanPlayer)

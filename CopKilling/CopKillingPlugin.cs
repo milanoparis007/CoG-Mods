@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using BepInEx;
 using BepInEx.Configuration;
 using Game.Core;
+using Game.Session.Board;
 using Game.Session.Data;
 using Game.Session.Entities;
 using Game.Session.Player;
@@ -120,7 +121,7 @@ namespace CopKilling
 
         private static readonly KeyboardShortcut SafeResetCopWarHotkey = new KeyboardShortcut(KeyCode.F8, KeyCode.LeftControl, KeyCode.LeftShift);
         private static readonly KeyboardShortcut SafeSimulateCopKillHotkey = new KeyboardShortcut(KeyCode.F9, KeyCode.LeftControl, KeyCode.LeftShift);
-        private static readonly KeyboardShortcut SafeSimulateCopAssaultHotkey = new KeyboardShortcut(KeyCode.F10, KeyCode.LeftControl, KeyCode.LeftShift);
+        private static readonly KeyboardShortcut SafeSimulateCopAssaultHotkey = new KeyboardShortcut(KeyCode.F12, KeyCode.LeftControl, KeyCode.LeftShift);
 
         private void Awake()
         {
@@ -140,10 +141,11 @@ namespace CopKilling
             EnableCombatPostfixDiagnosticFeatures = Config.Bind("FeatureGates", "EnableCombatPostfixDiagnosticFeatures", false, "Enable only diagnostic combat postfix hooks that log cop-combat entrypoints without applying witness or retaliation systems.");
             DebugResetCopWarHotkey = Config.Bind("Debug", "ResetCopWarHotkey", SafeResetCopWarHotkey, "Debug-only hotkey to clear the current simulated cop-war state. Bare F8/F9/F10 are reserved by the base game, so use a modifier chord.");
             DebugSimulateCopKillHotkey = Config.Bind("Debug", "SimulateCopKillHotkey", SafeSimulateCopKillHotkey, "Debug-only hotkey to simulate a cop kill against a living precinct without using the unstable combat entrypoint. Bare F8/F9/F10 are reserved by the base game.");
-            DebugSimulateCopAssaultHotkey = Config.Bind("Debug", "SimulateCopAssaultHotkey", SafeSimulateCopAssaultHotkey, "Debug-only hotkey to simulate a cop assault against a living precinct without using the unstable combat entrypoint. Bare F8/F9/F10 are reserved by the base game.");
+            DebugSimulateCopAssaultHotkey = Config.Bind("Debug", "SimulateCopAssaultHotkey", SafeSimulateCopAssaultHotkey, "Debug-only hotkey to simulate a cop assault against a living precinct without using the unstable combat entrypoint. Uses Ctrl+Shift+F12 so it does not collide with GameplayTweaks murder-witness testing.");
             NormalizeReservedDebugHotkey(DebugResetCopWarHotkey, KeyCode.F8, SafeResetCopWarHotkey, "ResetCopWarHotkey");
             NormalizeReservedDebugHotkey(DebugSimulateCopKillHotkey, KeyCode.F9, SafeSimulateCopKillHotkey, "SimulateCopKillHotkey");
             NormalizeReservedDebugHotkey(DebugSimulateCopAssaultHotkey, KeyCode.F10, SafeSimulateCopAssaultHotkey, "SimulateCopAssaultHotkey");
+            NormalizeDebugHotkeyConflict(DebugSimulateCopAssaultHotkey, new KeyboardShortcut(KeyCode.F10, KeyCode.LeftControl, KeyCode.LeftShift), SafeSimulateCopAssaultHotkey, "SimulateCopAssaultHotkey", "GameplayTweaks AddMurderWitnessHotkey");
             LogLoadedBuildBanner();
             var harmony = new Harmony("com.mods.copkilling");
             bool runtimeEnabled = IsRuntimeEnabled();
@@ -315,6 +317,51 @@ namespace CopKilling
             Debug.Log($"[CopKilling] {settingName} used reserved base-game key {reservedMainKey}; migrated to {replacement}.");
         }
 
+        private static void NormalizeDebugHotkeyConflict(ConfigEntry<KeyboardShortcut> entry, KeyboardShortcut conflictingShortcut, KeyboardShortcut replacement, string settingName, string conflictOwner)
+        {
+            if (entry == null)
+            {
+                return;
+            }
+
+            if (!KeyboardShortcutsMatch(entry.Value, conflictingShortcut))
+            {
+                return;
+            }
+
+            entry.Value = replacement;
+            Debug.Log($"[CopKilling] {settingName} conflicted with {conflictOwner}; migrated to {replacement}.");
+        }
+
+        private static bool KeyboardShortcutsMatch(KeyboardShortcut left, KeyboardShortcut right)
+        {
+            if (left.MainKey != right.MainKey)
+            {
+                return false;
+            }
+
+            var leftModifiers = left.Modifiers == null
+                ? new List<KeyCode>()
+                : left.Modifiers.OrderBy(k => k).ToList();
+            var rightModifiers = right.Modifiers == null
+                ? new List<KeyCode>()
+                : right.Modifiers.OrderBy(k => k).ToList();
+            if (leftModifiers.Count != rightModifiers.Count)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < leftModifiers.Count; i++)
+            {
+                if (leftModifiers[i] != rightModifiers[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private void LogLoadedBuildBanner()
         {
             try
@@ -480,12 +527,21 @@ namespace CopKilling
         private static int _pendingPostTransitionAssaultCleanupFrame = -1;
         private static int _lastAttackAdvisorTryPickSuppressionLogFrame = -1;
         private static int _lastAttackAdvisorTurnSuppressionLogFrame = -1;
+        private static int _lastAttackAdvisorCoordStateFixLogFrame = -1;
         private static int _lastCombatAdvisorTruceSuppressionLogFrame = -1;
         private static int _lastCombatAdvisorTurnSuppressionLogFrame = -1;
         private static int _lastCombatAdvisorUpdateSuppressionLogFrame = -1;
         private static int _explicitHostilityApplyDepth;
         private static int _lastExplicitHostilityReentryLogFrame = -1;
         private static PropertyInfo _convoCallbacksVisitProperty;
+        private static FieldInfo _attackAdvisorDataField;
+        private static FieldInfo _attackAdvisorPlayerField;
+        private static FieldInfo _attackAdvisorCoordStateField;
+        private static FieldInfo _attackAdvisorCoordStateAttackingCrewField;
+        private static FieldInfo _attackAdvisorCoordStateTargetPlayerField;
+        private static FieldInfo _attackAdvisorCoordStateRallyPointField;
+        private static FieldInfo _attackAdvisorCoordStateRallyPointNodeIdField;
+        private static FieldInfo _attackAdvisorCoordStateRallyExpiresField;
 
         public static bool IsCopWarActive => GameplayTweaks.GameplayTweaksPlugin.SaveData.CopWarActive;
 
@@ -4506,6 +4562,27 @@ namespace CopKilling
                 Debug.LogWarning("[CopKilling] Missing AttackAdvisor.TryPickBuilding guard patch target");
             }
 
+            MethodInfo tryForceClosure = attackAdvisorType?.GetMethod("TryForceClosure", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
+            if (CopKillingPlugin.IsAttackSuppressionTryPickBuildingEnabled() && tryForceClosure != null)
+            {
+                harmony.Patch(
+                    tryForceClosure,
+                    new HarmonyMethod(typeof(CopWarSystem), nameof(AttackAdvisorTryForceClosurePrefix)),
+                    null,
+                    null,
+                    null,
+                    null);
+                Debug.Log("[CopKilling] AttackAdvisor.TryForceClosure guard patch applied");
+            }
+            else if (!CopKillingPlugin.IsAttackSuppressionTryPickBuildingEnabled())
+            {
+                Debug.Log("[CopKilling] AttackAdvisor.TryForceClosure guard patch skipped by config");
+            }
+            else
+            {
+                Debug.LogWarning("[CopKilling] Missing AttackAdvisor.TryForceClosure guard patch target");
+            }
+
             MethodInfo onTurnUpdate = attackAdvisorType?.GetMethod("OnTurnUpdate", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
             if (CopKillingPlugin.IsAttackSuppressionAttackAdvisorOnTurnUpdateEnabled() && onTurnUpdate != null)
             {
@@ -4525,6 +4602,48 @@ namespace CopKilling
             else
             {
                 Debug.LogWarning("[CopKilling] Missing AttackAdvisor.OnTurnUpdate guard patch target");
+            }
+
+            MethodInfo trySellOutToFeds = attackAdvisorType?.GetMethod("TrySellOutToFeds", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
+            if (CopKillingPlugin.IsAttackSuppressionTryPickBuildingEnabled() && trySellOutToFeds != null)
+            {
+                harmony.Patch(
+                    trySellOutToFeds,
+                    new HarmonyMethod(typeof(CopWarSystem), nameof(AttackAdvisorTrySellOutToFedsPrefix)),
+                    null,
+                    null,
+                    null,
+                    null);
+                Debug.Log("[CopKilling] AttackAdvisor.TrySellOutToFeds guard patch applied");
+            }
+            else if (!CopKillingPlugin.IsAttackSuppressionTryPickBuildingEnabled())
+            {
+                Debug.Log("[CopKilling] AttackAdvisor.TrySellOutToFeds guard patch skipped by config");
+            }
+            else
+            {
+                Debug.LogWarning("[CopKilling] Missing AttackAdvisor.TrySellOutToFeds guard patch target");
+            }
+
+            MethodInfo tryPickCoord = attackAdvisorType?.GetMethod("TryPickCoord", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
+            if (CopKillingPlugin.IsAttackSuppressionTryPickBuildingEnabled() && tryPickCoord != null)
+            {
+                harmony.Patch(
+                    tryPickCoord,
+                    new HarmonyMethod(typeof(CopWarSystem), nameof(AttackAdvisorTryPickCoordPrefix)),
+                    null,
+                    null,
+                    null,
+                    null);
+                Debug.Log("[CopKilling] AttackAdvisor.TryPickCoord guard patch applied");
+            }
+            else if (!CopKillingPlugin.IsAttackSuppressionTryPickBuildingEnabled())
+            {
+                Debug.Log("[CopKilling] AttackAdvisor.TryPickCoord guard patch skipped by config");
+            }
+            else
+            {
+                Debug.LogWarning("[CopKilling] Missing AttackAdvisor.TryPickCoord guard patch target");
             }
 
             MethodInfo maybeAskForTruce = combatAdvisorType.GetMethod("MaybeAskForTruce", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -4676,6 +4795,10 @@ namespace CopKilling
 
         private static bool AttackAdvisorTryPickBuildingPrefix(object __instance)
         {
+            if (TrySkipAttackAdvisorTurnActionIfInvalid(__instance, "TryPickBuilding"))
+            {
+                return false;
+            }
             if (!IsAiStabilizationSuppressionActive())
             {
                 return true;
@@ -4694,8 +4817,81 @@ namespace CopKilling
             return false;
         }
 
+        private static bool AttackAdvisorTryForceClosurePrefix(object __instance)
+        {
+            if (TrySkipAttackAdvisorTurnActionIfInvalid(__instance, "TryForceClosure"))
+            {
+                return false;
+            }
+            if (!IsAiStabilizationSuppressionActive())
+            {
+                return true;
+            }
+
+            try
+            {
+                if (ShouldLogSuppressionSkip(ref _lastAttackAdvisorTryPickSuppressionLogFrame))
+                {
+                    Debug.Log($"[CopKilling] AttackAdvisor.TryForceClosure skipped during cop-war stabilization frame={Time.frameCount} resetUntil={_debugResetSuppressionUntilFrame} favorUntil={_politicalFavorSuppressionUntilFrame}");
+                }
+            }
+            catch
+            {
+            }
+            return false;
+        }
+
+        private static bool AttackAdvisorTrySellOutToFedsPrefix(object __instance)
+        {
+            if (TrySkipAttackAdvisorTurnActionIfInvalid(__instance, "TrySellOutToFeds"))
+            {
+                return false;
+            }
+            if (!IsAiStabilizationSuppressionActive())
+            {
+                return true;
+            }
+
+            try
+            {
+                if (ShouldLogSuppressionSkip(ref _lastAttackAdvisorTryPickSuppressionLogFrame))
+                {
+                    Debug.Log($"[CopKilling] AttackAdvisor.TrySellOutToFeds skipped during cop-war stabilization frame={Time.frameCount} resetUntil={_debugResetSuppressionUntilFrame} favorUntil={_politicalFavorSuppressionUntilFrame}");
+                }
+            }
+            catch
+            {
+            }
+            return false;
+        }
+
+        private static bool AttackAdvisorTryPickCoordPrefix(object __instance)
+        {
+            if (TrySkipAttackAdvisorTurnActionIfInvalid(__instance, "TryPickCoord"))
+            {
+                return false;
+            }
+            if (!IsAiStabilizationSuppressionActive())
+            {
+                return true;
+            }
+
+            try
+            {
+                if (ShouldLogSuppressionSkip(ref _lastAttackAdvisorTryPickSuppressionLogFrame))
+                {
+                    Debug.Log($"[CopKilling] AttackAdvisor.TryPickCoord skipped during cop-war stabilization frame={Time.frameCount} resetUntil={_debugResetSuppressionUntilFrame} favorUntil={_politicalFavorSuppressionUntilFrame}");
+                }
+            }
+            catch
+            {
+            }
+            return false;
+        }
+
         private static bool AttackAdvisorOnTurnUpdatePrefix(object __instance)
         {
+            TryRepairAttackAdvisorCoordState(__instance);
             if (!TryGetAdvisorSuppressionReason(out string reason))
             {
                 return true;
@@ -4714,6 +4910,291 @@ namespace CopKilling
             return false;
         }
 
+        private static bool TrySkipAttackAdvisorTurnActionIfInvalid(object attackAdvisor, string action)
+        {
+            try
+            {
+                if (attackAdvisor == null)
+                {
+                    return false;
+                }
+                if (_attackAdvisorPlayerField == null)
+                {
+                    _attackAdvisorPlayerField = attackAdvisor.GetType().GetField("_player", BindingFlags.Instance | BindingFlags.NonPublic);
+                }
+                PlayerInfo player = _attackAdvisorPlayerField?.GetValue(attackAdvisor) as PlayerInfo;
+                if (player == null || player.territory == null)
+                {
+                    LogAttackAdvisorInvalidSkip(action, "missing-player-territory");
+                    return true;
+                }
+                Node hqNode = null;
+                try
+                {
+                    hqNode = player.territory.GetHeadquartersNode();
+                }
+                catch
+                {
+                    hqNode = null;
+                }
+                if (hqNode == null)
+                {
+                    LogAttackAdvisorInvalidSkip(action, "missing-headquarters-node");
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogAttackAdvisorInvalidSkip(action, ex.GetType().Name + ":" + ex.Message);
+                return true;
+            }
+        }
+
+        private static void LogAttackAdvisorInvalidSkip(string action, string reason)
+        {
+            try
+            {
+                if (ShouldLogSuppressionSkip(ref _lastAttackAdvisorTryPickSuppressionLogFrame))
+                {
+                    Debug.Log($"[CopKilling] AttackAdvisor.{action} skipped due to invalid state reason={reason} frame={Time.frameCount}");
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        private static bool TryRepairAttackAdvisorCoordState(object attackAdvisor)
+        {
+            try
+            {
+                if (attackAdvisor == null)
+                {
+                    return false;
+                }
+                if (_attackAdvisorDataField == null)
+                {
+                    _attackAdvisorDataField = attackAdvisor.GetType().GetField("_data", BindingFlags.Instance | BindingFlags.NonPublic);
+                }
+                object data = _attackAdvisorDataField?.GetValue(attackAdvisor);
+                if (data == null)
+                {
+                    return false;
+                }
+                if (_attackAdvisorCoordStateField == null)
+                {
+                    _attackAdvisorCoordStateField = data.GetType().GetField("coordState", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                }
+                object coordState = _attackAdvisorCoordStateField?.GetValue(data);
+                if (coordState == null)
+                {
+                    return false;
+                }
+                Type coordType = coordState.GetType();
+                if (_attackAdvisorCoordStateAttackingCrewField == null)
+                {
+                    _attackAdvisorCoordStateAttackingCrewField = coordType.GetField("attackingCrew", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                }
+                if (_attackAdvisorCoordStateTargetPlayerField == null)
+                {
+                    _attackAdvisorCoordStateTargetPlayerField = coordType.GetField("targetPlayer", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                }
+                if (_attackAdvisorCoordStateRallyPointField == null)
+                {
+                    _attackAdvisorCoordStateRallyPointField = coordType.GetField("rallyPoint", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                }
+                if (_attackAdvisorCoordStateRallyPointNodeIdField == null)
+                {
+                    _attackAdvisorCoordStateRallyPointNodeIdField = coordType.GetField("rallyPointNodeId", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                }
+                if (_attackAdvisorCoordStateRallyExpiresField == null)
+                {
+                    _attackAdvisorCoordStateRallyExpiresField = coordType.GetField("rallyExpires", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                }
+                bool changed = false;
+                if (_attackAdvisorCoordStateAttackingCrewField?.GetValue(coordState) is IEnumerable<EntityID> attackingCrew)
+                {
+                    List<EntityID> validCrew = new List<EntityID>();
+                    foreach (EntityID peepId in attackingCrew)
+                    {
+                        if (IsValidAttackAdvisorCoordCrew(peepId))
+                        {
+                            validCrew.Add(peepId);
+                        }
+                    }
+                    if (validCrew.Count != attackingCrew.Count())
+                    {
+                        _attackAdvisorCoordStateAttackingCrewField.SetValue(coordState, validCrew);
+                        changed = true;
+                    }
+                }
+                bool invalidState = false;
+                PlayerID targetPlayer = default(PlayerID);
+                if (_attackAdvisorCoordStateTargetPlayerField?.GetValue(coordState) is PlayerID targetPlayerValue)
+                {
+                    targetPlayer = targetPlayerValue;
+                }
+                EntityID rallyPoint = default(EntityID);
+                if (_attackAdvisorCoordStateRallyPointField?.GetValue(coordState) is EntityID rallyPointValue)
+                {
+                    rallyPoint = rallyPointValue;
+                }
+                NodeID rallyPointNodeId = default(NodeID);
+                if (_attackAdvisorCoordStateRallyPointNodeIdField?.GetValue(coordState) is NodeID rallyPointNodeValue)
+                {
+                    rallyPointNodeId = rallyPointNodeValue;
+                }
+                PlayerInfo targetPlayerInfo = null;
+                try
+                {
+                    if (targetPlayer.IsAnyPlayer)
+                    {
+                        targetPlayerInfo = targetPlayer.FindPlayer();
+                    }
+                }
+                catch
+                {
+                    targetPlayerInfo = null;
+                }
+                if (!targetPlayer.IsAnyPlayer || targetPlayerInfo?.crew == null)
+                {
+                    invalidState = true;
+                }
+                if (!rallyPoint.IsValid || rallyPoint.FindEntity() == null)
+                {
+                    invalidState = true;
+                }
+                if (!rallyPointNodeId.IsValid || rallyPointNodeId.FindNode() == null)
+                {
+                    invalidState = true;
+                }
+                if (!changed && _attackAdvisorCoordStateAttackingCrewField?.GetValue(coordState) is IEnumerable<EntityID> crewAfter && !crewAfter.Any())
+                {
+                    invalidState = true;
+                }
+                if (!invalidState && targetPlayerInfo?.crew != null)
+                {
+                    try
+                    {
+                        IEnumerable<CrewAssignment> livingCrew = targetPlayerInfo.crew.GetLiving();
+                        if (livingCrew == null || livingCrew.Any(item => !IsValidAttackAdvisorTargetCrew(item)))
+                        {
+                            invalidState = true;
+                        }
+                    }
+                    catch
+                    {
+                        invalidState = true;
+                    }
+                }
+                if (invalidState)
+                {
+                    _attackAdvisorCoordStateField.SetValue(data, null);
+                    if (_lastAttackAdvisorCoordStateFixLogFrame != Time.frameCount)
+                    {
+                        _lastAttackAdvisorCoordStateFixLogFrame = Time.frameCount;
+                        Debug.LogWarning($"[CopKilling] AttackAdvisor.OnTurnUpdate cleared invalid coordinated attack state frame={Time.frameCount} target={targetPlayer} rally={rallyPoint}");
+                    }
+                    return true;
+                }
+                return changed;
+            }
+            catch (Exception ex)
+            {
+                if (_lastAttackAdvisorCoordStateFixLogFrame != Time.frameCount)
+                {
+                    _lastAttackAdvisorCoordStateFixLogFrame = Time.frameCount;
+                    Debug.LogWarning($"[CopKilling] AttackAdvisor.OnTurnUpdate coord-state repair failed: {ex.GetType().Name}: {ex.Message}");
+                }
+                return false;
+            }
+        }
+
+        private static bool IsValidAttackAdvisorTargetCrew(CrewAssignment assignment)
+        {
+            if (assignment.IsNotValid)
+            {
+                return false;
+            }
+            try
+            {
+                Entity peep = assignment.GetPeep();
+                if (peep == null || peep.data?.agent == null)
+                {
+                    return false;
+                }
+                NodeID nid = peep.data.agent.nid;
+                return nid.IsValid && nid.FindNode() != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsValidAttackAdvisorCoordCrew(EntityID peepId)
+        {
+            if (!peepId.IsValid)
+            {
+                return false;
+            }
+            try
+            {
+                Entity peep = peepId.FindEntity();
+                return peep != null && peep.data?.agent != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool ForceClearAttackAdvisorCoordState(object attackAdvisor, string reason)
+        {
+            try
+            {
+                if (attackAdvisor == null)
+                {
+                    return false;
+                }
+                if (_attackAdvisorDataField == null)
+                {
+                    _attackAdvisorDataField = attackAdvisor.GetType().GetField("_data", BindingFlags.Instance | BindingFlags.NonPublic);
+                }
+                object data = _attackAdvisorDataField?.GetValue(attackAdvisor);
+                if (data == null)
+                {
+                    return false;
+                }
+                if (_attackAdvisorCoordStateField == null)
+                {
+                    _attackAdvisorCoordStateField = data.GetType().GetField("coordState", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                }
+                object coordState = _attackAdvisorCoordStateField?.GetValue(data);
+                if (coordState == null)
+                {
+                    return false;
+                }
+                _attackAdvisorCoordStateField.SetValue(data, null);
+                if (_lastAttackAdvisorCoordStateFixLogFrame != Time.frameCount)
+                {
+                    _lastAttackAdvisorCoordStateFixLogFrame = Time.frameCount;
+                    Debug.LogWarning($"[CopKilling] AttackAdvisor.OnTurnUpdate force-cleared coordinated attack state reason={reason} frame={Time.frameCount}");
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (_lastAttackAdvisorCoordStateFixLogFrame != Time.frameCount)
+                {
+                    _lastAttackAdvisorCoordStateFixLogFrame = Time.frameCount;
+                    Debug.LogWarning($"[CopKilling] AttackAdvisor.OnTurnUpdate force-clear failed: {ex.GetType().Name}: {ex.Message}");
+                }
+                return false;
+            }
+        }
+
         private static Exception AttackAdvisorTryPickBuildingFinalizer(Exception __exception)
         {
             if (__exception == null)
@@ -4729,17 +5210,19 @@ namespace CopKilling
             return null;
         }
 
-        private static Exception AttackAdvisorOnTurnUpdateFinalizer(Exception __exception)
+        private static Exception AttackAdvisorOnTurnUpdateFinalizer(object __instance, Exception __exception)
         {
             if (__exception == null)
             {
                 return null;
             }
+            ForceClearAttackAdvisorCoordState(__instance, __exception.GetType().Name);
             int frame = Time.frameCount;
             if (_lastAttackAdvisorTurnFinalizerLogFrame != frame)
             {
                 _lastAttackAdvisorTurnFinalizerLogFrame = frame;
-                Debug.LogWarning($"[CopKilling] AttackAdvisor.OnTurnUpdate swallowed exception during cop-war stabilization: {__exception.GetType().Name}: {__exception.Message}");
+                string stack = __exception.StackTrace ?? string.Empty;
+                Debug.LogWarning($"[CopKilling] AttackAdvisor.OnTurnUpdate swallowed exception during cop-war stabilization: {__exception.GetType().Name}: {__exception.Message}\n{stack}");
             }
             return null;
         }

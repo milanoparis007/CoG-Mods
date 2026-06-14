@@ -1,168 +1,439 @@
-# Current After Prohibition Mod Guide
+# Days Of Prohibition Beta v0.2 Guide
 
-## Public Release Status
+This guide is meant to explain the important things players need to know before playing the beta build. It is not only an install note. The mod changes skills, businesses, crew behavior, enemy pressure, witnesses, routes, maps, and several pieces of the economy.
 
-This package is the current public After Prohibition build for the v1.3.98 package line. It includes StreamingAssets content plus staged BepInEx plugins for the active runtime systems.
+This beta is still being tested. Some balance values may change later.
 
-The June 5, 2026 cleanup pass removed the temporary dev-log noise from the robbery/front-pressure project while keeping compact first-report breadcrumbs in normal logs. Players can send a normal `Player.log` first; detailed diagnostics can be enabled later only if a bug needs a deeper repro.
+**Install**
 
-The older stable guide at `Things To Have\Old Stable\#Guide.txt` remains a legacy content reference and was not removed.
+Copy this build's `BepInEx` folder into the game's `BepInEx` folder.
 
-For the full gameplay explanation, read `SYSTEMS_GUIDE.md` in this folder.
+Copy this build's `CoG_Data` folder into the game's `CoG_Data` folder when the package includes it.
 
-## Install
+Do not install this as only a DLL update. A lot of the mod uses `CoG_Data\StreamingAssets` for businesses, modules, quests, maps, conversations, skills, buffs, and localization.
 
-1. Open the City of Gangsters install folder.
-2. Copy this release folder's `BepInEx` contents into the game's `BepInEx` folder.
-3. Copy this release folder's `CoG_Data` contents into the game's `CoG_Data` folder when the release includes StreamingAssets changes.
-4. Install `CoGCustomAssets` for this build. Some current icons and asset references expect `CoGCustomAssets` to be present.
-5. Copy this release folder's `Custom Maps` contents when custom map files are included.
-6. Start the game and check `BepInEx\LogOutput.log` or the City of Gangsters `Player.log` if something does not load.
+If the game loads but some new businesses, backrooms, schools, churches, or conversations do not appear, check that both `BepInEx` and `CoG_Data` were copied.
 
-## Important Requirements
+**Included DLLs**
 
-- Do not install this as a DLL-only update. The current build expects the included `CoG_Data\StreamingAssets` files to be installed.
-- `CoGCustomAssets` is required for now because this build references custom icons/assets through that stack.
-- `CoGCustomAssets` should be installed under `BepInEx\plugins`, usually as `BepInEx\plugins\CoGCustomAssets\CoGCustomAssets.dll`.
-- If maps or new-game setup do not load correctly, first confirm that `CoG_Data\StreamingAssets` was copied and that `CoGCustomAssets` is installed.
+GameplayTweaks - Main gameplay systems, routes, robbery, front pressure, witnesses, vehicle crew behavior, crew relationship systems, and compatibility glue.
 
-## Included Runtime DLL
+AfterProhibitionAssets - Custom asset and image support.
 
-- `BepInEx\plugins\GameplayTweaks.dll`
-- `BepInEx\plugins\AfterProhibitionAssets.dll`
-- `BepInEx\plugins\AfterProhibitionCompatibility.dll`
-- `BepInEx\plugins\AfterProhibitionEconomy.dll`
-- `BepInEx\plugins\AfterProhibitionFamily.dll`
-- `BepInEx\plugins\AfterProhibitionPolitics.dll`
-- `BepInEx\plugins\AfterProhibitionRoutes.dll`
-- `BepInEx\plugins\AfterProhibitionUI.dll`
+AfterProhibitionCompatibility - Compatibility checks and fallback behavior for outside mods.
 
-This DLL is staged from the repo release build. For local testing, copy the staged DLL into the live game install until symlinks are restored.
+AfterProhibitionEconomy - Economy ownership and Dirty Cash related runtime support.
 
-The standalone After Prohibition plugins split assets, compatibility, economy, family, politics, routes, and UI behavior away from `GameplayTweaks` so each system can be debugged and disabled more safely. `GameplayTweaks` is still required; the split plugins currently delegate only proven slices and leave fallback behavior in place.
+AfterProhibitionFamily - Family, spouse, and relationship ownership.
 
-`AfterProhibitionUI` owns UI-only cleanup and rendering surfaces such as stale crew-pick portraits, connection-card render guards, crew HUD refresh scheduling, aggro crew-pick refresh scheduling, popup docking, menu retheme bridging, crew inspect footer buttons, and crew jail visuals. Gameplay behavior remains in `GameplayTweaks` or the owning split plugin.
+AfterProhibitionPolitics - Politics, legal pressure, and related ownership.
 
-## StreamingAssets Content
+AfterProhibitionRoutes - Route decision bridge and route diagnostics.
 
-This release also includes updated `CoG_Data\StreamingAssets` content. Do not treat it as a DLL-only update.
+AfterProhibitionUI - UI cleanup, popup/menu helpers, and crew UI support.
 
-Main content changes included in the package:
+CopKilling - Cop-war cleanup and cop retaliation safety.
 
-- legal-front business data for grocery, restaurant, barber, florist, funeral, cafe, hardware, laundry, car dealership, real estate, wholesale, contractor, gas station, jewelry, hotel, liquor, pub, movie theater, pawnshop, law office, record, film, gym, talent, and money-laundering fronts;
-- bank-counter and employment-agency style front modules;
-- updated business seeding so some fronts use legal modules, bank counters, delis/home-booze sources, and newer tobacconist content instead of generic placeholder storage;
-- controlled bank map placement and more reachable funeral-home starter fronts;
-- connected-connector fake-account scheme work through funeral homes and churches;
-- rail shipment quests for bulk liquor movement through train stations;
-- school support, church support, church loan, and church repayment conversation paths;
-- pact, cop-killing, politics-protection, and gang-loot relationship/heat buffs;
-- AI, people, skills, schemes, gambling, and economy retuning for the newer legal-front and backroom systems;
-- city map generation updates for schools and business/family density.
+**Main Things This Mod Adds**
 
-When installing a public build, copy the `CoG_Data` folder from this package along with `BepInEx` so these data changes are present.
+More legal and illegal backrooms.
 
-## Quick Start
+More business types and legal front uses.
 
-- Use normal City of Gangsters play as the base.
-- Crew members now have more long-term identity through loyalty, happiness, odd jobs, spouse/family hooks, snitch risk, and street credit.
-- Pacts and independent gangs can build pressure, retaliate, protect turf, expand, rob weak or exposed crews, and respond to refusals through important-business pressure or rare quick attacks.
-- Legal-front businesses, banks, schools, churches, train stations, and map generation are also changed through StreamingAssets data.
-- Safehouse and owned-building storage follow stricter vehicle-position rules.
-- Delivery routes can optionally try to expand collection fronts with the compact `+` toggle on `Collect front` steps.
+More map content such as schools, churches, banks, and train station uses.
 
-## Robbery And Front Pressure
+More crew life systems such as loyalty, happiness, odd jobs, street credit, spouse/family hooks, snitch risk, and witness pressure.
 
-- Enemy outfits can try robbery/extortion when a human crew is exposed in enemy territory, when the player looks weak to a nearby outfit, or when local pressure says the outfit should test the player.
-- Peaceful outfits should generally avoid robbery pressure, while aggressive and expansion-minded outfits are more willing to use robbery, important-business pressure, or quick attacks.
-- The player can leave robbery prompts enabled, or open the boss crew relations menu and switch `Robbery: Prompt` to `Robbery: Auto Evade`.
-- Prompt mode lets the player manually pay, use a favor when available, evade, or refuse.
-- Auto Evade mode suppresses the prompt and lets crews use the standing order automatically. Failed evasion can still cost money or trigger retaliation.
-- Robbery pair cooldowns are six months, so the same robber outfit should not immediately keep trying the same human target after a resolved attempt.
-- Successful refusals can lead to important shop closures or, more rarely, a coordinated attack warning for the next turn.
-- Important-business closures target valid visible shops tied to the defender's territory or economic activity. Closed shops should block buying and selling until reopened by game rules.
-- Normal AI expansion and war pressure still exists alongside robbery. Robbery is an added pressure path, not the only reason outfits attack fronts or businesses.
+More enemy outfit pressure through robberies, front closures, important business closures, retaliation, and war heat.
 
-## Combat And Vehicle Crews
+Multi-crew vehicle behavior with drivers, passengers, route movement, and stricter storage or business access rules.
 
-- Vehicle attacks can include confirmed passengers in the target vehicle, so the attack popup can focus one passenger or spread damage across multiple occupants.
-- The combat popup includes `Attack Type`, `On-Foot Crew`, `Range`, and `Targets` controls when the situation supports them.
-- `Attack Type` switches between drive-by and on-foot behavior when available.
-- `On-Foot Crew` selects how many available attackers join an on-foot attack.
-- `Range` filters on-foot attacks between any, melee, and ranged weapons.
-- `Targets` switches between focused targeting and spread targeting when multiple enemy targets are available.
-- Passenger and driver routing remains strict for movement so future passengers should not be treated as already present attackers.
+State murder cases for crew members who build up too many murder witnesses.
 
-## Public Logging And Diagnostics
+**Skill List**
 
-- Normal logs keep compact breadcrumbs for robbery prompts, robbery resolutions, front/business closure outcomes, combat commits, route problems, forced shop locks, and true anomalies.
-- Detailed verification logs are disabled by default. Enable `Diagnostics.EnableVerboseVerificationLogs=true` only when a compact log is not enough.
-- Area-specific diagnostics can be enabled with `Diagnostics.EnableRobberyDiagnostics`, `Diagnostics.EnableFrontPressureDiagnostics`, `Diagnostics.EnableVehicleAuthorityDiagnostics`, `Diagnostics.EnableVehicleCombatDiagnostics`, and `Diagnostics.EnableCompatibilityDiagnostics`.
-- Detailed performance telemetry is disabled by default. Enable `Diagnostics.EnablePerformanceDiagnostics=true` only when profiling a slowdown.
-- Routine Economy batch progress and mutation-detail logs are disabled by default through `AfterProhibitionEconomy` diagnostics. Use `Diagnostics.EnableRuntimeEconomyProgressLog=true` or `Diagnostics.EnableRuntimeEconomyRoutineLog=true` only for economy repros.
-- Always-on Unity errors and compact gameplay breadcrumbs remain useful for first bug reports. Do not ask players to rerun with verbose logs unless the first log does not contain enough evidence.
+Introduction Of The Underworld - Unlocks when your crew has around 5k cash. Opens early underworld and criminal expansion paths.
 
-## Content To Look For
+Local Drug Distribution - Unlocks from drug/dirty-cash progress and territory growth. Opens stronger drug distribution paths.
 
-- Train stations can offer bulk rail shipments when you have the right storage/territory setup.
-- Schools can start a support path that can lead into a payout and a short local recruiting window.
-- Churches can start support and loan paths, including repayment.
-- Connected connector crew can start fake-account paperwork schemes through funeral homes or churches when they have paper, ink, and cash.
-- Legal fronts now matter more because data files give more businesses real front modules and upkeep hooks.
-- Banks and employment-style fronts have more specific modules and resource roles.
-- Maps should generate large schools and controlled bank locations through the current civic-style placement lists while leaving more room for businesses on most updated cities.
+Bulk Drug Distribution - Unlocks later from drug/dirty-cash progress, time, cash, and territory. Opens larger drug distribution.
 
-## Storage Rules
+Cannabis Growing - Unlocks cannabis grow, processing, and packing rooms.
 
-- Vehicle at safehouse: safehouse resources can be accessed normally.
-- Vehicle not at safehouse: safehouse resources should not be transferable for that vehicle.
-- Vehicle at owned business: owned-building storage can be accessed normally.
-- Vehicle traveling to that exact owned storage target: transfer can remain available for that intended action.
-- Vehicle leaves the corner or targets another corner: storage may remain visible for context, but transfer buttons should be disabled.
+Opium Poppy Cultivation - Unlocks opium production and processing paths.
 
-## Delivery Route Front Expansion
+Coca Plant Cultivation - Unlocks cocaine production and processing paths.
 
-- Open a delivery route step that collects from a front.
-- Use the compact `+` marker to enable expansion for that route step.
-- When the route successfully collects from that front, the mod can ask the vanilla expansion system to start an expansion.
-- Expansion still requires a valid next corner and enough vehicle cash.
-- If no legal expansion corner exists, the route continues and the log records the skip.
+Weapon Crafting - Opens stronger weapon production paths.
 
-## Route Split Ownership
+Weapon Outsourcing - Opens early weapon sourcing.
 
-- `AfterProhibitionRoutes` is installed as a separate plugin, but `GameplayTweaks` remains required.
-- `AfterProhibitionRoutes` currently owns read-only route state audits and route decision bridges.
-- `GameplayTweaks` reads those route decisions and keeps the mutating fallback behavior active.
-- Full route behavior ownership is still false for travel continuation, vehicle node authority, delivery-route pump, and route-simulated access.
-- This means the current route split should improve diagnostics and prevent double-ownership without removing the existing GameplayTweaks route fixes.
+Brothel Management - Opens public whorehouse style gambling/backroom content.
 
-## Route-In Shop Staging
+Better Brothel Management - Opens stronger brothel content.
 
-- Old/departure businesses should stop allowing buy/sell once the vehicle leaves that corner.
-- The committed next-destination business can open route-simulated business conversation and stage buy/sell while the vehicle is en route when `VehicleRouteSimulation.EnableRouteSimulatedConvenienceActions=true`.
-- Shift-clicking the committed next-destination business is supported as an intentional route-in opener for the selected vehicle.
-- Staged buy/sell does not move cash, goods, vehicle cargo, or shop stock until the vehicle physically arrives at that destination or a validated shop frontage/access node.
-- More than one different resource or buy/sell direction can be staged for the same vehicle destination; staging the same shop/resource/direction again updates that matching order.
-- Destination glow and automatic pop-ups are not used as arrival proof.
+Liquidation And Licenses 101 - Opens money laundering, permits, licenses, and early legal/illegal paperwork paths.
 
-## Useful Log Markers
+Liquidation And Licenses 102 - Opens more legal business paths.
 
-- `route-command-deferred` means a route command waited because the vehicle was still arriving.
-- `routes-baseline` and `route-state-audit` show the read-only `AfterProhibitionRoutes` bridge loaded.
-- `travel-continuation`, `vehicle-node-authority`, `delivery-route-pump`, and `route-sim-access` show `AfterProhibitionRoutes` decision classifications.
-- `Routes behavior fallback active` means `GameplayTweaks` is still correctly handling route mutation because `AfterProhibitionRoutes` does not yet own that behavior slice.
-- `FrontRouteExpand` shows route expansion arming, skip, and success details.
-- `routeSimConvenienceEnabled=True/False` in the startup log shows whether route-in destination conversations and staged shop orders are enabled.
-- `route-in-shift-destination-open` shows the Shift-click route-in opener accepted the selected vehicle's current destination.
-- `route-sim-convo`, `route-shop-stage-opened`, `route-shop-staged`, and `route-shop-committed` show route-in shop staging working.
-- `safehouse-access-crew-filtered` shows strict safehouse access filtering.
-- `scope-wrong-corner-presence-blocked` shows wrong-corner preview rejection.
-- `[PoliticsStarter] delegated owner=AfterProhibitionPolitics` shows `GameplayTweaks` has handed the New York starter quest fallback to `AfterProhibitionPolitics`.
-- `uiRetheme=delegated`, `crewHudRefresh=delegated`, and `aggroUiRefresh=delegated` show `GameplayTweaks` is using the `AfterProhibitionUI` bridge for migrated UI surfaces.
-- `CrewHUD refresh ... owner=AfterProhibitionUI`, `AggroUI ... owner=AfterProhibitionUI`, and `PopupDocking ... owner=AfterProhibitionUI` show the UI split is active.
-- `scheduler=AfterProhibitionUI fallback=GameplayTweaks` means `AfterProhibitionUI` owns the visible aggro refresh scheduler while `GameplayTweaks` still provides the gameplay-coupled reconciliation fallback.
-- `politics-audit`, `bribe-state-audit`, `judge-law-office-audit`, and `campaign-election-audit` show read-only politics diagnostics.
-- `[Loyalty]` shows crew relation turn updates.
-- `[OddJob]` shows odd-job pay.
-- `[GangOps.Pact]` and `[GangOps.Independent]` show pact and gang automation.
-- `[CopKilling]` shows cop-war safety cleanup.
+Liquidation And Licenses 103 - Opens high-end legal business paths.
+
+Used Car Dealer - Legal business path. Found through bank-style content.
+
+Talent Scouting - Legal business path. Found through entertainment-style content.
+
+Jewelery Outsourcing - Legal business path. Found through bank-style content.
+
+Home Real Estate - Legal business path. Found through bank-style content.
+
+Garage Construction - Used for garage and vehicle-support content when available.
+
+**Skill Tree Notes**
+
+Liquidation And Licenses 101 begins the paperwork, laundering, permit, and license side of the mod.
+
+Liquidation And Licenses 102 leads into stronger legal business skills such as talent, real estate, and car dealer paths.
+
+Liquidation And Licenses 103 leads into higher-end legal business work such as jewelry.
+
+Brothel Management leads into Better Brothel Management.
+
+Introduction Of The Underworld leads into the drug and underworld path.
+
+Local Drug Distribution and Bulk Drug Distribution are meant to feel like later underworld growth, not something fully unlocked at the start.
+
+**New And Changed Modules**
+
+Local Dealer
+
+Local Dealer Crew
+
+City Wide Drug Distribution
+
+Regional Drug Distribution
+
+Protection Racket
+
+Counterfeiting Hideout
+
+Cannabis Grow Room
+
+Cannabis Processing Room
+
+Cannabis Packing Room
+
+Opium Unpacking Room
+
+Opium Processing Room
+
+Coca Unpacking Room
+
+Coca Processing Room
+
+Private Accountant
+
+Advanced Private Accountant
+
+Auditor
+
+Talent Agency
+
+Recording Studio
+
+Film Company
+
+Talent Agency Accountant
+
+Real Estate Agency
+
+Construction Contractor
+
+Jeweler Aquirement
+
+Gold Jewelry Maker
+
+Car Dealer
+
+Car Dealer Office
+
+Weapon Aquirement paths
+
+Mixed Drinks Production
+
+Small Local Restaurant
+
+Docks Smuggler
+
+Gas Station
+
+Small Gym
+
+Backroom Fight Club
+
+Law Office
+
+Soup Kitchen
+
+Grifter
+
+Wholesale Warehouse
+
+Private Speakeasy Lounge
+
+Cigarette Salesman
+
+Bank Counter
+
+Employment Agency style labor and staffing content
+
+**Brothel And Loan Shark Modules**
+
+Bookmaker's Hangout
+
+High Rate Bookmaker's Hangout
+
+Public Whorehouse
+
+Private Whorehouse
+
+**Gambling Games**
+
+Low Level Bookie - Found in Bookmaker's Hangout.
+
+High Level Bookie - Found in High Rate Bookmaker's Hangout.
+
+Small Street Service - Found in Public Whorehouse.
+
+Large Street Operation - Found in Public Whorehouse.
+
+Backroom Service - Found in Private Whorehouse.
+
+Neighborhood Crap Games - Used for upgrading brothel and loan shark managers.
+
+**Homes And Amenities**
+
+Small homes and large homes have expanded value because family, lifestyle, and crew identity systems matter more in the mod.
+
+Small Home Amenities can include kitchen, office, stash, decor, lifestyle costs, wardrobe costs, art, and bookcase style upgrades.
+
+Large Home Amenities can include stronger kitchen, maid, office, safe, better decor, lifestyle costs, wardrobe costs, art, bookroom, and larger personal-home support.
+
+**Residential Events**
+
+Dinner Parties can help find connections for weapons.
+
+Poker Games can help find connections for weapons, cannabis seeds, and some permit-style content.
+
+Luncheons can help find connections for weapons, cannabis seeds, and some permit-style content.
+
+**Starter Skill Ideas**
+
+Brothel Manager - Starts with brothel-related knowledge and a stronger early business direction.
+
+Ex Military - Starts with weapon access and stronger combat flavor.
+
+Small Time Drug Dealer - Starts with early drug knowledge and underworld flavor.
+
+Some starts may also work better with the newer legal-front, street-credit, and crew-pressure systems.
+
+**Crew Member Skills**
+
+Local Muscle - Makes a crew member better in fights and helps them fit muscle roles.
+
+Assigned Leader For Muscle - Helps turn a stronger muscle crew member into a leader/captain style role.
+
+Crew members now matter for more than combat. Loyalty, happiness, risk, family, odd jobs, witnesses, and street credit can all matter over time.
+
+**Captains And Schemes**
+
+Right Hand - General support captain. Useful for small weapons, drugs, labor contacts, robberies, and early underworld schemes.
+
+Supplier - Stronger buying and selling contact for weapons, drugs, and labor.
+
+Advisor - Paperwork, dirty-cash cleanup, accounts, business support, and some higher-end legal or relationship support.
+
+Street Enforcer - Stronger violence and labor contact. Better for robberies and muscle work.
+
+**Crew Relations Tab**
+
+The crew relations tab is where several of the newer crew-life systems are meant to be checked.
+
+Use this tab to keep track of loyalty, happiness, crew pressure, robbery response settings, witness and case pressure, and some relationship-style options.
+
+Low loyalty and low happiness can become a long-term problem. A crew member who is unhappy, ignored, wounded, jailed, or constantly put in danger may become harder to keep around.
+
+Some options may depend on the crew member, their role, current state, or whether the right relationship/system is active.
+
+**Pacts**
+
+Pacts are relationship and war-pressure systems between outfits.
+
+Joining or dealing with pacts can change relationships, pressure, retaliation, and war heat.
+
+Pacts can make the city feel more connected because one outfit's problem may pull in allies, rivals, or related crews.
+
+Killing pact members, pact bosses, or important pact leaders can create stronger reaction pressure.
+
+Pacts are still beta systems, so the exact aggression and timing may keep changing.
+
+**Grapevine**
+
+The grapevine is a social information path. It is meant to help the player learn about people, opportunities, rumors, or connections without everything being found from one normal business button.
+
+Use grapevine-style options when you are trying to find people, social leads, or hidden opportunities tied to crew and city relationships.
+
+Some grapevine results may depend on your crew, your boss reputation, current relationships, and what type of contact you are trying to find.
+
+**Finding A Spouse**
+
+Some crew members can look for a spouse through the crew and relationship systems.
+
+Spouse search is not meant to be instant every time. It can depend on the crew member, the available people in the city, and whether the target person is valid for family behavior.
+
+Business owners, invalid family targets, and people reserved for other roles should be filtered out more carefully in the current build.
+
+Having a spouse is mainly a long-term roleplay and crew-life system right now, but it also helps make crew members feel less disposable.
+
+**Having A Kid**
+
+Family systems can support future child and family behavior when the right relationship state exists.
+
+The mod tries to clean up invalid future-child data on load so old saves do not keep broken family references.
+
+Kids and family state are long-term systems, so do not expect them to work like a quick payout or normal scheme.
+
+If a family or child issue appears, send a normal log first because the Family plugin and GameplayTweaks both write ownership and safety checks for this area.
+
+**Street Credit**
+
+Street Credit can come from crimes, fights, kills, deals, robbery pressure, laundering, smuggling-style work, pact activity, and enemy outfit pressure.
+
+Street Credit Low - Opens early underworld respect, trades, and smaller criminal opportunities.
+
+Street Credit Medium - Opens stronger trades, larger protection, and larger criminal opportunities.
+
+Street Credit High - Used as a long-term reputation marker and may matter more as later systems expand.
+
+Street credit also helps the player feel less like a brand new outfit once the city starts reacting to them.
+
+**Trades And Diplomacy**
+
+Other outfits can offer better trade options when your relationship, reputation, or street credit is better.
+
+Better outfit relationships can unlock better liquor, drug, account, and favor-style opportunities.
+
+Boss traits matter. Well-connected or aggressive outfits may behave differently than peaceful or isolationist outfits.
+
+Truces, robberies, refusals, fronts, and business pressure can all affect the relationship between the player and an enemy outfit.
+
+**Robbery And Enemy Pressure**
+
+Enemy outfits can try to rob or extort the player when the player is exposed, weak, trespassing, or under pressure.
+
+Robberies are route-based now. The enemy should try to move toward the meeting or pressure point instead of the event feeling like it came from nowhere.
+
+Robbery prompts can be answered by paying, using a favor if available, evading, or refusing.
+
+Refusing can cause war heat, front pressure, important business pressure, or a later attack depending on the outfit and situation.
+
+Peaceful outfits should be less aggressive. Aggressive or stronger outfits should be more willing to push the player.
+
+**Front Closures And Important Businesses**
+
+Enemy outfits can pressure fronts during wars or high-tension situations.
+
+Important businesses can also be targeted, not only fronts.
+
+More than one enemy vehicle can matter. An outfit with several vehicles should be able to spread pressure better than a tiny outfit.
+
+If the player defends a front and the enemy reaches the corner while aggro, an attack can happen like vanilla.
+
+War heat helps decide how often enemy outfits try pressure again.
+
+**Witnesses And State Murder Cases**
+
+Murder witnesses are now more important.
+
+A crew member with too many murder witnesses can start building a state murder case.
+
+The case is tied to the crew member, not the whole outfit.
+
+The player can search for witnesses, but it costs safehouse cash.
+
+If a witness is found, the player can try to threaten or silence them.
+
+Threatening can fail and may remove the chance to threaten that witness again.
+
+Silencing can fail, and a failed silence can make the case more dangerous.
+
+If all active witnesses are handled successfully, the case can reset.
+
+Witnesses are not meant to replace normal heat. Murders can still create heat, but the witness case itself is a separate pressure system.
+
+**Vehicles, Passengers, And Routes**
+
+Vehicles can now care about driver and passenger state.
+
+Passengers should not magically switch vehicles unless the route and safehouse behavior allows it.
+
+Enemy crew members should use routes to reach pressure targets instead of teleporting the pressure result.
+
+Safehouse access, owned-building storage, shops, and business actions are stricter now. A vehicle usually needs to actually be at the right place.
+
+Route-in shop staging can let a vehicle prepare some actions for the committed destination, but the actual transfer should still wait for valid arrival.
+
+**Storage Rules**
+
+Vehicle at safehouse - Safehouse resources can be accessed normally.
+
+Vehicle not at safehouse - Safehouse resources should not be transferable for that vehicle.
+
+Vehicle at owned business - Owned-building storage can be accessed normally.
+
+Vehicle traveling to that exact owned storage target - Some intended actions can remain available as route-in behavior.
+
+Vehicle leaves the corner or targets another corner - Storage may be visible for context, but transfer buttons should not act like the vehicle is physically there.
+
+**Legal Fronts, Banks, Schools, Churches, And Trains**
+
+Banks can supply account, license, and permit-style content.
+
+Schools can support school-related conversation and local support paths.
+
+Churches can support church help, church loan, and repayment paths.
+
+Train stations can offer bulk shipment style content.
+
+Legal fronts now matter more because many businesses have more specific modules, upkeep, and economy hooks.
+
+**Other Gameplay Changes To Know**
+
+Some buildings are cheaper or retuned compared to vanilla.
+
+Police bribes and arrest-related costs may be more expensive.
+
+Trial and jail pressure can last longer.
+
+Crew members level faster in some areas, but they also carry more long-term risk.
+
+Enemy AI can recruit faster and pressure the player more.
+
+Map generation adds more schools, churches, bank placement, business changes, and residential/business density changes.
+
+Large liquor distributors need permits, but small bootleggers are not meant to follow every large-distributor rule.
+
+Weapons, cars, portraits, names, and ethnic groups have been expanded from the older public mod line.
+
+**Useful Log Notes**
+
+Send a normal `Player.log` first when reporting bugs.
+
+Useful markers include robbery prompts, front pressure, important business pressure, route authority, witness cases, Dirty Cash compatibility, and CopKilling cleanup.
+
+Verbose diagnostics should only be enabled when the normal log does not give enough information.
+
+**Current Beta Notes**
+
+This beta is meant for testing. The main things to watch are front closures, robberies, important business closures, witness cases, route completion, and Dirty Cash/backroom compatibility.
+
+If a public report says something is missing, first check whether the player installed the whole package and not just one DLL.

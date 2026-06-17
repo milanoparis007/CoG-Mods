@@ -1,0 +1,146 @@
+{
+convos {
+
+resevent-toplevel { 
+
+	npcsays [
+		{ #type toplevel-start-blurb rootkey "convo.resevents.toplevel.start" reqs [{ #type special-toplevel-start firstconvo #true }] }
+		{ #type rel-history-blurb reqs [{ #type check-peep-has-player-history }] }
+		{ #type toplevel-start-blurb rootkey "convo.resevents.toplevel.start" reqs [{ #type special-toplevel-start firststate #true }] }
+		{ #type relationship-based-blurb rootkey "convo.resevents.toplevel.state" }
+	]
+
+	buttons [
+	{
+		visreqs	[{ #type special-check-res-event-active type this-turn }]
+		text 	{ 
+			dynkey [{ #type special-res-event-hosted-blurb suffix "active-you" }] 
+		}
+		grants  [{ #type center-camera-on-building }]
+		next	{ goto resevent-this-turn-state }
+	}
+	{
+		visreqs	[{ #type special-check-res-event-active type coming-soon }]
+		text 	{ 
+			dynkey [{ #type special-res-event-hosted-blurb suffix "intro-you" }] 
+		}
+		next	{ goto resevent-coming-soon-state }
+	}
+	{
+		visreqs	[{ #type special-check-res-event-active type registered }]
+		text 	{ 
+			dynkey [{ #type special-res-event-hosted-blurb suffix "waiting-you" }] 
+			dynnpc [{ #type special-res-event-hosted-blurb suffix "waiting-npc" }] 
+		}
+		next	{ goto resevent-seeyouthen-state }
+	}
+	{
+		visreqs	[{ #type special-check-res-event-active type skipped }]
+		text 	{ 
+			dynkey [{ #type special-res-event-hosted-blurb suffix "intro-you" }] 
+			dynnpc [{ #type special-res-event-hosted-blurb suffix "skipped-npc" }] 
+		}
+		next	{ goto resevent-done-state }
+	}
+	{
+		visreqs	[{ #type special-check-res-event-active type denied }]
+		text 	{ 
+			dynkey [{ #type special-res-event-hosted-blurb suffix "intro-you" }] 
+			dynnpc [{ #type special-res-event-hosted-blurb suffix "denied-npc" }] 
+		}
+		next	{ goto resevent-done-state }
+	}
+	{	;; goodbye
+		text 	{ key "convo.resevents.goodbye" icon "convo.icon-leave" mo "convo.goodbye-button.mo" }
+		onClick	Goodbye
+	}
+	]
+} 
+
+;; this is coming soon, do you want in on it?
+
+resevent-coming-soon-state {
+	npcsays [{ #type special-res-event-hosted-blurb suffix "later-npc" }]
+	buttons [{
+		text { 
+			dynkey [{ #type special-res-event-hosted-blurb suffix "later-you" }] 
+		}
+		next	{ goto resevent-coming-soon-2-state }
+	}]
+}
+
+resevent-coming-soon-2-state {
+	npcsays [{ #type special-res-event-hosted-blurb suffix "later-npc2" }]
+	buttons [{
+		reqs [{ #type special-check-res-event-price }]
+		text {
+			dynkey [{ #type special-res-event-hosted-blurb suffix "later-you2" }] 
+			dynnpc [{ #type special-res-event-hosted-blurb suffix "later-npc3" }] 
+		}
+		onClick ExecuteCommitToResEvent
+		next { goto resevent-seeyouthen-state }
+	} {
+		text {
+			dynkey [{ #type special-res-event-hosted-blurb suffix "later-cancel" }] 
+			icon "convo.icon-leave" mo "convo.goodbye-button.mo" 
+		}
+		onClick	Goodbye
+	}]
+}
+
+;; it's happening right now!
+
+resevent-this-turn-state {
+	npcsays [{ #type special-res-event-hosted-blurb suffix "active-npc2" }]
+	buttons [{
+		text { 
+			dynkey 	[{ #type special-res-event-hosted-blurb suffix "active-you2" }] 
+		}
+		onClick	ExecuteAttendResEvent
+		grants 	[{ #type add-rel-buff with owner id "relbuff-resevent-host" }]
+		next	{ goto resevent-this-turn-state-2 }
+	}]
+}
+
+resevent-this-turn-state-2 {
+	npcsays [{ #type special-res-event-hosted-blurb suffix "active-npc3" }]
+	buttons [{
+		text { 
+			dynkey [{ #type special-res-event-result-blurb suffix "you-yes" }] 
+			dynnpc [{ #type special-res-event-result-blurb suffix "npc-yes" }] 
+		}
+		onClick	ExecuteProduceResEventResult
+		next	{ goto resevent-done-state }
+	} {
+		text { 
+			dynkey [{ #type special-res-event-result-blurb suffix "you-no" }] 
+			dynnpc [{ #type special-res-event-result-blurb suffix "npc-no" }] 
+		}
+		grants 	[{ #type center-camera-on-building }]
+		next	{ goto resevent-done-state }
+	}]
+}
+
+resevent-done-state {
+	;; npcsays should be forced, but just in case...
+	npcsays [{ #type special-res-event-hosted-blurb suffix "skipped-npc" }]
+	buttons [
+	{	;; goodbye
+		text 	{ key "convo.resevents.goodbye" icon "convo.icon-leave" mo "convo.goodbye-button.mo" }
+		onClick	Goodbye
+	}
+	]
+}
+
+resevent-seeyouthen-state {
+	buttons [
+	{	;; goodbye
+		text 	{ key "convo.resevents.seeyouthen" icon "convo.icon-leave" mo "convo.goodbye-button.mo" }
+		onClick	Goodbye
+	}
+	]
+}
+
+
+
+} }

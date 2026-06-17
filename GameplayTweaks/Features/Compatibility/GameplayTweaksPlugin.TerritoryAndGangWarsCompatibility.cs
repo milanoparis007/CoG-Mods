@@ -337,7 +337,9 @@ public partial class GameplayTweaksPlugin
 				}
 
 				Fixnum effectiveRespect = GetDisplayedCornerRespectValue(respect);
-				if (effectiveRespect < (Fixnum)TerritoryColorOwnerLossThreshold)
+				global::Game.Services.RespectSettings settings = global::Game.Game.serv?.globals?.settings?.people?.social?.respect;
+				Fixnum gainThreshold = settings?.gainThreshold?.Evaluate(new global::Game.Session.Data.ModQuery(respect.pid, node)) ?? Fixnum.MAX_VALUE;
+				if (effectiveRespect < gainThreshold)
 				{
 					continue;
 				}
@@ -381,7 +383,9 @@ public partial class GameplayTweaksPlugin
 			}
 
 			Respect respect = node.respect?.GetOrNull(owner);
-			return (respect?.current ?? Fixnum.ZERO) >= (Fixnum)TerritoryColorOwnerLossThreshold;
+			global::Game.Services.RespectSettings settings = global::Game.Game.serv?.globals?.settings?.people?.social?.respect;
+			Fixnum lossThreshold = settings?.lossThreshold?.Evaluate(owner) ?? Fixnum.MAX_VALUE;
+			return (respect?.current ?? Fixnum.ZERO) > lossThreshold;
 		}
 
 		private static void LogCornerRespectFallback(Node node, PlayerID pid, Fixnum value, string sourceTag)

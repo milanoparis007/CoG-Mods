@@ -1,0 +1,755 @@
+{
+
+photos {
+	combat { 
+		attackGun		"Attack With Gun"
+		attackWeapon	"Attack With Weapon"
+		attackOther		"Attack With Fists"
+		resultDeath		"Result Death"
+		resultInjury	"Result Injury"
+		resultOther		"Result Brawl"
+	}
+
+	hints {
+		explainCornerNeed	[ { sprite "New Crew 1" } { sprite "Postcard" lockey "postcard.corner.need" } ]
+		explainCornerOne 	[ { sprite "New Corner 1" } { sprite "Postcard" lockey "postcard.corner.one" } ]
+		explainCornerTwo 	[ { sprite "New Corner 2" } { sprite "Postcard" lockey "postcard.corner.two" } ]
+		explainSkillOne		[ { sprite "New Skill 1" } { sprite "Postcard" lockey "postcard.skill.one" } ]
+		explainSkillTwo		[ { sprite "New Skill 2" } { sprite "Postcard" lockey "postcard.skill.two" } ]
+		explainConstructionOne	[ { sprite "New Construction 1" } { sprite "Postcard" lockey "postcard.construction.one" } ]
+		explainConstructionTwo	[ { sprite "New Construction 2" } { sprite "Postcard" lockey "postcard.construction.two" } ]
+		explainBuildingOne	[ { sprite "New Building 1" } { sprite "Postcard" lockey "postcard.building.one" } ]
+		explainBuildingTwo	[ { sprite "New Building 2" } { sprite "Postcard" lockey "postcard.building.two" } ]
+		explainBuildingLost	[ { sprite "Debris" } { sprite "Postcard" lockey "postcard.building.lost" } ]
+		explainQuestOne		[ { sprite "Quest Complete 1" } { sprite "Postcard" lockey "postcard.quest.one" } ]
+		explainQuestTwo		[ { sprite "Quest Complete 2" } { sprite "Postcard" lockey "postcard.quest.two" } ]
+		explainCrewOne		[ { sprite "New Crew 1" } { sprite "Postcard" lockey "postcard.crew.one" } ]
+		explainCrewTwo		[ { sprite "New Crew 2" } { sprite "Postcard" lockey "postcard.crew.two" } ]
+		explainVehicleOne	[ { sprite "New Vehicle 1" } { sprite "Postcard" lockey "postcard.vehicle.one" } ]
+		explainBuyoutOne	[ { sprite "New Crew 1" } { sprite "Postcard" lockey "postcard.buyout.one" } ]
+
+		hintLevelupActions		[ { sprite "New Crew 1" } { sprite "Postcard" lockey "postcard.levelup.actions" } ]
+		hintLevelupDriving		[ { sprite "New Crew 1" } { sprite "Postcard" lockey "postcard.levelup.driving" } ]
+		hintLevelupCombat		[ { sprite "New Crew 1" } { sprite "Postcard" lockey "postcard.levelup.combat" } ]
+		hintLevelupManagement	[ { sprite "New Building 1" } { sprite "Postcard" lockey "postcard.levelup.management" } ]
+		hintLevelupBuilder		[ { sprite "New Skill 1" } { sprite "Postcard" lockey "postcard.levelup.builder" } ]
+		hintLevelupHomemadeBoozemaker	[ { sprite "Home Booze XP 1" } { sprite "Postcard" lockey "postcard.levelup.homemade-boozemaker" } ]
+		hintLevelupBrickWineMaker		[ { sprite "Home Booze XP 1" } { sprite "Postcard" lockey "postcard.levelup.brick-wine-maker" } ]
+		hintLevelupCiderMaker		[ { sprite "Home Booze XP 1" } { sprite "Postcard" lockey "postcard.levelup.cider-maker" } ]
+		hintLevelupHomeBrewMaker	[ { sprite "Home Booze XP 1" } { sprite "Postcard" lockey "postcard.levelup.home-brew-maker" } ]
+		hintLevelupMoonshineMaker	[ { sprite "Home Booze XP 1" } { sprite "Postcard" lockey "postcard.levelup.moonshine-maker" } ]
+		hintLevelupApplejackMaker	[ { sprite "Home Booze XP 1" } { sprite "Postcard" lockey "postcard.levelup.applejack-maker" } ]
+		hintLevelupFruitWineMaker	[ { sprite "Home Booze XP 1" } { sprite "Postcard" lockey "postcard.levelup.fruit-wine-maker" } ]	
+		hintLevelupFakeWineMaker	[ { sprite "New Construction 2" } { sprite "Postcard" lockey "postcard.levelup.fake-wine-maker" } ]
+		hintLevelupSparklingCiderMaker	[ { sprite "New Construction 2" } { sprite "Postcard" lockey "postcard.levelup.sparking-cider-maker" } ]
+		hintLevelupFakeBeerMaker	[ { sprite "New Construction 2" } { sprite "Postcard" lockey "postcard.levelup.fake-beer-maker" } ]
+		hintLevelupBathtubGinMaker	[ { sprite "New Construction 2" } { sprite "Postcard" lockey "postcard.levelup.bathtub-gin-maker" } ]
+		hintLevelupFruitBrandyMaker	[ { sprite "New Construction 2" } { sprite "Postcard" lockey "postcard.levelup.fruit-brandy-maker" } ]
+		hintLevelupCornWhiskeyMaker	[ { sprite "New Construction 2" } { sprite "Postcard" lockey "postcard.levelup.corn-whiskey-maker" } ]
+		hintLevelUpStillMaster		[ { sprite "Home Booze XP 1" } { sprite "Postcard" lockey "postcard.levelup.still-master" } ]
+		hintLevelUpWhiskeyStills	[ { sprite "New Skill 2" } { sprite "Postcard" lockey "postcard.levelup.whiskey-stills" } ]
+		hintLevelUpBrandyStills		[ { sprite "New Skill 2" } { sprite "Postcard" lockey "postcard.levelup.brandy-stills" } ]
+		hintLevelUpWhiskeyStills	[ { sprite "New Skill 2" } { sprite "Postcard" lockey "postcard.levelup.vodka-stills" } ]
+		hintLevelUpRumStills		[ { sprite "New Skill 2" } { sprite "Postcard" lockey "postcard.levelup.rum-stills" } ]
+		hintLevelUpChampagneMaker	[ { sprite "New Skill 2" } { sprite "Postcard" lockey "postcard.levelup.master-craftsman" } ]
+		hintLevelUpDarkRumMaker		[ { sprite "New Skill 2" } { sprite "Postcard" lockey "postcard.levelup.master-craftsman" } ]
+		hintLevelUpBeerKegMaker		[ { sprite "New Skill 2" } { sprite "Postcard" lockey "postcard.levelup.master-craftsman" } ]
+		hintLevelUpAgedWhiskeyMaker	[ { sprite "New Skill 2" } { sprite "Postcard" lockey "postcard.levelup.master-craftsman" } ]
+		hintLevelUpCordialMaker		[ { sprite "New Skill 2" } { sprite "Postcard" lockey "postcard.levelup.master-craftsman" } ]
+		hintLevelUpGinMaker			[ { sprite "New Skill 2" } { sprite "Postcard" lockey "postcard.levelup.master-craftsman" } ]
+		hintLevelupFruitConverter	[ { sprite "New Construction 2" } { sprite "Postcard" lockey "postcard.levelup.fruit-converter" } ]
+		hintLevelupFermenter		[ { sprite "Home Booze XP 1" } { sprite "Postcard" lockey "postcard.levelup.fermenter" } ]
+		hintLevelupBartending		[ { sprite "Bartending XP 1" } { sprite "Postcard" lockey "postcard.levelup.bartending" } ]
+		hintLevelupFasterConsume	[ { sprite "Bartending XP 1" } { sprite "Postcard"  lockey "postcard.levelup.faster-consume" } ]
+		hintLevelupCityDriver		[ { sprite "New Vehicle 1" } { sprite "Postcard" lockey "postcard.levelup.city-driver" } ]
+		hintLevelupAlleyMaster		[ { sprite "New Vehicle 1" } { sprite "Postcard" lockey "postcard.levelup.alley-master" } ]
+		hintLevelupSmoothTalker		[ { sprite "New Crew 1" } { sprite "Postcard" lockey "postcard.levelup.smooth-talker" } ]
+		hintLevelupCaptain			[ { sprite "New Crew 1" } { sprite "Postcard" lockey "postcard.levelup.captain" } ]
+		hintLevelUpPitBoss			[ { sprite "New Construction 1" } { sprite "Postcard" lockey "postcard.levelup.pitboss" } ]
+		hintLevelUpHouseManager		[ { sprite "Bartending XP 1" } { sprite "Postcard" lockey "postcard.levelup.house-manager" } ]
+		hintLevelUpHidoutManager		[ { sprite "Bartending XP 1" } { sprite "Postcard" lockey "postcard.levelup.hideout-manager" } ]
+		hintLevelUpMechanic			[ { sprite "New Skill 2" } { sprite "Postcard" lockey "postcard.levelup.mechanic" } ]
+		hintLevelUpBoardwalk		[ { sprite "New Corner 1" } { sprite "Postcard" lockey "postcard.levelup.boardwalk" } ]
+		hintLevelUpHomemadeBrandy	 [ { sprite "Home Booze XP 1" } { sprite "Postcard" lockey "postcard.levelup.homemade-brandy-maker" } ]
+		hintLevelUpPotStillMaster	 [ { sprite "Home Booze XP 1" } { sprite "Postcard" lockey "postcard.levelup.homemade-grain-booze" } ]
+		hintLevelupAmarettoMaker	 [ { sprite "Home Booze XP 1" } { sprite "Postcard" lockey "postcard.levelup.amaretto" } ]
+		hintLevelupAbisintheMaker	 [ { sprite "Home Booze XP 1" } { sprite "Postcard" lockey "postcard.levelup.absinthe" } ]
+
+	}
+}
+
+newspaperDefaults {
+	subheadsGeneral [ newspaper-general ]
+	subheadsDated [ newspaper-dated-general ]
+	subheadsSequences [ newspaper-seq-general-elephant ]
+	;; these need to be filled in by city map defs
+	;subheadsCityGeneral
+	;subheadsCityDated
+	;subheadsCitySequences
+}
+
+playerQueries {
+
+	;; convo queries with owner
+	;; only convo queries can have reqs and visreqs
+
+	kb-has-active-quest-with-owner {
+		type	convo-query
+		visreqs [{ #type check-active-delivery-quest with owner type manual }]
+		
+		resetevents [ quest-started-immediate quest-progress-immediate quest-completed-immediate quest-canceled-immediate
+					  player-skills-changed-immediate player-used-social-ticket ]
+
+		icon	"ui.pipicon.quest"
+		locdesc "ui.pip.kb-has-active-quest-with-owner"
+	}
+
+	kb-civic-buidling {
+		type	convo-query
+		visreqs	[ { #type check-module-in-convo has any of [
+				civic-passenger-station civic-freight-station
+			] } ]
+
+			icon 	"ui.pipicon.civic-building"
+			locdesc "ui.pip.kb-civic-buidling"
+	}
+	
+	kb-has-expired-quest-with-owner {
+		type	convo-query
+		visreqs [{ #type check-expired-quest-with-owner }]
+		
+		resetevents [ quest-started-immediate quest-progress-immediate quest-completed-immediate quest-canceled-immediate 
+					  player-skills-changed-immediate player-used-social-ticket some-entity-tickets-changed ]
+
+		icon	"ui.pipicon.quest-ready"
+		locdesc "ui.pip.kb-has-expired-quest-with-owner"
+	}
+
+	kb-can-hire-new-crew {
+		type	convo-query
+		visreqs [{ #type check-relationship-tickets is atleast value 1 }
+				 { #type check-connections-and-cap-for-crew-intro }
+				 { #type check-relationship-for-crew-intro }]
+		
+		resetevents [ player-used-social-ticket some-entity-tickets-changed quest-completed-immediate ]
+
+		icon	"ui.pipicon.social-crew"
+		locdesc "ui.pip.kb-can-hire-new-crew"
+	}
+
+	kb-can-learn-new-skills {
+		type	convo-query
+		visreqs [{ #type check-relationship-tickets is atleast value 1 }
+				 { #type check-can-learn-new-skills }]
+		
+		resetevents [ quest-started-immediate quest-progress-immediate quest-completed-immediate 
+					  quest-marked-waiting-immediate quest-canceled-immediate quest-request-declined
+					  player-skills-changed-immediate player-used-social-ticket player-territory-changed
+					  some-entity-relationship-changed some-entity-tickets-changed ]
+		
+		icon	"ui.pipicon.social-skill"
+		locdesc "ui.pip.kb-can-learn-new-skills"
+	}
+
+	kb-can-intro-for-business {
+		type 	convo-query
+		visreqs [{ #type check-relationship-tickets is atleast value 1 }
+				 { #type check-can-intro-for-business }]
+
+		resetevents [ player-used-social-ticket quest-completed-immediate some-entity-tickets-changed some-entity-relationship-changed ]
+
+		icon	"ui.pipicon.social-bizintro"
+		locdesc "ui.pip.kb-can-intro-for-business"
+	}
+
+	kb-cash-boost {
+		type	convo-query
+		visreqs [
+			{ #type check-relationship-tickets is atleast value 2 }
+			{ #type check-player-cash type highwater is lessthan value 1100 }
+			{ #type check-module-in-player-territory has none of [
+				production-homebooze-brick-wine production-homebooze-cider production-homebooze-home-brew production-homebooze-moonshine production-homebooze-apple-jack-a production-homebooze-apple-jack-b
+			] scope player-only }
+			{ #type check-current-turn is atleast value 20 }
+			{ #type check-did-buy-sell-anything expected #true }
+		]
+
+		resetevents [ player-used-social-ticket some-entity-tickets-changed ]
+
+		icon	"ui.pipicon.cash-boost"
+		locdesc "ui.pip.kb-cash-boost"
+	}
+
+	kb-can-boost-for-goon {
+		type 	convo-query
+		visreqs [{ #type check-relationship-tickets is atleast value 1 }
+				 { #type check-player-territory-size is atleast value 1 }
+				 { #type check-can-boost-for-goon }]
+
+		resetevents [ player-used-social-ticket some-entity-tickets-changed ]
+
+		icon	"ui.pipicon.social-goon-intro"
+		locdesc "ui.pip.kb-can-boost-for-goon"
+	}
+
+	kb-can-take-over-business {
+		type	convo-query
+		visreqs	[{ #type check-relationship-tickets is atleast value 1 }
+				 { #type check-is-convo-at-corner-with-controlled-building expected #false }
+				 { #type special-biz-purchase-pip test HighWatermark }
+				 { #type check-potential-biz-building }
+				 { #type check-potential-biz-family }
+				 { #type check-rel-flag id "building-takeover" is notset lockey "req.check-rel-flag.building-takeover" }
+				 { #type check-quests has none of 
+				 	[ outpost-building-takeover family-building-takeover ethnic-building-takeover deliveries-active-one-beta neighborhood-opportunity-med-six ] 
+				 	status active with owner }
+				 ]
+
+		resetevents [ player-used-social-ticket some-entity-tickets-changed player-building-takeover-immediate player-rel-flags-changed-immediate
+				quest-started-immediate quest-progress-immediate quest-completed-immediate quest-canceled-immediate ]
+	
+		icon	"ui.pipicon.social-expansion"
+		locdesc "ui.pip.kb-can-take-over-business"
+	}
+
+
+	;; building queries called from code
+
+	kb-qreq-should-start { ;; quest request start
+		type 	building-fn
+		testfn 	qreq-start
+
+		resetevents [ quest-started-immediate quest-progress-immediate quest-completed-immediate quest-canceled-immediate 
+					  quest-request-declined player-territory-changed player-got-intro-immediate ]
+
+		icon	"ui.pipicon.quest-available"
+		locdesc "ui.pip.kb-qreq-should-start"
+	}
+
+	kb-qreq-should-finish { ;; quest request finish
+		type 	building-fn
+		testfn	qreq-finish		
+
+		resetevents [ quest-started-immediate quest-progress-immediate quest-completed-immediate quest-canceled-immediate ]
+
+		icon	"ui.pipicon.quest-ready"
+		locdesc "ui.pip.kb-qreq-should-finish"
+	}
+
+	kb-front-belongs-to-human {
+		type 	building-fn
+		testfn	front-data-update
+
+		resetevents [ player-outposts-all-updated player-outpost-changed ]
+
+		;; no icon, we'll use one of the ones below
+		locdesc "ui.pip.kb-front-belongs-to-human"
+	}
+
+	kb-front-belongs-to-ai {
+		type 	building-fn
+		testfn	front-data-update
+
+		resetevents [ player-outposts-all-updated player-outpost-changed ]
+
+		icon 	"ui.pipicon.front-ai"
+		locdesc "ui.pip.kb-front-belongs-to-ai"
+	}
+
+	kb-front-active {
+		type 	building-fn
+		testfn	front-data-update
+
+		resetevents [ player-outposts-all-updated player-outpost-changed ]
+
+		icon 	"ui.pipicon.front-active"
+		locdesc "ui.pip.kb-front-active"
+	}
+
+	kb-front-expanding {
+		type 	building-fn
+		testfn	front-data-update
+
+		resetevents [ player-outposts-all-updated player-outpost-changed ]
+
+		icon 	"ui.pipicon.front-expanding"
+		locdesc "ui.pip.kb-front-expanding"
+	}
+
+	kb-front-can-expand {
+		type 	building-fn
+		testfn	front-data-update
+
+		resetevents [ player-outposts-all-updated player-outpost-changed player-tribute-changed]
+
+		icon 	"ui.pipicon.front-can-expand"
+		locdesc "ui.pip.kb-front-can-expand"
+	}
+
+	kb-front-needs-support {
+		type 	building-fn
+		testfn	front-data-update
+
+		resetevents [ player-outposts-all-updated player-outpost-changed player-tribute-changed ]
+
+		icon 	"ui.pipicon.front-needs"
+		locdesc "ui.pip.kb-front-needs-support"
+	}
+
+	kb-front-needs-support-urgent {
+		type 	building-fn
+		testfn	front-data-update
+
+		resetevents [ player-outposts-all-updated player-outpost-changed player-tribute-changed ]
+
+		icon 	"ui.pipicon.front-needs-urgent"
+		locdesc "ui.pip.kb-front-needs-support-urgent"
+	}
+
+	kb-front-ready-to-collect {
+		type 	building-fn
+		testfn	front-data-update
+
+		resetevents [ player-outposts-all-updated player-outpost-changed player-tribute-changed ]
+
+		icon 	"ui.pipicon.front-ready"
+		locdesc "ui.pip.kb-front-ready-to-collect"
+	}
+
+	kb-extorted-biz {
+		type 	building-fn
+		testfn	front-data-update
+
+		resetevents [ player-outpost-changed player-tribute-changed ]
+
+		icon 	"ui.pipicon.front-extortion"
+		locdesc "ui.pip.kb-extorted-biz"
+	}
+
+	kb-production-stalled {
+		type 	building-fn
+		testfn	production-stalled
+
+		resetevents [ building-module-result-changed ]
+
+		icon	"ui.pipicon.biz-stalled"
+		locdesc "ui.pip.kb-production-stalled"
+	}
+
+	kb-building-damaged {
+		type 	building-fn
+		testfn	building-damaged
+
+		resetevents [ building-health-changed ]
+
+		icon	"ui.pipicon.damaged"
+		locdesc "ui.pip.kb-damaged"
+	}
+	
+	kb-cop-paidoff {
+		type 	building-fn
+		testfn	cop-paidoff
+
+		icon	"ui.pipicon.cop-paidoff"
+		locdesc "ui.pip.cop-paidoff"
+	}
+	
+	kb-heal-prompt {
+		type 	building-fn
+		testfn	heal-prompt
+		
+		resetevents [ crew-health-changed ]
+
+		icon	"ui.pipicon.heal-prompt"
+		locdesc "ui.pip.heal-prompt"
+	}
+
+	kb-delivery-success {
+		type 	building-fn
+		testfn	delivery-update
+
+		resetevents [ building-delivery-happened ]
+
+		icon	"ui.pipicon.delivery"
+		locdesc "ui.pip.kb-delivery-success"
+	}
+
+	kb-delivery-insufficient {
+		type 	building-fn
+		testfn	delivery-update
+
+		resetevents [ building-delivery-happened ]
+
+		icon	"ui.pipicon.delivery-incomplete"
+		locdesc "ui.pip.kb-delivery-insufficient"
+	}
+
+	kb-delivery-failed {
+		type 	building-fn
+		testfn	delivery-update
+
+		resetevents [ building-delivery-happened ]
+
+		icon	"ui.pipicon.delivery-failed"
+		locdesc "ui.pip.kb-delivery-failed"
+	}
+
+	kb-controlled-empty-slot {
+		type 	building-fn
+		testfn	controlled-update
+
+		resetevents [ building-module-installed ]
+
+		icon 	"ui.pipicon.biz-expand"
+		locdesc "ui.pip.kb-controlled-empty-slot"
+	}
+
+	kb-controlled-upgrade-available {
+		type 	building-fn
+		testfn	controlled-update
+
+		resetevents [ building-module-installed ]
+
+		icon 	"ui.pipicon.biz-upgrade"
+		locdesc "ui.pip.kb-controlled-upgrade-available"
+	}
+
+	kb-resevent-ready-this-turn {
+		type 	building-fn
+		testfn	resevent-update
+
+		resetevents [ building-res-event-happened ]
+
+		icon	"ui.pipicon.resevent"
+		locdesc	"ui.pip.kb-has-resevent-this-turn"
+	}
+
+	kb-biz-recent-trade-ai {
+		type 	building-fn
+		testfn	biz-recent-trade-ai
+
+		resetevents [ building-trade-history-cleared ]
+
+		icon 	"ui.pipicon.biz-recent-trade-ai"
+		locdesc	"ui.pip.kb-biz-recent-trade-ai"
+	}
+
+	kb-biz-recent-trade-human {
+		type 	building-fn
+		testfn	biz-recent-trade-human
+
+		resetevents [ building-trade-history-cleared ]
+
+		icon 	"ui.pipicon.biz-recent-trade-human"
+		locdesc	"ui.pip.kb-biz-recent-trade-human"
+	}
+
+	kb-casino-out-of-cash {
+		type building-fn
+		testfn	casino-out-of-cash
+
+		resetevents	[ casino-money-change ]
+
+		icon	"ui.pipicon.casino-needs-money"
+		locdesc	"ui.pip.kb-casino-needs-money"
+	}
+	kb-canada-related {
+		type building-fn
+		testfn	canada-related
+
+		resetevents	[ quest-started-immediate quest-progress-immediate quest-completed-immediate quest-canceled-immediate 
+					  quest-request-declined player-territory-changed player-got-intro-immediate ]
+
+		icon	"ui.pipicon.canada-related"
+		locdesc	"ui.pip.canada-related"
+	}
+
+	;; corner queries
+
+	kb-corner-territory-owned {
+		type 	corner-fn
+		testfn	territory-update 
+
+		resetevents [ player-territory-changed ]
+		icon 	"ui.pipicon.territory"
+		;; no locdesc, this could be anyone's territory
+	}
+	kb-corner-territory-expanded {
+		type 	corner-fn
+		testfn	territory-update 
+
+		resetevents [ player-territory-changed ]
+		icon 	"ui.pipicon.territory-expand"
+		locdesc	"ui.pip.kb-corner-territory-expanded"
+	}
+	kb-corner-territory-contracted {
+		type 	corner-fn
+		testfn	territory-update 
+
+		resetevents [ player-territory-changed ]
+		icon 	"ui.pipicon.territory-contract"
+		locdesc	"ui.pip.kb-corner-territory-contracted"
+	}
+	kb-corner-territory-pumping {
+		type 	corner-fn
+		testfn	territory-update 
+
+		resetevents [ player-territory-changed ]
+		icon 	"ui.pipicon.territory-pumping"
+		locdesc	"ui.pip.kb-corner-territory-pumping"
+	}
+	kb-corner-territory-stolen {
+		type 	corner-fn
+		testfn	territory-update 
+
+		resetevents [ player-territory-changed ]
+		icon 	"ui.pipicon.territory-stolen"
+		locdesc	"ui.pip.kb-corner-territory-stolen"
+	}
+
+	kb-corner-cops-heat-down {
+		type	corner-fn
+		testfn	heat-update
+
+		icon	"ui.pipicon.cops-heat-down"
+		locdesc	"ui.pip.kb-corner-cops-heat-down"
+	}
+	kb-corner-cops-heat-up {
+		type	corner-fn
+		testfn	heat-update
+
+		icon	"ui.pipicon.cops-heat-up"
+		locdesc	"ui.pip.kb-corner-cops-heat-up"
+	}
+	kb-corner-cops-imminent {
+		type	corner-fn
+		testfn	heat-update
+
+		icon	"ui.pipicon.cops-imminent"
+		locdesc	"ui.pip.kb-corner-cops-imminent"
+	}
+	kb-corner-cops-recent {
+		type	corner-fn
+		testfn	heat-update
+
+		icon	"ui.pipicon.cops-recent"
+		locdesc	"ui.pip.kb-corner-cops-recent"
+	}
+
+}
+
+
+moduleIntros [ ;; these are in order, last one is fallback
+	{
+		tags [ tag-biz-cider ]
+		locs {
+			unknownConsumes "convo.moduleintro.cider.unknown-consumes"
+			unknownProduces "convo.moduleintro.cider.unknown-produces"
+			knownConsumes "convo.moduleintro.cider.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-brick-wine ]
+		locs {
+			unknownConsumes "convo.moduleintro.brick-wine.unknown-consumes"
+			unknownProduces "convo.moduleintro.brick-wine.unknown-produces"
+			knownConsumes "convo.moduleintro.brick-wine.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-home-brew ]
+		locs {
+			unknownConsumes "convo.moduleintro.home-brew.unknown-consumes"
+			unknownProduces "convo.moduleintro.home-brew.unknown-produces"
+			knownConsumes "convo.moduleintro.home-brew.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-moonshine ]
+		locs {
+			unknownConsumes "convo.moduleintro.moonshine.unknown-consumes"
+			unknownProduces "convo.moduleintro.moonshine.unknown-produces"
+			knownConsumes "convo.moduleintro.moonshine.known-consumes"
+			knownProduces "convo.moduleintro.moonshine.known-produces"
+		}
+	}
+	{
+		tags [ tag-biz-apple-jack ]
+		locs {
+			unknownConsumes "convo.moduleintro.applejack.unknown-consumes"
+			unknownProduces "convo.moduleintro.applejack.unknown-produces"
+			knownConsumes "convo.moduleintro.applejack.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-fruit-wine ]
+		locs {
+			unknownConsumes "convo.moduleintro.fruit-wine.unknown-consumes"
+			unknownProduces "convo.moduleintro.fruit-wine.unknown-produces"
+			knownConsumes "convo.moduleintro.fruit-wine.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-corn-moonshine ]
+		locs {
+			unknownConsumes "convo.moduleintro.moonshine.unknown-consumes"
+			unknownProduces "convo.moduleintro.cornmoonshine.unknown-produces"
+			knownConsumes "convo.moduleintro.moonshine.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-apple-juice ]
+		locs {
+			unknownConsumes "convo.moduleintro.apple-juice.unknown-consumes"
+			unknownProduces "convo.moduleintro.apple-juice.unknown-produces"
+			knownConsumes "convo.moduleintro.no-illegal"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-neutral-alcohol ]
+		locs {
+			unknownConsumes "convo.moduleintro.neutral-alcohol.unknown-consumes"
+			unknownProduces "convo.moduleintro.neutral-alcohol.unknown-produces"
+			knownConsumes "convo.moduleintro.no-illegal"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-malt-syrup ]
+		locs {
+			unknownConsumes "convo.moduleintro.malt-syrup.unknown-consumes"
+			unknownProduces "convo.moduleintro.malt-syrup.unknown-produces"
+			knownConsumes "convo.moduleintro.no-illegal"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-grape-juice ]
+		locs {
+			unknownConsumes "convo.moduleintro.grape-juice.unknown-consumes"
+			unknownProduces "convo.moduleintro.grape-juice.unknown-produces"
+			knownConsumes "convo.moduleintro.no-illegal"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-bathtub-gin ]
+		locs {
+			unknownConsumes "convo.moduleintro.bathtub-gin.unknown-consumes"
+			unknownProduces "convo.moduleintro.bathtub-gin.unknown-produces"
+			knownConsumes "convo.moduleintro.bathtub-gin.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-sparkling-cider ]
+		locs {
+			unknownConsumes "convo.moduleintro.sparking-cider.unknown-consumes"
+			unknownProduces "convo.moduleintro.sparking-cider.unknown-produces"
+			knownConsumes "convo.moduleintro.sparking-cider.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-fake-beer ]
+		locs {
+			unknownConsumes "convo.moduleintro.fake-beer.unknown-consumes"
+			unknownProduces "convo.moduleintro.fake-beer.unknown-produces"
+			knownConsumes "convo.moduleintro.fake-beer.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-fake-wine ]
+		locs {
+			unknownConsumes "convo.moduleintro.fake-wine.unknown-consumes"
+			unknownProduces "convo.moduleintro.fake-wine.unknown-produces"
+			knownConsumes "convo.moduleintro.fake-wine.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-fruit-brandy ]
+		locs {
+			unknownConsumes "convo.moduleintro.fruit-brandy.unknown-consumes"
+			unknownProduces "convo.moduleintro.fruit-brandy.unknown-produces"
+			knownConsumes "convo.moduleintro.fruit-brandy.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-champagne ]
+		locs {
+			unknownConsumes "convo.moduleintro.champagne.unknown-consumes"
+			unknownProduces "convo.moduleintro.champagne.unknown-produces"
+			knownConsumes "convo.moduleintro.champagne.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-dark-rum ]
+		locs {
+			unknownConsumes "convo.moduleintro.dark-rum.unknown-consumes"
+			unknownProduces "convo.moduleintro.dark-rum.unknown-produces"
+			knownConsumes "convo.moduleintro.dark-rum.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-beer-keg ]
+		locs {
+			unknownConsumes "convo.moduleintro.beer-keg.unknown-consumes"
+			unknownProduces "convo.moduleintro.beer-keg.unknown-produces"
+			knownConsumes "convo.moduleintro.beer-keg.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-aged-whiskey ]
+		locs {
+			unknownConsumes "convo.moduleintro.aged-whiskey.unknown-consumes"
+			unknownProduces "convo.moduleintro.aged-whiskey.unknown-produces"
+			knownConsumes "convo.moduleintro.aged-whiskey.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-cordials ]
+		locs {
+			unknownConsumes "convo.moduleintro.cordials.unknown-consumes"
+			unknownProduces "convo.moduleintro.cordials.unknown-produces"
+			knownConsumes "convo.moduleintro.cordials.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+	{
+		tags [ tag-biz-gin ]
+		locs {
+			unknownConsumes "convo.moduleintro.gin.unknown-consumes"
+			unknownProduces "convo.moduleintro.gin.unknown-produces"
+			knownConsumes "convo.moduleintro.gin.known-consumes"
+			knownProduces "convo.moduleintro.no-illegal"
+		}
+	}
+
+
+	{
+		tags #null ;; fallback just in case
+		locs {
+			unknownConsumes "convo.moduleintro.unknown-consumes"
+			unknownProduces "convo.moduleintro.unknown-produces"
+			knownConsumes	"convo.moduleintro.known-consumes"
+			knownProduces	"convo.moduleintro.known-produces"
+		}
+	}
+]
+
+
+}

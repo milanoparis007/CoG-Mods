@@ -1052,6 +1052,20 @@ public class PactSideQuestEntry
 	public string DeclineTickerText = string.Empty;
 }
 [Serializable]
+public class WarStanceAiOfferState
+{
+	public int EnemyPid;
+
+	public string OfferType = string.Empty;
+
+	public string Posture = string.Empty;
+
+	public int CreatedDay;
+
+	public int ExpireDay;
+}
+
+[Serializable]
 public class ModSaveData
 {
 	public Dictionary<long, CrewModState> CrewStates = new Dictionary<long, CrewModState>();
@@ -1135,6 +1149,8 @@ public class ModSaveData
 	public Dictionary<string, RevengeEntry> IndependentRevengeQueue = new Dictionary<string, RevengeEntry>();
 
 	public Dictionary<string, int> GangWarMediationLastAttemptDayByPair = new Dictionary<string, int>();
+
+	public Dictionary<int, WarStanceAiOfferState> WarStanceAiOffers = new Dictionary<int, WarStanceAiOfferState>();
 
 	public Dictionary<int, int> IndependentLastAutoProtectDayByGang = new Dictionary<int, int>();
 
@@ -1289,8 +1305,6 @@ public partial class GameplayTweaksPlugin : BaseUnityPlugin
 
 	internal const int GangOpsDefaultsProfileVersionCurrent = 13;
 
-	internal const int TerritoryColorOwnerLossThreshold = 75;
-
 	private const int PactTerritoryTakeoverAggressionDefault = 225;
 
 	private const int PactFrontClosureAggressionDefault = 70;
@@ -1397,11 +1411,13 @@ public partial class GameplayTweaksPlugin : BaseUnityPlugin
 
 	internal const int SNITCH_COLLECTION_TURNS = 28;
 
-	private const int AI_SNITCH_INTAKE_GANGS_PER_FRAME = 4;
+	private const int AI_SNITCH_INTAKE_GANGS_PER_FRAME = 12;
 
 	private const int AI_SNITCH_INTAKE_BUDGET_MS = 14;
 
-	private const int AI_SNITCH_INTAKE_INITIAL_GRACE_FRAMES = 12;
+	private const int AI_SNITCH_INTAKE_INITIAL_GRACE_FRAMES = 4;
+
+	private const int AI_SNITCH_INTAKE_MOUSE_DEFERRAL_LIMIT = 2;
 
 	internal const int GROUPED_COP_KILL_SNITCH_FOLLOWUP_STAGGER_DAYS = 7;
 
@@ -4164,9 +4180,9 @@ public partial class GameplayTweaksPlugin : BaseUnityPlugin
 
 	internal const int PACTOPS_WARHEAT_DECAY_INTERVAL_DAYS = 7;
 
-internal static readonly string[] DEBUG_RELBUFF_IDS = new string[10] { "relbuff-cop-killed-precinct", "relbuff-cop-killed-citywide", "relbuff-politics-protection", "relbuff-pact-boss-killed", "relbuff-pact-leader-killed", "relbuff-gang-death", "relbuff-gang-injury", "relbuff-pact-support-cash", "relbuff-pact-support-intro", "relbuff-pact-trade" };
+internal static readonly string[] DEBUG_RELBUFF_IDS = new string[11] { "relbuff-cop-killed-precinct", "relbuff-cop-killed-citywide", "relbuff-politics-protection", "relbuff-pact-boss-killed", "relbuff-pact-leader-killed", "relbuff-gang-death", "relbuff-gang-injury", "relbuff-war-stance-violated", "relbuff-pact-support-cash", "relbuff-pact-support-intro", "relbuff-pact-trade" };
 
-internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
+internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[40]
 {
 	"relbuff-cop-killed-precinct",
 	"relbuff-cop-killed-citywide",
@@ -4175,6 +4191,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 	"relbuff-pact-leader-killed",
 	"relbuff-gang-death",
 	"relbuff-gang-injury",
+	"relbuff-war-stance-violated",
 	"relbuff-pact-joined",
 	"relbuff-pact-support-cash",
 	"relbuff-pact-support-intro",
@@ -4211,9 +4228,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 
 	private static readonly HashSet<string> _persistentGangRelationshipBuffIds = new HashSet<string>(PERSISTENT_GANG_RELBUFF_IDS, StringComparer.OrdinalIgnoreCase);
 
-	private static readonly string[] _retaliationRelationshipHostileBuffIds = new string[6]
+	private static readonly string[] _retaliationRelationshipHostileBuffIds = new string[7]
 	{
 		"relbuff-gang-injury",
+		"relbuff-war-stance-violated",
 		"relbuff-gangs-robbery1-table-on-finish",
 		"relbuff-gangs-robbery2-table-on-finish",
 		"relbuff-gangs-robbery1-buff",
@@ -4374,7 +4392,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		{
 			return IsConfigEnabled(EnableVehicleAuthorityDiagnostics) || _verboseVehicleAuthorityRuntimeVerificationLogs;
 		}
-		if (ScopeEquals(scope, "VehicleGroupCombat") || ScopeEquals(scope, "VehicleGroupCombat.AI"))
+		if (ScopeEquals(scope, "VehicleGroupCombat") || ScopeEquals(scope, "VehicleGroupCombat.AI") || ScopeEquals(scope, "WarStance"))
 		{
 			return IsConfigEnabled(EnableVehicleCombatDiagnostics);
 		}
@@ -4415,6 +4433,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		if (ScopeEquals(scope, "VehicleGroupCombat") || ScopeEquals(scope, "VehicleGroupCombat.AI"))
 		{
 			return IsCompactCombatEvent(eventTag, message);
+		}
+		if (ScopeEquals(scope, "WarStance"))
+		{
+			return EventStartsWith(eventTag, "[WarStance]");
 		}
 		if (ScopeEquals(scope, "NationalHeat") || ScopeEquals(scope, "CornerHeatRaid") || ScopeEquals(scope, "Jail"))
 		{
@@ -5788,6 +5810,20 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		private static bool _pactTradeVisible;
 
 		private static Transform _pactTradeContent;
+
+		private static GameObject _outfitSitDownPopup;
+
+		private static bool _outfitSitDownVisible;
+
+		private static Transform _outfitSitDownContent;
+
+		private static GameObject _outfitSitDownRow;
+
+		private static Button _btnOutfitSitDowns;
+
+		private static Text _txtOutfitSitDowns;
+
+		private static Text _outfitSitDownStatusText;
 
 		private static GameObject _pactSupportPopup;
 
@@ -7286,9 +7322,13 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			_gangMeetingRow = CreateHorizontalRow(transform, "GangMeetingRow");
 			_btnGangMeetings = CreateButton(_gangMeetingRow.transform, "GangMeetingsToggle", "Outings: Auto", OnToggleGangMeetings);
 			_txtGangMeetings = ((Component)_btnGangMeetings).GetComponentInChildren<Text>();
-			_btnGangMeetingTier = CreateButton(_gangMeetingRow.transform, "GangMeetingsTier", "Meeting Tier: Low ($25/crew)", OnCycleGangMeetingTierFromCrewTab);
+			_btnGangMeetingTier = CreateButton(_gangMeetingRow.transform, "GangMeetingsTier", "Meeting Tier: Low ($10/crew)", OnCycleGangMeetingTierFromCrewTab);
 			_txtGangMeetingTier = ((Component)_btnGangMeetingTier).GetComponentInChildren<Text>();
 			_gangMeetingRow.SetActive(false);
+			_outfitSitDownRow = CreateHorizontalRow(transform, "OutfitSitDownRow");
+			_btnOutfitSitDowns = CreateButton(_outfitSitDownRow.transform, "OutfitSitDowns", "Outfit Sit-Downs", OpenOutfitSitDownPopup);
+			_txtOutfitSitDowns = ((Component)_btnOutfitSitDowns).GetComponentInChildren<Text>();
+			_outfitSitDownRow.SetActive(false);
 			GameObject obj3b = CreateHorizontalRow(transform, "RobberyResponseRow");
 			_btnRobberyResponseMode = CreateButton(obj3b.transform, "RobberyResponseMode", "Robbery: Prompt", OnToggleRobberyResponseMode);
 			_txtRobberyResponseMode = ((Component)_btnRobberyResponseMode).GetComponentInChildren<Text>();
@@ -7478,7 +7518,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			component.anchorMin = new Vector2(0.5f, 0.5f);
 			component.anchorMax = new Vector2(0.5f, 0.5f);
 			component.pivot = new Vector2(0.5f, 0.5f);
-			component.sizeDelta = ScalePopupSize(420f, 480f);
+			component.sizeDelta = ScalePopupSize(560f, 560f);
 			component.anchoredPosition = new Vector2(200f, 0f);
 			ApplyPopupPanelTheme(_familyHirePopup, new Color(0.11f, 0.12f, 0.14f, 0.98f));
 			VerticalLayoutGroup component2 = _familyHirePopup.GetComponent<VerticalLayoutGroup>();
@@ -7488,38 +7528,40 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			((HorizontalOrVerticalLayoutGroup)component2).childForceExpandHeight = false;
 			GameObject obj = CreateHorizontalRow(_familyHirePopup.transform, "FH_Header");
 			obj.GetComponent<LayoutElement>().minHeight = 30f;
-			CreateLabel(obj.transform, "FH_Title", "Hire Family Member", 14, (FontStyle)1);
+			CreateLabel(obj.transform, "FH_Title", "Hire Family Member", 16, (FontStyle)1);
 			ApplyCloseButtonLayout(((Component)CreateButton(obj.transform, "FH_Close", "X", CloseFamilyHirePopup)).GetComponent<LayoutElement>());
 			GameObject obj2 = CreateHorizontalRow(_familyHirePopup.transform, "FH_FilterRow1");
-			obj2.GetComponent<LayoutElement>().minHeight = 28f;
-			((Component)CreateButton(obj2.transform, "FH_EthFilter", "Ethnicity: All", CycleEthnicityFilter)).GetComponentInChildren<Text>().fontSize = 10;
+			obj2.GetComponent<LayoutElement>().minHeight = 34f;
+			Button ethnicityButton = CreateButton(obj2.transform, "FH_EthFilter", "Ethnicity: All", CycleEthnicityFilter);
+			MakeButtonTextCrisp(ethnicityButton, 12);
 			Button objTrait = CreateButton(obj2.transform, "FH_TraitDropdownBtn", "Trait: All ▼", ToggleTraitDropdown);
 			_txtTraitDropdown = ((Component)objTrait).GetComponentInChildren<Text>();
-			_txtTraitDropdown.fontSize = 10;
+			MakeButtonTextCrisp(objTrait, 12);
 			CreateTraitDropdownPanel();
 			GameObject obj3 = CreateHorizontalRow(_familyHirePopup.transform, "FH_FilterRow2");
-			obj3.GetComponent<LayoutElement>().minHeight = 28f;
+			obj3.GetComponent<LayoutElement>().minHeight = 34f;
 			((Component)CreateButton(obj3.transform, "FH_AgeDown", "Min Age -", delegate
 			{
 				_filterMinAge = Math.Max(0, _filterMinAge - 5);
 				RefreshFamilyHireList();
-			})).GetComponentInChildren<Text>().fontSize = 10;
+			})).GetComponentInChildren<Text>().fontSize = 12;
 			((Component)CreateButton(obj3.transform, "FH_AgeUp", "Min Age +", delegate
 			{
 				_filterMinAge = Math.Min(90, _filterMinAge + 5);
 				RefreshFamilyHireList();
-			})).GetComponentInChildren<Text>().fontSize = 10;
+			})).GetComponentInChildren<Text>().fontSize = 12;
 			((Component)CreateButton(obj3.transform, "FH_MaxDown", "Max Age -", delegate
 			{
 				_filterMaxAge = Math.Max(10, _filterMaxAge - 5);
 				RefreshFamilyHireList();
-			})).GetComponentInChildren<Text>().fontSize = 10;
+			})).GetComponentInChildren<Text>().fontSize = 12;
 			((Component)CreateButton(obj3.transform, "FH_MaxUp", "Max Age +", delegate
 			{
 				_filterMaxAge = Math.Min(100, _filterMaxAge + 5);
 				RefreshFamilyHireList();
-			})).GetComponentInChildren<Text>().fontSize = 10;
-			_familyHireStatusText = CreateLabel(_familyHirePopup.transform, "FH_Status", "Showing all relatives", 10, (FontStyle)2);
+			})).GetComponentInChildren<Text>().fontSize = 12;
+			_familyHireStatusText = CreateLabel(_familyHirePopup.transform, "FH_Status", "Showing selected crew relatives", 12, (FontStyle)2);
+			ConfigureWrappedPopupBodyText(_familyHireStatusText, 42);
 			GameObject val = new GameObject("FH_ScrollArea", new Type[4]
 			{
 				typeof(RectTransform),
@@ -7529,7 +7571,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			});
 			val.transform.SetParent(_familyHirePopup.transform, false);
 			LayoutElement component3 = val.GetComponent<LayoutElement>();
-			component3.minHeight = 300f;
+			component3.minHeight = 360f;
 			component3.flexibleHeight = 1f;
 			((Graphic)val.GetComponent<Image>()).color = new Color(0.08f, 0.08f, 0.06f, 0.9f);
 			GameObject val2 = new GameObject("Viewport", new Type[3]
@@ -7591,8 +7633,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			});
 			_traitDropdownPanel.transform.SetParent(_familyHirePopup.transform, false);
 			((Graphic)_traitDropdownPanel.GetComponent<Image>()).color = new Color(0.2f, 0.22f, 0.24f, 0.98f);
-			_traitDropdownPanel.GetComponent<LayoutElement>().minHeight = 130f;
-			_traitDropdownPanel.GetComponent<LayoutElement>().preferredHeight = 130f;
+			_traitDropdownPanel.GetComponent<LayoutElement>().minHeight = 160f;
+			_traitDropdownPanel.GetComponent<LayoutElement>().preferredHeight = 160f;
 			VerticalLayoutGroup panelLayout = _traitDropdownPanel.GetComponent<VerticalLayoutGroup>();
 			((LayoutGroup)panelLayout).padding = new RectOffset(4, 4, 4, 4);
 			((HorizontalOrVerticalLayoutGroup)panelLayout).spacing = 2f;
@@ -7606,8 +7648,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 				typeof(LayoutElement)
 			});
 			scroll.transform.SetParent(_traitDropdownPanel.transform, false);
-			scroll.GetComponent<LayoutElement>().minHeight = 118f;
-			scroll.GetComponent<LayoutElement>().preferredHeight = 118f;
+			scroll.GetComponent<LayoutElement>().minHeight = 148f;
+			scroll.GetComponent<LayoutElement>().preferredHeight = 148f;
 			((Graphic)scroll.GetComponent<Image>()).color = new Color(0.19f, 0.2f, 0.23f, 0.75f);
 			GameObject viewport = new GameObject("Viewport", new Type[3]
 			{
@@ -7650,8 +7692,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 				{
 					SetTraitFilterByIndex(capturedIndex, closeDropdown: true);
 				});
-				((Component)traitBtn).GetComponent<LayoutElement>().minHeight = 20f;
-				((Component)traitBtn).GetComponentInChildren<Text>().fontSize = 9;
+				((Component)traitBtn).GetComponent<LayoutElement>().minHeight = 24f;
+				MakeButtonTextCrisp(traitBtn, 11);
 			}
 			ScrollRect scrollRect = scroll.GetComponent<ScrollRect>();
 			scrollRect.viewport = viewportRect;
@@ -7695,6 +7737,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 				return true;
 			}
 			if ((UnityEngine.Object)(object)_pactTradePopup != (UnityEngine.Object)null && _pactTradePopup.activeSelf)
+			{
+				return true;
+			}
+			if ((UnityEngine.Object)(object)_outfitSitDownPopup != (UnityEngine.Object)null && _outfitSitDownPopup.activeSelf)
 			{
 				return true;
 			}
@@ -7749,6 +7795,15 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 				}
 				flag = true;
 			}
+			if (_outfitSitDownVisible || ((UnityEngine.Object)(object)_outfitSitDownPopup != (UnityEngine.Object)null && _outfitSitDownPopup.activeSelf))
+			{
+				_outfitSitDownVisible = false;
+				if ((UnityEngine.Object)(object)_outfitSitDownPopup != (UnityEngine.Object)null)
+				{
+					_outfitSitDownPopup.SetActive(false);
+				}
+				flag = true;
+			}
 			if (_grapevineVisible || ((UnityEngine.Object)(object)_grapevinePopup != (UnityEngine.Object)null && _grapevinePopup.activeSelf))
 			{
 				_grapevineVisible = false;
@@ -7787,6 +7842,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			_gangPactsVisible = false;
 			_myPactVisible = false;
 			_pactTradeVisible = false;
+			_outfitSitDownVisible = false;
 			_safeboxVisible = false;
 			_grapevineVisible = false;
 			if ((UnityEngine.Object)(object)_handlerPopup != (UnityEngine.Object)null) _handlerPopup.SetActive(false);
@@ -7795,6 +7851,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			if ((UnityEngine.Object)(object)_gangPactsPopup != (UnityEngine.Object)null) _gangPactsPopup.SetActive(false);
 			if ((UnityEngine.Object)(object)_myPactPopup != (UnityEngine.Object)null) _myPactPopup.SetActive(false);
 			if ((UnityEngine.Object)(object)_pactTradePopup != (UnityEngine.Object)null) _pactTradePopup.SetActive(false);
+			if ((UnityEngine.Object)(object)_outfitSitDownPopup != (UnityEngine.Object)null) _outfitSitDownPopup.SetActive(false);
 			if ((UnityEngine.Object)(object)_pactSupportPopup != (UnityEngine.Object)null) _pactSupportPopup.SetActive(false);
 			if ((UnityEngine.Object)(object)_crewPepTalkPopup != (UnityEngine.Object)null) _crewPepTalkPopup.SetActive(false);
 			if ((UnityEngine.Object)(object)_safeboxPopup != (UnityEngine.Object)null) _safeboxPopup.SetActive(false);
@@ -7816,6 +7873,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 				DestroyUIObject(ref _gangPactsPopup);
 				DestroyUIObject(ref _myPactPopup);
 				DestroyUIObject(ref _pactTradePopup);
+				DestroyUIObject(ref _outfitSitDownPopup);
 				DestroyUIObject(ref _pactSupportPopup);
 				DestroyUIObject(ref _crewPepTalkPopup);
 				DestroyUIObject(ref _safeboxPopup);
@@ -7849,6 +7907,11 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 				_txtMakeDisappear = null;
 				_btnGangMeetingTier = null;
 				_txtGangMeetingTier = null;
+				_outfitSitDownContent = null;
+				_outfitSitDownRow = null;
+				_btnOutfitSitDowns = null;
+				_txtOutfitSitDowns = null;
+				_outfitSitDownStatusText = null;
 				_navSuppressionLogged = false;
 			}
 		}
@@ -8666,6 +8729,14 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			CrewAssignment val = (CrewAssignment)((humanCrew != null) ? humanCrew.GetCrewForIndex(0) : default(CrewAssignment));
 			Entity val2 = (val.IsValid ? val.GetPeep() : null);
 			bool flag4 = val2 != null && val2.Id == _selectedPeep.Id;
+			if (!flag4 && (_outfitSitDownVisible || ((UnityEngine.Object)(object)_outfitSitDownPopup != (UnityEngine.Object)null && _outfitSitDownPopup.activeSelf)))
+			{
+				_outfitSitDownVisible = false;
+				if ((UnityEngine.Object)(object)_outfitSitDownPopup != (UnityEngine.Object)null)
+				{
+					_outfitSitDownPopup.SetActive(false);
+				}
+			}
 			if ((UnityEngine.Object)(object)_btnOddJob != (UnityEngine.Object)null && (UnityEngine.Object)(object)_txtOddJob != (UnityEngine.Object)null)
 			{
 				bool oddJobsEnabled = EnableCrewOddJobs?.Value ?? true;
@@ -8732,6 +8803,21 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			if ((UnityEngine.Object)(object)_txtGangMeetingTier != (UnityEngine.Object)null)
 			{
 				_txtGangMeetingTier.text = GetGangMeetingTierUiText();
+			}
+			if ((UnityEngine.Object)(object)_outfitSitDownRow != (UnityEngine.Object)null)
+			{
+				_outfitSitDownRow.SetActive(flag4 && IsWarWeaponStanceEnabled());
+			}
+			if ((UnityEngine.Object)(object)_btnOutfitSitDowns != (UnityEngine.Object)null)
+			{
+				((Selectable)_btnOutfitSitDowns).interactable = flag4 && IsWarWeaponStanceEnabled();
+			}
+			if ((UnityEngine.Object)(object)_txtOutfitSitDowns != (UnityEngine.Object)null)
+			{
+				int pendingOfferCount = GetWarStancePendingAiOfferCount();
+				_txtOutfitSitDowns.text = pendingOfferCount > 0
+					? $"Outfit Sit-Downs ({pendingOfferCount})"
+					: "Outfit Sit-Downs";
 			}
 			if ((UnityEngine.Object)(object)_btnRobberyResponseMode != (UnityEngine.Object)null)
 			{
@@ -10940,6 +11026,350 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			component7.movementType = (ScrollRect.MovementType)2;
 			RethemeMenuHierarchy(_pactTradePopup);
 			_pactTradePopup.SetActive(false);
+		}
+
+		private static void CreateOutfitSitDownPopup()
+		{
+			Transform parent = ResolvePopupParentTransform();
+			if ((UnityEngine.Object)(object)parent == (UnityEngine.Object)null)
+			{
+				return;
+			}
+			_outfitSitDownPopup = new GameObject("OutfitSitDownPopup", new Type[5]
+			{
+				typeof(RectTransform),
+				typeof(Image),
+				typeof(VerticalLayoutGroup),
+				typeof(Canvas),
+				typeof(GraphicRaycaster)
+			});
+			_outfitSitDownPopup.transform.SetParent(parent, false);
+			Canvas popupCanvas = _outfitSitDownPopup.GetComponent<Canvas>();
+			popupCanvas.overrideSorting = true;
+			popupCanvas.sortingOrder = 999;
+			RectTransform rect = _outfitSitDownPopup.GetComponent<RectTransform>();
+			rect.anchorMin = new Vector2(0.5f, 0.5f);
+			rect.anchorMax = new Vector2(0.5f, 0.5f);
+			rect.pivot = new Vector2(0.5f, 0.5f);
+			rect.sizeDelta = ScalePopupSize(700f, 580f);
+			rect.anchoredPosition = new Vector2(260f, 0f);
+			ApplyPopupPanelTheme(_outfitSitDownPopup, new Color(0.11f, 0.12f, 0.14f, 0.98f));
+			VerticalLayoutGroup layout = _outfitSitDownPopup.GetComponent<VerticalLayoutGroup>();
+			((LayoutGroup)layout).padding = new RectOffset(10, 10, 8, 8);
+			((HorizontalOrVerticalLayoutGroup)layout).spacing = 4f;
+			((HorizontalOrVerticalLayoutGroup)layout).childForceExpandWidth = true;
+			((HorizontalOrVerticalLayoutGroup)layout).childForceExpandHeight = false;
+			GameObject header = CreateHorizontalRow(_outfitSitDownPopup.transform, "OSD_Header");
+			ConfigureCompactHeaderRow(header, 22f);
+			Text title = CreateLabel(header.transform, "OSD_Title", "Outfit Sit-Downs", 15, (FontStyle)1);
+			((Graphic)title).color = new Color(0.85f, 0.76f, 0.48f);
+			((Component)title).GetComponent<LayoutElement>().flexibleWidth = 1f;
+			ApplyCloseButtonLayout(((Component)CreateButton(header.transform, "OSD_Close", "X", delegate
+			{
+				_outfitSitDownVisible = false;
+				if ((UnityEngine.Object)(object)_outfitSitDownPopup != (UnityEngine.Object)null)
+				{
+					_outfitSitDownPopup.SetActive(false);
+				}
+			})).GetComponent<LayoutElement>(), 24f, 18f);
+			Text notice = CreateLabel(_outfitSitDownPopup.transform, "OSD_Notice", "Talk, Leisure, and player-funded Liquor are active.", 12, (FontStyle)2);
+			((Graphic)notice).color = new Color(0.68f, 0.7f, 0.74f);
+			ConfigureWrappedPopupBodyText(notice, 26);
+			_outfitSitDownStatusText = CreateLabel(_outfitSitDownPopup.transform, "OSD_Status", "Talk <50 heat | Leisure $1,000 <75 | Liquor $3,000 <100", 12, (FontStyle)0);
+			((Graphic)_outfitSitDownStatusText).color = new Color(0.76f, 0.82f, 0.7f);
+			ConfigureWrappedPopupBodyText(_outfitSitDownStatusText, 30);
+			GameObject scrollArea = new GameObject("OSD_ScrollArea", new Type[4]
+			{
+				typeof(RectTransform),
+				typeof(Image),
+				typeof(ScrollRect),
+				typeof(LayoutElement)
+			});
+			scrollArea.transform.SetParent(_outfitSitDownPopup.transform, false);
+			LayoutElement scrollLayout = scrollArea.GetComponent<LayoutElement>();
+			scrollLayout.flexibleHeight = 1f;
+			scrollLayout.minHeight = 390f;
+			((Graphic)scrollArea.GetComponent<Image>()).color = new Color(0.08f, 0.09f, 0.1f, 0.9f);
+			GameObject viewport = new GameObject("Viewport", new Type[3]
+			{
+				typeof(RectTransform),
+				typeof(Image),
+				typeof(Mask)
+			});
+			viewport.transform.SetParent(scrollArea.transform, false);
+			RectTransform viewportRect = viewport.GetComponent<RectTransform>();
+			viewportRect.anchorMin = Vector2.zero;
+			viewportRect.anchorMax = Vector2.one;
+			viewportRect.offsetMin = new Vector2(2f, 2f);
+			viewportRect.offsetMax = new Vector2(-2f, -2f);
+			((Graphic)viewport.GetComponent<Image>()).color = new Color(1f, 1f, 1f, 0.01f);
+			viewport.GetComponent<Mask>().showMaskGraphic = false;
+			GameObject content = new GameObject("Content", new Type[3]
+			{
+				typeof(RectTransform),
+				typeof(VerticalLayoutGroup),
+				typeof(ContentSizeFitter)
+			});
+			content.transform.SetParent(viewport.transform, false);
+			RectTransform contentRect = content.GetComponent<RectTransform>();
+			contentRect.anchorMin = new Vector2(0f, 1f);
+			contentRect.anchorMax = new Vector2(1f, 1f);
+			contentRect.pivot = new Vector2(0.5f, 1f);
+			contentRect.sizeDelta = Vector2.zero;
+			content.GetComponent<ContentSizeFitter>().verticalFit = (ContentSizeFitter.FitMode)2;
+			VerticalLayoutGroup contentLayout = content.GetComponent<VerticalLayoutGroup>();
+			((HorizontalOrVerticalLayoutGroup)contentLayout).spacing = 4f;
+			((HorizontalOrVerticalLayoutGroup)contentLayout).childForceExpandWidth = true;
+			((HorizontalOrVerticalLayoutGroup)contentLayout).childForceExpandHeight = false;
+			((LayoutGroup)contentLayout).padding = new RectOffset(4, 4, 4, 4);
+			_outfitSitDownContent = content.transform;
+			ScrollRect scroll = scrollArea.GetComponent<ScrollRect>();
+			scroll.viewport = viewportRect;
+			scroll.content = contentRect;
+			scroll.horizontal = false;
+			scroll.vertical = true;
+			scroll.scrollSensitivity = 30f;
+			scroll.movementType = (ScrollRect.MovementType)2;
+			RethemeMenuHierarchy(_outfitSitDownPopup);
+			_outfitSitDownPopup.SetActive(false);
+		}
+
+		private static void OpenOutfitSitDownPopup()
+		{
+			if (!IsWarWeaponStanceEnabled())
+			{
+				return;
+			}
+			if ((UnityEngine.Object)(object)_outfitSitDownPopup == (UnityEngine.Object)null)
+			{
+				CreateOutfitSitDownPopup();
+			}
+			if ((UnityEngine.Object)(object)_outfitSitDownPopup == (UnityEngine.Object)null)
+			{
+				return;
+			}
+			_outfitSitDownVisible = true;
+			_outfitSitDownPopup.SetActive(true);
+			if ((UnityEngine.Object)(object)_outfitSitDownStatusText != (UnityEngine.Object)null)
+			{
+				_outfitSitDownStatusText.text = "Proposals may be declined. Declined paid deals charge no cash.";
+			}
+			PositionOutfitSitDownBesideCrewRelations();
+			_outfitSitDownPopup.transform.SetAsLastSibling();
+			RefreshOutfitSitDownPopup();
+		}
+
+		private static void PositionOutfitSitDownBesideCrewRelations()
+		{
+			if ((UnityEngine.Object)(object)_outfitSitDownPopup == (UnityEngine.Object)null)
+			{
+				return;
+			}
+			RectTransform sitDownRect = _outfitSitDownPopup.GetComponent<RectTransform>();
+			RectTransform parentRect = _outfitSitDownPopup.transform.parent as RectTransform;
+			RectTransform crewRect = (UnityEngine.Object)(object)_handlerPopup != (UnityEngine.Object)null
+				? _handlerPopup.GetComponent<RectTransform>()
+				: null;
+			if ((UnityEngine.Object)(object)sitDownRect == (UnityEngine.Object)null
+				|| (UnityEngine.Object)(object)parentRect == (UnityEngine.Object)null
+				|| (UnityEngine.Object)(object)crewRect == (UnityEngine.Object)null)
+			{
+				ForceDockPopupFarLeft(_outfitSitDownPopup);
+				return;
+			}
+			Vector3[] crewCorners = new Vector3[4];
+			crewRect.GetWorldCorners(crewCorners);
+			float crewLeft = float.MaxValue;
+			float crewRight = float.MinValue;
+			float crewCenterY = 0f;
+			for (int i = 0; i < crewCorners.Length; i++)
+			{
+				Vector3 localCorner = parentRect.InverseTransformPoint(crewCorners[i]);
+				crewLeft = Mathf.Min(crewLeft, localCorner.x);
+				crewRight = Mathf.Max(crewRight, localCorner.x);
+				crewCenterY += localCorner.y;
+			}
+			crewCenterY /= crewCorners.Length;
+			float parentScaleX = Mathf.Max(0.001f, Mathf.Abs(parentRect.lossyScale.x));
+			float sitDownWidth = sitDownRect.rect.width * Mathf.Abs(sitDownRect.lossyScale.x) / parentScaleX;
+			const float margin = 12f;
+			float rightCandidate = crewRight + margin;
+			float leftCandidate = crewLeft - margin - sitDownWidth;
+			float desiredLeft;
+			if (rightCandidate + sitDownWidth <= parentRect.rect.xMax - margin)
+			{
+				desiredLeft = rightCandidate;
+			}
+			else if (leftCandidate >= parentRect.rect.xMin + margin)
+			{
+				desiredLeft = leftCandidate;
+			}
+			else
+			{
+				desiredLeft = Mathf.Clamp(rightCandidate, parentRect.rect.xMin + margin, parentRect.rect.xMax - margin - sitDownWidth);
+			}
+			sitDownRect.anchorMin = new Vector2(0.5f, 0.5f);
+			sitDownRect.anchorMax = new Vector2(0.5f, 0.5f);
+			sitDownRect.pivot = new Vector2(0f, 0.5f);
+			sitDownRect.localPosition = new Vector3(desiredLeft, crewCenterY, sitDownRect.localPosition.z);
+			VerificationLog("PopupDock", $"popup=OutfitSitDownPopup besideCrew=true crewLeft={crewLeft:0} crewRight={crewRight:0} x={desiredLeft:0} width={sitDownWidth:0}");
+		}
+
+		private static void RefreshOutfitSitDownPopup()
+		{
+			if ((UnityEngine.Object)(object)_outfitSitDownContent == (UnityEngine.Object)null)
+			{
+				return;
+			}
+			for (int i = _outfitSitDownContent.childCount - 1; i >= 0; i--)
+			{
+				UnityEngine.Object.Destroy((UnityEngine.Object)(object)((Component)_outfitSitDownContent.GetChild(i)).gameObject);
+			}
+			List<WarStanceSitDownDiagnosticEntry> entries = BuildWarStanceSitDownDiagnosticEntries();
+			PlayerInfo human = G.GetHumanPlayer();
+			VerificationLog("WarStance", $"[WarStance][SitDownOpened] playerPid={human?.PID.id ?? -1} eligibleOutfits={entries.Count} actionsEnabled=talk-leisure-liquor");
+			if (entries.Count == 0)
+			{
+				Text empty = CreateLabel(_outfitSitDownContent, "OSD_Empty", "No hostile outfits currently qualify for a sit-down.", 11, (FontStyle)2);
+				((Graphic)empty).color = new Color(0.7f, 0.72f, 0.76f);
+				return;
+			}
+			foreach (WarStanceSitDownDiagnosticEntry entry in entries)
+			{
+				GameObject row = new GameObject("OSD_Outfit_" + entry.GangId, new Type[4]
+				{
+					typeof(RectTransform),
+					typeof(Image),
+					typeof(VerticalLayoutGroup),
+					typeof(LayoutElement)
+				});
+				row.transform.SetParent(_outfitSitDownContent, false);
+				row.GetComponent<LayoutElement>().minHeight = 204f;
+				((Graphic)row.GetComponent<Image>()).color = new Color(0.14f, 0.13f, 0.11f, 0.94f);
+				VerticalLayoutGroup rowLayout = row.GetComponent<VerticalLayoutGroup>();
+				((LayoutGroup)rowLayout).padding = new RectOffset(9, 9, 7, 7);
+				((HorizontalOrVerticalLayoutGroup)rowLayout).spacing = 3f;
+				Text name = CreateLabel(row.transform, "Name", entry.GangName + " | " + entry.Posture, 13, (FontStyle)1);
+				((Graphic)name).color = new Color(0.94f, 0.86f, 0.62f);
+				ConfigureWrappedPopupBodyText(name, 30);
+				if (entry.HasPendingAiOffer)
+				{
+					string payer = entry.AiPaysForOffer ? " | Outfit pays $1,000" : string.Empty;
+					Text offer = CreateLabel(row.transform, "AIOffer", $"Offer: {entry.AiOfferPosture} {entry.AiOfferType}{payer} | {entry.AiOfferRemainingDays}d left", 12, (FontStyle)1);
+					((Graphic)offer).color = new Color(0.55f, 0.86f, 0.72f);
+					ConfigureWrappedPopupBodyText(offer, 30);
+					VerificationLog("WarStance", $"[WarStance][AIOfferDisplayed] gang={entry.GangId} type={entry.AiOfferType} posture={entry.AiOfferPosture} remainingDays={entry.AiOfferRemainingDays} aiPays={entry.AiPaysForOffer} actionsEnabled=false");
+				}
+				Text status = CreateLabel(row.transform, "Status", $"Heat {entry.EffectiveHeat:0} ({entry.HumanToGangHeat:0}/{entry.GangToHumanHeat:0}) | {entry.Stance} | Power {entry.PlayerPower}:{entry.EnemyPower}", 12, (FontStyle)0);
+				((Graphic)status).color = new Color(0.82f, 0.84f, 0.88f);
+				ConfigureWrappedPopupBodyText(status, 28);
+				Text preview = CreateLabel(row.transform, "Preview", $"Cooling: Talk -> {entry.TalkResultHeat:0} {entry.TalkResultStance} | Leisure -> {entry.LeisureResultHeat:0} {entry.LeisureResultStance} | Liquor -> {entry.LiquorResultHeat:0} {entry.LiquorResultStance}", 11, (FontStyle)0);
+				((Graphic)preview).color = new Color(0.7f, 0.82f, 0.72f);
+				ConfigureWrappedPopupBodyText(preview, 34);
+				Text disabled = CreateLabel(row.transform, "Disabled", "Options: Talk | Leisure $1,000 | Liquor $3,000", 11, (FontStyle)2);
+				((Graphic)disabled).color = new Color(0.62f, 0.64f, 0.68f);
+				ConfigureWrappedPopupBodyText(disabled, 26);
+				if (entry.HasPendingAiOffer)
+				{
+					int offeredGangId = entry.GangId;
+					Button acceptOfferButton = CreateButton(row.transform, "OSD_AcceptOffer_" + entry.GangId, "Accept " + entry.AiOfferType + " Offer", null);
+					((Component)acceptOfferButton).GetComponent<LayoutElement>().preferredHeight = 28f;
+					MakeButtonTextCrisp(acceptOfferButton, 12);
+					((UnityEvent)acceptOfferButton.onClick).AddListener((UnityAction)delegate
+					{
+						TryAcceptWarStanceAiOffer(offeredGangId, out string result);
+						if ((UnityEngine.Object)(object)_outfitSitDownStatusText != (UnityEngine.Object)null)
+						{
+							_outfitSitDownStatusText.text = result;
+						}
+						RefreshOutfitSitDownPopup();
+						RefreshHandlerUI();
+					});
+					Button declineOfferButton = CreateButton(row.transform, "OSD_DeclineOffer_" + entry.GangId, "Decline Offer", null);
+					((Component)declineOfferButton).GetComponent<LayoutElement>().preferredHeight = 28f;
+					MakeButtonTextCrisp(declineOfferButton, 12);
+					((UnityEvent)declineOfferButton.onClick).AddListener((UnityAction)delegate
+					{
+						TryDeclineWarStanceAiOffer(offeredGangId, out string result);
+						if ((UnityEngine.Object)(object)_outfitSitDownStatusText != (UnityEngine.Object)null)
+						{
+							_outfitSitDownStatusText.text = result;
+						}
+						RefreshOutfitSitDownPopup();
+						RefreshHandlerUI();
+					});
+					VerificationLog("WarStance", $"[WarStance][CoolingOption] gang={entry.GangId} effectiveHeat={entry.EffectiveHeat:0.0} stance={entry.Stance.Replace(" ", string.Empty)} pendingAiOffer={entry.AiOfferType} posture={entry.AiOfferPosture} offerRemainingDays={entry.AiOfferRemainingDays} actionsEnabled=accept-decline-offer playerProposalsVisible=false");
+					continue;
+				}
+				string talkLabel = entry.CooldownRemainingDays > 0
+					? $"Talk ({entry.CooldownRemainingDays}d)"
+					: (entry.EffectiveHeat >= 50f
+						? "Talk (Heat too high)"
+						: (entry.EffectiveHeat <= 0.1f
+							? "Talk (No heat)"
+							: (!entry.BossCanPayConversationAction ? "Talk (Boss needs action)" : "Propose Talk")));
+				Button talkButton = CreateButton(row.transform, "OSD_Talk_" + entry.GangId, talkLabel, null);
+				((Component)talkButton).GetComponent<LayoutElement>().preferredHeight = 28f;
+				MakeButtonTextCrisp(talkButton, 12);
+				((Selectable)talkButton).interactable = entry.TalkAvailable;
+				int capturedGangId = entry.GangId;
+				((UnityEvent)talkButton.onClick).AddListener((UnityAction)delegate
+				{
+					TryResolveWarStanceTalkProposal(capturedGangId, out string result);
+					if ((UnityEngine.Object)(object)_outfitSitDownStatusText != (UnityEngine.Object)null)
+					{
+						_outfitSitDownStatusText.text = result;
+					}
+					RefreshOutfitSitDownPopup();
+				});
+				string leisureLabel = entry.CooldownRemainingDays > 0
+					? $"Leisure ({entry.CooldownRemainingDays}d)"
+					: (entry.EffectiveHeat >= 75f
+						? "Leisure (Heat too high)"
+						: (entry.EffectiveHeat <= 0.1f
+							? "Leisure (No heat)"
+							: (!entry.BossCanPayConversationAction
+								? "Leisure (Boss needs action)"
+								: (!entry.PlayerCanPayLeisure ? "Leisure (Need $1,000)" : "Propose Leisure ($1,000)"))));
+				Button leisureButton = CreateButton(row.transform, "OSD_Leisure_" + entry.GangId, leisureLabel, null);
+				((Component)leisureButton).GetComponent<LayoutElement>().preferredHeight = 28f;
+				MakeButtonTextCrisp(leisureButton, 12);
+				((Selectable)leisureButton).interactable = entry.LeisureAvailable;
+				((UnityEvent)leisureButton.onClick).AddListener((UnityAction)delegate
+				{
+					TryResolveWarStanceLeisureProposal(capturedGangId, out string result);
+					if ((UnityEngine.Object)(object)_outfitSitDownStatusText != (UnityEngine.Object)null)
+					{
+						_outfitSitDownStatusText.text = result;
+					}
+					RefreshOutfitSitDownPopup();
+				});
+				string liquorLabel = entry.CooldownRemainingDays > 0
+					? $"Liquor ({entry.CooldownRemainingDays}d)"
+					: (entry.EffectiveHeat >= 100f
+						? "Liquor (Heat too high)"
+						: (entry.EffectiveHeat <= 0.1f
+							? "Liquor (No heat)"
+							: (!entry.BossCanPayConversationAction
+								? "Liquor (Boss needs action)"
+								: (!entry.PlayerCanPayLiquor
+									? "Liquor (Need $3,000)"
+									: (!entry.PlayerCanReceiveLiquor ? "Liquor (No safehouse)" : "Propose Liquor ($3,000)")))));
+				Button liquorButton = CreateButton(row.transform, "OSD_Liquor_" + entry.GangId, liquorLabel, null);
+				((Component)liquorButton).GetComponent<LayoutElement>().preferredHeight = 28f;
+				MakeButtonTextCrisp(liquorButton, 12);
+				((Selectable)liquorButton).interactable = entry.LiquorAvailable;
+				((UnityEvent)liquorButton.onClick).AddListener((UnityAction)delegate
+				{
+					TryResolveWarStanceLiquorProposal(capturedGangId, out string result);
+					if ((UnityEngine.Object)(object)_outfitSitDownStatusText != (UnityEngine.Object)null)
+					{
+						_outfitSitDownStatusText.text = result;
+					}
+					RefreshOutfitSitDownPopup();
+				});
+				VerificationLog("WarStance", $"[WarStance][CoolingOption] gang={entry.GangId} heatHumanToGang={entry.HumanToGangHeat:0.0} heatGangToHuman={entry.GangToHumanHeat:0.0} effectiveHeat={entry.EffectiveHeat:0.0} stance={entry.Stance.Replace(" ", string.Empty)} directAggro={entry.DirectAggro} playerPower={entry.PlayerPower} enemyPower={entry.EnemyPower} posture={entry.Posture} roll={entry.DeterministicRoll} talkScore={entry.TalkAcceptance} talkResult={entry.TalkResultHeat:0.0}/{entry.TalkResultStance.Replace(" ", string.Empty)} talkAvailable={entry.TalkAvailable} bossCanPayAction={entry.BossCanPayConversationAction} cooldownRemaining={entry.CooldownRemainingDays} leisureScore={entry.LeisureAcceptance} leisureResult={entry.LeisureResultHeat:0.0}/{entry.LeisureResultStance.Replace(" ", string.Empty)} leisureAvailable={entry.LeisureAvailable} playerCanPayLeisure={entry.PlayerCanPayLeisure} liquorScore={entry.LiquorAcceptance} liquorResult={entry.LiquorResultHeat:0.0}/{entry.LiquorResultStance.Replace(" ", string.Empty)} liquorAvailable={entry.LiquorAvailable} playerCanPayLiquor={entry.PlayerCanPayLiquor} playerCanReceiveLiquor={entry.PlayerCanReceiveLiquor} actionsEnabled=talk-leisure-liquor");
+			}
 		}
 
 		private static List<PactTradeTargetEntry> BuildPactTradeTargets(AlliancePact pact)
@@ -14190,6 +14620,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 					list.Add(rel);
 				}
 			}
+			int hireableRelativeCount = list.Count;
 			SimTime now = G.GetNow();
 			_filteredRelatives = (from r in list.Where(delegate(Entity r)
 				{
@@ -14256,7 +14687,11 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 				select r).ToList();
 			string traitDisplay = _filterTrait == "All" ? "All" : _filterTrait.Replace("trait-", "");
 			string arg = $"Eth: {_filterEthnicity} | Trait: {traitDisplay} | Age: {_filterMinAge}-{_filterMaxAge}";
-			_familyHireStatusText.text = $"{_filteredRelatives.Count} found | {arg}";
+			_familyHireStatusText.text = $"{_filteredRelatives.Count} shown / {hireableRelativeCount} hireable for selected crew\n{arg}";
+			if (_filteredRelatives.Count != hireableRelativeCount)
+			{
+				VerificationLog("CrewHire", $"family-hire-filtered selected={_selectedPeep.Id.id} shown={_filteredRelatives.Count} hireable={hireableRelativeCount} ethnicity={_filterEthnicity} trait={traitDisplay} minAge={_filterMinAge} maxAge={_filterMaxAge}");
+			}
 			Transform val = _familyHirePopup.transform.Find("FH_FilterRow1");
 			if ((UnityEngine.Object)(object)val != (UnityEngine.Object)null)
 			{
@@ -14312,6 +14747,46 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			}
 		}
 
+		private static string FormatFamilyHireTraitSummary(Entity relative)
+		{
+			try
+			{
+				TagList traitIds = relative?.data?.person?.traitIds;
+				if (traitIds == null)
+				{
+					return "Traits: none";
+				}
+				List<string> traits = new List<string>();
+				foreach (Label trait in traitIds)
+				{
+					string label = FormatFamilyHireTraitLabel(trait.ToString());
+					if (!string.IsNullOrWhiteSpace(label) && !traits.Contains(label))
+					{
+						traits.Add(label);
+					}
+				}
+				return traits.Count > 0 ? "Traits: " + string.Join(", ", traits.Take(4)) : "Traits: none";
+			}
+			catch
+			{
+				return "Traits: unknown";
+			}
+		}
+
+		private static string FormatFamilyHireTraitLabel(string traitId)
+		{
+			if (string.IsNullOrWhiteSpace(traitId))
+			{
+				return string.Empty;
+			}
+			string cleaned = traitId.Replace("trait-", string.Empty).Replace("-", " ").Trim();
+			if (cleaned.Length == 0)
+			{
+				return string.Empty;
+			}
+			return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(cleaned.ToLowerInvariant());
+		}
+
 		private static void CreateFamilyHireEntry(Entity relative, SimTime now)
 		{
 
@@ -14336,6 +14811,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			catch
 			{
 			}
+			string traitSummary = FormatFamilyHireTraitSummary(relative);
 			GameObject val = new GameObject("FH_Entry", new Type[4]
 			{
 				typeof(RectTransform),
@@ -14344,11 +14820,11 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 				typeof(LayoutElement)
 			});
 			val.transform.SetParent(_familyHireContent, false);
-			val.GetComponent<LayoutElement>().minHeight = 52f;
+			val.GetComponent<LayoutElement>().minHeight = 78f;
 			((Graphic)val.GetComponent<Image>()).color = new Color(0.18f, 0.16f, 0.12f, 0.9f);
 			HorizontalLayoutGroup component = val.GetComponent<HorizontalLayoutGroup>();
-			((LayoutGroup)component).padding = new RectOffset(6, 4, 3, 3);
-			((HorizontalOrVerticalLayoutGroup)component).spacing = 4f;
+			((LayoutGroup)component).padding = new RectOffset(8, 6, 5, 5);
+			((HorizontalOrVerticalLayoutGroup)component).spacing = 6f;
 			((HorizontalOrVerticalLayoutGroup)component).childForceExpandWidth = false;
 			((HorizontalOrVerticalLayoutGroup)component).childForceExpandHeight = true;
 			GameObject val2 = new GameObject("Info", new Type[3]
@@ -14360,18 +14836,18 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			val2.transform.SetParent(val.transform, false);
 			val2.GetComponent<LayoutElement>().flexibleWidth = 1f;
 			VerticalLayoutGroup component2 = val2.GetComponent<VerticalLayoutGroup>();
-			((HorizontalOrVerticalLayoutGroup)component2).spacing = 1f;
+			((HorizontalOrVerticalLayoutGroup)component2).spacing = 2f;
 			((HorizontalOrVerticalLayoutGroup)component2).childForceExpandWidth = true;
 			((HorizontalOrVerticalLayoutGroup)component2).childForceExpandHeight = false;
-			Text obj2 = CreateLabel(val2.transform, "Name", person.FullName, 12, (FontStyle)1);
+			Text obj2 = CreateLabel(val2.transform, "Name", person.FullName + " | " + traitSummary, 13, (FontStyle)1);
 			((Graphic)obj2).color = new Color(0.95f, 0.9f, 0.75f);
-			((Component)obj2).GetComponent<LayoutElement>().minHeight = 16f;
-			Text obj3 = CreateLabel(text: $"Age: {(int)yearsFloat} | {arg2} | {arg}", parent: val2.transform, name: "Details", size: 10, style: (FontStyle)0);
+			ConfigureWrappedPopupBodyText(obj2, 34);
+			Text obj3 = CreateLabel(text: $"Age: {(int)yearsFloat} | {arg2} | Ethnicity: {arg}", parent: val2.transform, name: "Details", size: 12, style: (FontStyle)0);
 			((Graphic)obj3).color = new Color(0.7f, 0.7f, 0.65f);
-			((Component)obj3).GetComponent<LayoutElement>().minHeight = 13f;
-			Text obj4 = CreateLabel(text: (!string.IsNullOrEmpty(text)) ? ("Role: " + text) : "Role: Unknown", parent: val2.transform, name: "Traits", size: 9, style: (FontStyle)2);
+			ConfigureWrappedPopupBodyText(obj3, 28);
+			Text obj4 = CreateLabel(text: (!string.IsNullOrEmpty(text)) ? ("Role: " + text) : "Role: Unknown", parent: val2.transform, name: "Traits", size: 11, style: (FontStyle)2);
 			((Graphic)obj4).color = ((!string.IsNullOrEmpty(text)) ? new Color(0.85f, 0.75f, 0.4f) : new Color(0.5f, 0.5f, 0.45f));
-			((Component)obj4).GetComponent<LayoutElement>().minHeight = 12f;
+			ConfigureWrappedPopupBodyText(obj4, 24);
 			GameObject val3 = new GameObject("HireBtn", new Type[4]
 			{
 				typeof(RectTransform),
@@ -14380,8 +14856,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 				typeof(LayoutElement)
 			});
 			val3.transform.SetParent(val.transform, false);
-			val3.GetComponent<LayoutElement>().preferredWidth = 50f;
-			val3.GetComponent<LayoutElement>().minHeight = 40f;
+			val3.GetComponent<LayoutElement>().preferredWidth = 64f;
+			val3.GetComponent<LayoutElement>().minHeight = 54f;
 			((Graphic)val3.GetComponent<Image>()).color = new Color(0.2f, 0.45f, 0.2f, 0.95f);
 			Button component3 = val3.GetComponent<Button>();
 			((Selectable)component3).targetGraphic = (Graphic)(object)val3.GetComponent<Image>();
@@ -14404,7 +14880,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			Text component5 = val4.GetComponent<Text>();
 			component5.text = "Hire";
 			component5.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-			component5.fontSize = 12;
+			component5.fontSize = 13;
 			((Graphic)component5).color = Color.white;
 			component5.alignment = (TextAnchor)4;
 			component5.fontStyle = (FontStyle)1;
@@ -15567,10 +16043,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 					Entity promptPeep = crewPepTalkPromptEvent.PeepId.FindEntity();
 					if (!TryConsumeManualPepTalk(promptPeep, "quest-decline"))
 					{
-						if ((UnityEngine.Object)(object)_crewPepTalkBodyText != (UnityEngine.Object)null)
-						{
-							_crewPepTalkBodyText.text = "No pep talk is available for this crew member right now.";
-						}
+						VerificationLog("PepTalkManual", $"prompt-decline-dismissed peep={crewPepTalkPromptEvent.PeepId.id} boss={crewPepTalkPromptEvent.IsBoss} reason=already-used-or-unavailable");
 						return;
 					}
 					ApplyCrewPepTalkOutcome(crewPepTalkPromptEvent, accepted: false);
@@ -15584,7 +16057,10 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			{
 				Debug.LogWarning("[GameplayTweaks] OnDeclineCrewPepTalkPrompt failed: " + ex.Message);
 			}
-			CloseCrewPepTalkPrompt();
+			finally
+			{
+				CloseCrewPepTalkPrompt();
+			}
 		}
 
 		private static void ApplyManualPepTalkFallback(Entity peep, CrewModState state, PlayerInfo humanPlayer, bool isBoss)
@@ -17628,24 +18104,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			}
 			HashSet<ulong> seen = new HashSet<ulong>();
 			AddHireableRelativesForPeep(list, seen, rels, now, peep);
-
-			PlayerCrew humanCrew = G.GetHumanCrew();
-			if (humanCrew?.AllCrew != null)
-			{
-				foreach (CrewAssignment assignment in humanCrew.AllCrew)
-				{
-					if (!assignment.IsValid || !assignment.IsNotDead || !assignment.peepId.IsValid || assignment.peepId == peep.Id)
-					{
-						continue;
-					}
-
-					Entity crewPeep = assignment.GetPeep();
-					if (crewPeep != null)
-					{
-						AddHireableRelativesForPeep(list, seen, rels, now, crewPeep);
-					}
-				}
-			}
+			VerificationLog("CrewHire", $"family-hire-scope selected={peep.Id.id} hireable={list.Count} scope=selected-crew");
 			return list;
 		}
 
@@ -18117,6 +18576,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 							continue;
 						}
 						ClearWarBetweenPlayers(member, humanPlayer);
+						RemoveRetaliationBuffsBetween(member, humanPlayer, "leader-truce-cascade");
 						neutralizedGangIds.Add(member.PID.id);
 						VerificationLog("PactRetaliation", $"Neutralized by leader truce member={member.PID.id} buffReason=true");
 					}
@@ -18162,6 +18622,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 					if (HasMutualTruce(playerInfo, humanPlayer))
 					{
 						ClearWarBetweenPlayers(playerInfo, humanPlayer);
+						RemoveRetaliationBuffsBetween(playerInfo, humanPlayer, "direct-truce-active");
 						VerificationLog("PactRetaliation", $"Re-aggro skipped due direct truce member={playerInfo.PID.id}");
 						continue;
 					}
@@ -19113,6 +19574,22 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 
 	internal static ConfigEntry<bool> VehicleGroupCombatAllowMeleeWeapons;
 
+	internal static ConfigEntry<bool> EnableWarWeaponStances;
+
+	internal static ConfigEntry<bool> WarWeaponStanceEnableAiBreaches;
+
+	internal static ConfigEntry<int> WarWeaponStanceStreetThreshold;
+
+	internal static ConfigEntry<int> WarWeaponStanceSidearmThreshold;
+
+	internal static ConfigEntry<int> WarWeaponStanceOpenArsenalThreshold;
+
+	internal static ConfigEntry<int> WarWeaponStanceMeleeViolationHeat;
+
+	internal static ConfigEntry<int> WarWeaponStanceSidearmViolationHeat;
+
+	internal static ConfigEntry<int> WarWeaponStanceHeavyViolationHeat;
+
 	internal static ConfigEntry<bool> CompatDisableRetaliationWarWithGangWars;
 
 	internal static ConfigEntry<bool> CompatDisableTerritoryVisualsWithExternalTerritoryMods;
@@ -19319,6 +19796,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 
 	private static int _pendingAiSnitchIntakeInputDeferrals;
 
+	private static int _pendingAiSnitchIntakeMouseDeferrals;
+
 	internal static int RuntimePromptEarliestFrame;
 
 	private static string _saveFilePath;
@@ -19491,6 +19970,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 	private const int RETALIATION_ROBBERY_BUSINESS_CLOSURE_FORCE_REQUEUES = 3;
 
 	private const int RETALIATION_ROBBERY_BUSINESS_CLOSURE_FORCE_DAYS = 21;
+
+	private const float RETALIATION_BUSINESS_CLOSURE_WAR_HEAT_GAIN = 10f;
 
 	private const int INDEPENDENT_HUMAN_FRONT_PRESSURE_MAX_PER_AUTO_PASS = 1;
 
@@ -21392,6 +21873,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		_lastGlobalScavengeableVehicleScrubFrame = -1;
 		_lastPactOpsTurnDay = -1;
 		ResetGangOpsDecayRuntime();
+		ResetWarStanceAiOfferRuntime();
 		_legacySaveFilePath = null;
 		_v2SaveFilePath = null;
 		_v2ManifestFilePath = null;
@@ -28615,6 +29097,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		_pendingAiSnitchIntakeGangIds.Clear();
 		_pendingAiSnitchIntakeCursor = 0;
 		_pendingAiSnitchIntakeInputDeferrals = 0;
+		_pendingAiSnitchIntakeMouseDeferrals = 0;
 		foreach (PlayerInfo gang in G.GetAllPlayers())
 		{
 			if (gang == null || gang.PID.IsHumanPlayer || !gang.IsJustGang || gang.crew == null || gang.crew.IsCrewDefeated)
@@ -28668,16 +29151,18 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 				ClearDeferredAiSnitchIntake();
 				return;
 			}
-			if (!global::Game.Game.ctx.clock.CurrentPlayer.IsHumanPlayer)
+			PlayerID currentPlayer = global::Game.Game.ctx.clock.CurrentPlayer;
+			int frame = Time.frameCount;
+			if (frame < _pendingAiSnitchIntakeEarliestFrame)
 			{
-				_pendingAiSnitchIntakeEarliestFrame = Time.frameCount + AI_SNITCH_INTAKE_INITIAL_GRACE_FRAMES;
+				_pendingAiSnitchIntakeInputDeferrals++;
 				ScheduleDeferredAiSnitchIntakeBatch();
 				return;
 			}
-			int frame = Time.frameCount;
-			if (frame < _pendingAiSnitchIntakeEarliestFrame || Input.GetMouseButton(0))
+			if (Input.GetMouseButton(0) && _pendingAiSnitchIntakeMouseDeferrals < AI_SNITCH_INTAKE_MOUSE_DEFERRAL_LIMIT)
 			{
 				_pendingAiSnitchIntakeInputDeferrals++;
+				_pendingAiSnitchIntakeMouseDeferrals++;
 				ScheduleDeferredAiSnitchIntakeBatch();
 				return;
 			}
@@ -28712,9 +29197,12 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			long wallMs = GetElapsedMillisecondsSince(_pendingAiSnitchIntakeStartedTicks);
 			int scheduledDay = _pendingAiSnitchIntakeDay;
 			int deferrals = _pendingAiSnitchIntakeInputDeferrals;
+			int mouseDeferrals = _pendingAiSnitchIntakeMouseDeferrals;
+			int currentPid = currentPlayer.IsValid ? currentPlayer.id : -1;
+			bool currentHuman = currentPlayer.IsHumanPlayer;
 			int total = _pendingAiSnitchIntakeGangIds.Count;
 			ClearDeferredAiSnitchIntake();
-			Debug.Log($"[PERF][AiSnitchIntakeDeferred] complete wallMs={wallMs} gangs={total} scheduledDay={scheduledDay} currentDay={now.days} deferrals={deferrals}");
+			Debug.Log($"[PERF][AiSnitchIntakeDeferred] complete wallMs={wallMs} gangs={total} scheduledDay={scheduledDay} currentDay={now.days} currentPid={currentPid} currentHuman={currentHuman} deferrals={deferrals} mouseDeferrals={mouseDeferrals}");
 		}
 		catch (Exception ex)
 		{
@@ -28732,6 +29220,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		_pendingAiSnitchIntakeEarliestFrame = -1;
 		_pendingAiSnitchIntakeStartedTicks = 0L;
 		_pendingAiSnitchIntakeInputDeferrals = 0;
+		_pendingAiSnitchIntakeMouseDeferrals = 0;
 	}
 
 	private static long GetElapsedMillisecondsSince(long startTicks)
@@ -29175,7 +29664,29 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 
 	private static bool EnsureCustomRelationshipBuffDefinitions()
 	{
-		return EnsureRelationshipBuffDefinition("relbuff-pact-trade", "relbuff-pact-support-intro");
+		return EnsureRelationshipBuffDefinition("relbuff-pact-trade", "relbuff-pact-support-intro")
+			&& EnsureWarStanceViolationRelationshipBuffDefinition();
+	}
+
+	private static bool EnsureWarStanceViolationRelationshipBuffDefinition()
+	{
+		const string buffId = "relbuff-war-stance-violated";
+		if (!EnsureRelationshipBuffDefinition(buffId, "relbuff-gang-injury")
+			|| !TryGetRelationshipBuffSettings(out BuffSettings settings))
+		{
+			return false;
+		}
+		BuffConfig config = FindRelationshipBuffDefinitionSafe(settings, new Label(buffId));
+		if (config == null)
+		{
+			return false;
+		}
+		config.locdesc = "relbuff.goons.wrong-foot";
+		config.delta = CloneModValueOrDefault(null, -10);
+		config.dayz = CloneModValueOrDefault(null, 180);
+		config.type = BuffDeferralType.Normal;
+		ResetBuffSettingsCache(settings, buffId);
+		return true;
 	}
 
 	private static bool TryGetRelationshipBuffSettings(out BuffSettings settings)
@@ -30239,7 +30750,12 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			return 0;
 		}
 
-		Fixnum threshold = (Fixnum)TerritoryColorOwnerLossThreshold;
+		global::Game.Services.RespectSettings settings = global::Game.Game.serv?.globals?.settings?.people?.social?.respect;
+		if (settings == null)
+		{
+			return 0;
+		}
+
 		HashSet<PlayerID> affectedPlayers = new HashSet<PlayerID>();
 		for (int i = 0; i < allNodes.Count; i++)
 		{
@@ -30254,7 +30770,8 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			{
 				Respect respect = node.respect?.GetOrNull(owner);
 				Fixnum currentRespect = respect?.current ?? Fixnum.ZERO;
-				if (currentRespect >= threshold)
+				Fixnum lossThreshold = settings.lossThreshold.Evaluate(owner);
+				if (currentRespect > lossThreshold)
 				{
 					continue;
 				}
@@ -30268,7 +30785,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 				cleared++;
 				if (cleared <= 24)
 				{
-					VerificationLog("Territory", $"low-respect-owner-cleared source={sourceTag} node={node.id} owner={owner.id} respect={currentRespect} threshold={TerritoryColorOwnerLossThreshold}");
+					VerificationLog("Territory", $"low-respect-owner-cleared source={sourceTag} node={node.id} owner={owner.id} respect={currentRespect} lossThreshold={lossThreshold}");
 				}
 			}
 			catch (Exception ex)
@@ -30287,7 +30804,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			{
 				TerritoryColorPatch.RefreshAllTerritoryColors();
 			}
-			VerificationLog("Territory", $"low-respect-owner-clear-summary source={sourceTag} threshold={TerritoryColorOwnerLossThreshold} cleared={cleared} failed={failed}");
+			VerificationLog("Territory", $"low-respect-owner-clear-summary source={sourceTag} thresholdSource=evaluated-loss cleared={cleared} failed={failed}");
 		}
 		return cleared;
 	}
@@ -30330,7 +30847,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 
 		try
 		{
-			if (ownerPlayer.outposts?.HasOutpostNear(node) == true)
+			if (ownerPlayer.outposts?.GetOutpostAtNode(node).IsValid == true)
 			{
 				return true;
 			}
@@ -30597,7 +31114,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 
 	internal static float GetWarHeat(int attackerPid, int defenderPid)
 	{
-		return GetWarHeat(ResolveGangOpsChannelForPair(attackerPid, defenderPid), attackerPid, defenderPid);
+		return GetUniversalDirectionalWarHeat(attackerPid, defenderPid);
 	}
 
 	internal static void AddWarHeat(GangOpsChannel channel, int attackerPid, int defenderPid, float amount, string reason)
@@ -30626,7 +31143,29 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 
 	internal static void AddWarHeat(int attackerPid, int defenderPid, float amount, string reason)
 	{
-		AddWarHeat(ResolveGangOpsChannelForPair(attackerPid, defenderPid), attackerPid, defenderPid, amount, reason);
+		AddWarHeat(ResolveWarHeatWriteChannel(attackerPid, defenderPid), attackerPid, defenderPid, amount, reason);
+	}
+
+	private static float GetUniversalDirectionalWarHeat(int attackerPid, int defenderPid)
+	{
+		if (attackerPid < 0 || defenderPid < 0 || attackerPid == defenderPid)
+		{
+			return 0f;
+		}
+		return Mathf.Max(
+			GetWarHeat(GangOpsChannel.Pact, attackerPid, defenderPid),
+			GetWarHeat(GangOpsChannel.Independent, attackerPid, defenderPid));
+	}
+
+	private static GangOpsChannel ResolveWarHeatWriteChannel(int attackerPid, int defenderPid)
+	{
+		float pactHeat = GetWarHeat(GangOpsChannel.Pact, attackerPid, defenderPid);
+		float independentHeat = GetWarHeat(GangOpsChannel.Independent, attackerPid, defenderPid);
+		if (pactHeat > 0.001f || independentHeat > 0.001f)
+		{
+			return pactHeat >= independentHeat ? GangOpsChannel.Pact : GangOpsChannel.Independent;
+		}
+		return ResolveGangOpsChannelForPair(attackerPid, defenderPid);
 	}
 
 	private static void QueueRevengeIfEligible(GangOpsChannel channel, int retaliationGangId, int targetGangId, long targetCrewPeepId, int nowDay, string reason)
@@ -34405,6 +34944,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 					if (TryGetRetaliationBusinessForcedClosedBy(building, entry.AttackerPid, out PlayerID forcedClosedBy))
 					{
 						VerificationLog("GangOps.FrontMovement", $"business-closure-completed attacker={entry.AttackerPid.id} defender={entry.DefenderPid.id} peep={entry.CrewPeepId.id} building={entry.BuildingId.id} forcedClosedBy={forcedClosedBy.id} mode={entry.Mode} source={sourceTag}");
+						ApplyRetaliationBusinessClosureWarHeat(entry, forcedClosedBy, sourceTag);
 						TryShowRetaliationBusinessClosureCompletedNotice(entry, building, forcedClosedBy, sourceTag);
 						ClearPendingRetaliationFrontTicker(key, "business-closure-completed", sourceTag);
 						continue;
@@ -35320,6 +35860,31 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		{
 			return false;
 		}
+	}
+
+	private static void ApplyRetaliationBusinessClosureWarHeat(PendingRetaliationFrontTicker entry, PlayerID forcedClosedBy, string sourceTag)
+	{
+		if (entry == null
+			|| entry.AttackerPid.IsNotAnyPlayer
+			|| entry.DefenderPid.IsNotAnyPlayer)
+		{
+			return;
+		}
+		int closerPid = forcedClosedBy.IsAnyPlayer ? forcedClosedBy.id : entry.AttackerPid.id;
+		int offendedPid = entry.DefenderPid.id;
+		if (closerPid < 0 || offendedPid < 0 || closerPid == offendedPid)
+		{
+			return;
+		}
+
+		float directionalHeatBefore = GetWarHeat(offendedPid, closerPid);
+		WarStanceSnapshot pairBefore = ResolveWarStanceSnapshot(offendedPid, closerPid);
+		AddWarHeat(offendedPid, closerPid, RETALIATION_BUSINESS_CLOSURE_WAR_HEAT_GAIN, "front-closure");
+		float directionalHeatAfter = GetWarHeat(offendedPid, closerPid);
+		WarStanceSnapshot pairAfter = ResolveWarStanceSnapshot(offendedPid, closerPid);
+		VerificationLog(
+			"WarStance",
+			$"[WarStance][FrontClosureHeat] source={sourceTag} attackerPid={entry.AttackerPid.id} defenderPid={entry.DefenderPid.id} closerPid={closerPid} offendedPid={offendedPid} building={entry.BuildingId.id} peep={entry.CrewPeepId.id} heat=+{RETALIATION_BUSINESS_CLOSURE_WAR_HEAT_GAIN:0.0} direction=offended-to-closer directionalHeatBefore={directionalHeatBefore:0.0} directionalHeatAfter={directionalHeatAfter:0.0} effectiveHeatBefore={pairBefore.EffectiveHeat:0.0} effectiveHeatAfter={pairAfter.EffectiveHeat:0.0} stanceBefore={FormatWarWeaponStance(pairBefore.Stance)} stanceAfter={FormatWarWeaponStance(pairAfter.Stance)}");
 	}
 
 	private static bool TryExecuteRetaliationBusinessClosureNow(PlayerInfo attacker, PlayerID defenderPid, EntityID crewPeepId, Entity peep, Entity building, bool allowNoAttackCostAfterWait, string sourceTag, out string reason)
@@ -37824,6 +38389,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 			return;
 		}
 		ClearGangOpsWarStoresForPair(a.PID.id, b.PID.id);
+		RemoveRetaliationBuffsBetween(a, b, "truce-" + sourceTag);
 		MarkCrewPickAggroDirty(a.PID, "truce-" + sourceTag);
 		MarkCrewPickAggroDirty(b.PID, "truce-" + sourceTag);
 		FlushCrewPickAggroRefreshes("truce-" + sourceTag);
@@ -37928,6 +38494,7 @@ internal static readonly string[] PERSISTENT_GANG_RELBUFF_IDS = new string[39]
 		shouldConsumeConvoAction = true;
 		ClearWarBetweenPlayers(requestGang, opponentGang);
 		ClearGangOpsWarStoresForPair(requestGang.PID.id, opponentGang.PID.id);
+		RemoveRetaliationBuffsBetween(requestGang, opponentGang, "mediation-accepted");
 		AddMutualRelationshipBuff(requestGang, opponentGang, "relbuff-gangs-truce", GetCrewPeepForPlayer(requestGang), GetCrewPeepForPlayer(opponentGang));
 		message = offerCash > 0 ? $"War ended between {requestName} and {opponentName}. Paid ${offerCash}." : $"War ended between {requestName} and {opponentName}.";
 		VerificationLog("GangWarMediation", $"accepted=True requester={requestGang.PID.id} opponent={opponentGang.PID.id} score={candidate.AcceptanceScore} heat={candidate.WarHeat:0.0} cash={offerCash} cashBonus={candidate.CashAcceptanceBonus} context={candidate.ContextLabel}");
@@ -40611,12 +41178,14 @@ internal static class AttackAdvisorPatch
 			if (!data.nextCoordTarget.IsValid && (invalidEnemyCount > 0 || invalidBuildingCount > 0))
 			{
 				GameplayTweaksPlugin.VerificationLog("AttackAdvisor", $"attackadvisor-coord-invalid-state pid={playerId.id} invalidEnemies={invalidEnemyCount} invalidBuildings={invalidBuildingCount} filteredByGangOps={filteredByGangOpsCount} reason=no-valid-targets");
-				return true;
+				ClearPendingCoordinatedAttackTarget(__instance);
+				return false;
 			}
 			if (!data.nextCoordTarget.IsValid && filteredByGangOpsCount > 0)
 			{
 				GameplayTweaksPlugin.VerificationLog("AttackAdvisor", $"attackadvisor-coord-skipped pid={playerId.id} reason=gangops-violence-gate-filtered targets={filteredByGangOpsCount}");
-				return true;
+				ClearPendingCoordinatedAttackTarget(__instance);
+				return false;
 			}
 			return false;
 		}

@@ -7,6 +7,7 @@ using System.Reflection;
 using BepInEx;
 using BepInEx.Configuration;
 using Game.Core;
+using Game.Services.Maps;
 using Game.Session;
 using Game.Session.Data;
 using Game.Session.Entities;
@@ -189,7 +190,7 @@ namespace GameOptimizer
                 "Process this many lots/edges before yielding a frame. Original is 1000 (~16ms wasted per yield). Set to 0 for no yields.");
 
             EnableEthnicityPlacementFix = Config.Bind("EthnicityPlacementFix", "Enabled", true,
-                "Fix ethnicity placement bias: when ethnic heatmaps are empty/tied, pick randomly instead of always choosing the first alphabetical ethnicity. Prevents one group from clustering near industrial zones.");
+                "Fix ethnicity placement bias: when ethnic heatmaps are empty/tied, use map demographic weights instead of always choosing the first alphabetical ethnicity.");
 
             EnableManufactureModuleFix = Config.Bind("ManufactureModuleFix", "Enabled", true,
                 "Fix crash when AI installs backroom modules. The game incorrectly checks recipe visibility against HumanPlayer instead of the AI player, causing empty recipe lists.");
@@ -282,7 +283,8 @@ namespace GameOptimizer
             InteractiveMemoryCleanupPatch.ApplyManualPatch(harmony);
             TerrainGenDataNullGuardPatch.ApplyManualPatch(harmony);
             DensityHeatmapNullGuardPatch.ApplyManualPatch(harmony);
-            // Ethnicity fix uses a coroutine instead of Harmony (DMD failures)
+            EthnicityPlacementFindMainPatch.ApplyManualPatch(harmony);
+            // The coroutine repairs cached values created before the prefix can run.
             if (EnableEthnicityPlacementFix.Value)
             {
                 _ethnicityFixHasRun = false;
@@ -2283,11 +2285,12 @@ namespace GameOptimizer
         // =====================================================================
         private static bool _ethnicityFixHasRun = false;
         private static readonly MethodInfo _findEthnicityMapMethod = AccessTools.Method(typeof(HeatmapManager), "FindEthnicityMap", new[] { typeof(Label) });
+        private const float EthnicityTieEpsilon = 0.0001f;
+        private static MapConfig _ethnicityDemographicCacheConfig;
+        private static List<Label> _ethnicityDemographicCache;
 
         private IEnumerator EthnicityPlacementFixCoroutine()
         {
-            var rng = new System.Random();
-
             while (true)
             {
                 yield return new WaitForSeconds(1f);
@@ -2319,7 +2322,7 @@ namespace GameOptimizer
                         yield break;
                     }
 
-                    var mapConfig = ctx.session?.mapconfig;
+                    MapConfig mapConfig = ctx.session?.mapconfig;
                     List<Label> ethnicities = mapConfig?.GetEthnicitiesUniqueSorted();
                     if (ethnicities == null || ethnicities.Count <= 1)
                     {
@@ -2327,102 +2330,17 @@ namespace GameOptimizer
                         yield break;
                     }
 
-                    HeatmapManager heatmapManager = ctx.heatmaps;
-                    if (heatmapManager == null || ctx.entityman == null)
+                    if (ctx.heatmaps == null || ctx.entityman == null || ctx.board?.nodes == null)
                     {
                         continue;
                     }
 
-                    var ethnicityMaps = new Dictionary<Label, Heatmap>();
-                    bool mapsReady = true;
-                    foreach (Label eth in ethnicities)
-                    {
-                        Heatmap heatmap = null;
-                        try
-                        {
-                            heatmap = _findEthnicityMapMethod.Invoke(heatmapManager, new object[] { eth }) as Heatmap;
-                        }
-                        catch (Exception invokeEx)
-                        {
-                            Debug.LogWarning($"[GameOptimizer] EthnicityPlacementFix: heatmap lookup failed for {eth}: {invokeEx.Message}");
-                        }
-
-                        if (heatmap == null)
-                        {
-                            mapsReady = false;
-                            break;
-                        }
-
-                        ethnicityMaps[eth] = heatmap;
-                    }
-
-                    if (!mapsReady || ethnicityMaps.Count <= 1)
-                    {
-                        continue;
-                    }
-
-                    List<Entity> allBiz = ctx.entityman.GetCachedEntitiesBizUnsafe()?.Where(b => b != null).ToList();
-                    if (allBiz == null || allBiz.Count == 0)
-                    {
-                        continue;
-                    }
-
-                    int fixedCount = 0;
-                    foreach (Entity biz in allBiz)
-                    {
-                        if (biz.data?.biz == null || biz.data?.board == null)
-                        {
-                            continue;
-                        }
-
-                        BizComponent bizComponent = biz.components?.biz;
-                        if (bizComponent == null)
-                        {
-                            continue;
-                        }
-
-                        if (biz.data.biz.owner.IsReal || !biz.data.biz.owner.IsFake)
-                        {
-                            continue;
-                        }
-
-                        WorldPos pos = biz.data.board.worldpos;
-                        float bestValue = float.NegativeInfinity;
-                        var candidates = new List<Label>();
-
-                        foreach (Label eth in ethnicities)
-                        {
-                            if (!ethnicityMaps.TryGetValue(eth, out Heatmap heatmap) || heatmap == null)
-                            {
-                                continue;
-                            }
-
-                            float val = heatmap.GetValueSafe(pos);
-                            if (val > bestValue)
-                            {
-                                bestValue = val;
-                                candidates.Clear();
-                                candidates.Add(eth);
-                            }
-                            else if (val == bestValue)
-                            {
-                                candidates.Add(eth);
-                            }
-                        }
-
-                        if (candidates.Count > 1)
-                        {
-                            Label newEth = candidates[rng.Next(candidates.Count)];
-                            if (newEth != biz.data.biz.owner.eth)
-                            {
-                                bizComponent.AssignFakeOwner(newEth);
-                                fixedCount++;
-                            }
-                        }
-                    }
-
+                    EthnicityDemographicRepairSummary summary = RepairCachedEthnicityPlacement(ctx);
                     _ethnicityFixHasRun = true;
-                    Debug.Log($"[GameOptimizer] EthnicityPlacementFix: reassigned {fixedCount} fake business owners with random tiebreaking");
+                    Debug.Log(
+                        $"[GameOptimizer] EthnicityPlacementFix: demographic-repair " +
+                        $"nodes={summary.NodesChanged}/{summary.NodesSeen} nodeFallbacks={summary.NodeFallbacks} " +
+                        $"fakeOwners={summary.FakeOwnersChanged}/{summary.FakeOwnersSeen} fakeOwnerFallbacks={summary.FakeOwnerFallbacks}");
                     yield break;
                 }
                 catch (Exception e)
@@ -2436,6 +2354,302 @@ namespace GameOptimizer
         // =====================================================================
         // 15. CreateEmptyLots Optimization — Batch null yields
         // =====================================================================
+        private struct EthnicityDemographicRepairSummary
+        {
+            public int NodesSeen;
+            public int NodesChanged;
+            public int NodeFallbacks;
+            public int FakeOwnersSeen;
+            public int FakeOwnersChanged;
+            public int FakeOwnerFallbacks;
+        }
+
+        private static EthnicityDemographicRepairSummary RepairCachedEthnicityPlacement(SessionContext ctx)
+        {
+            EthnicityDemographicRepairSummary summary = new EthnicityDemographicRepairSummary();
+
+            IEnumerable<Node> nodes = ctx.board?.nodes?.GetAllNodesUnsafe();
+            if (nodes != null)
+            {
+                foreach (Node node in nodes)
+                {
+                    if (node == null)
+                    {
+                        continue;
+                    }
+
+                    summary.NodesSeen++;
+                    if (TryPickMainEthnicityDemographicAware(node.pos, out Label nodeEthnicity, out bool usedFallback, out _, out _))
+                    {
+                        if (usedFallback)
+                        {
+                            summary.NodeFallbacks++;
+                        }
+
+                        if (node.maineth != nodeEthnicity)
+                        {
+                            node.maineth = nodeEthnicity;
+                            summary.NodesChanged++;
+                        }
+                    }
+                }
+            }
+
+            HashSet<Entity> businesses = ctx.entityman?.GetCachedEntitiesBizUnsafe();
+            if (businesses != null)
+            {
+                foreach (Entity business in businesses)
+                {
+                    if (business?.data?.biz == null || business.data?.board == null || business.components?.biz == null)
+                    {
+                        continue;
+                    }
+
+                    BizOwner owner = business.data.biz.owner;
+                    if (!owner.IsFake)
+                    {
+                        continue;
+                    }
+
+                    summary.FakeOwnersSeen++;
+                    if (TryPickMainEthnicityDemographicAware(business.data.board.worldpos, out Label ownerEthnicity, out bool usedFallback, out _, out _))
+                    {
+                        if (usedFallback)
+                        {
+                            summary.FakeOwnerFallbacks++;
+                        }
+
+                        if (owner.eth != ownerEthnicity)
+                        {
+                            business.components.biz.AssignFakeOwner(ownerEthnicity);
+                            summary.FakeOwnersChanged++;
+                        }
+                    }
+                }
+            }
+
+            return summary;
+        }
+
+        private static bool TryPickMainEthnicityDemographicAware(WorldPos pos, out Label ethnicity, out bool usedDemographicFallback, out int candidateCount, out float bestValue)
+        {
+            ethnicity = Label.NULL;
+            usedDemographicFallback = false;
+            candidateCount = 0;
+            bestValue = float.NegativeInfinity;
+
+            SessionContext ctx = G.SessionContext;
+            MapConfig mapConfig = ctx?.session?.mapconfig;
+            HeatmapManager heatmapManager = ctx?.heatmaps;
+            List<Label> ethnicities = mapConfig?.GetEthnicitiesUniqueSorted();
+            if (mapConfig == null || heatmapManager == null || ethnicities == null || ethnicities.Count == 0)
+            {
+                return false;
+            }
+
+            if (ethnicities.Count == 1)
+            {
+                ethnicity = ethnicities[0];
+                candidateCount = 1;
+                bestValue = 1f;
+                return ethnicity.IsSet;
+            }
+
+            List<Label> tied = new List<Label>();
+            foreach (Label eth in ethnicities)
+            {
+                if (eth.IsNotSet)
+                {
+                    continue;
+                }
+
+                Heatmap heatmap = null;
+                try
+                {
+                    heatmap = _findEthnicityMapMethod?.Invoke(heatmapManager, new object[] { eth }) as Heatmap;
+                }
+                catch (Exception invokeEx)
+                {
+                    Debug.LogWarning($"[GameOptimizer] EthnicityPlacementFix: heatmap lookup failed for {eth}: {invokeEx.Message}");
+                }
+
+                if (heatmap == null)
+                {
+                    continue;
+                }
+
+                float value = heatmap.GetValueSafe(pos);
+                if (value > bestValue + EthnicityTieEpsilon)
+                {
+                    bestValue = value;
+                    tied.Clear();
+                    tied.Add(eth);
+                }
+                else if (Math.Abs(value - bestValue) <= EthnicityTieEpsilon)
+                {
+                    tied.Add(eth);
+                }
+            }
+
+            if (tied.Count == 0)
+            {
+                usedDemographicFallback = true;
+                ethnicity = PickDemographicEthnicity(mapConfig, pos, null, "missing-heatmaps", out candidateCount);
+                return ethnicity.IsSet;
+            }
+
+            candidateCount = tied.Count;
+            if (bestValue <= EthnicityTieEpsilon || tied.Count > 1)
+            {
+                usedDemographicFallback = true;
+                IList<Label> allowed = bestValue <= EthnicityTieEpsilon ? null : tied;
+                ethnicity = PickDemographicEthnicity(mapConfig, pos, allowed, bestValue <= EthnicityTieEpsilon ? "zero-heatmap" : "tied-heatmap", out candidateCount);
+                return ethnicity.IsSet;
+            }
+
+            ethnicity = tied[0];
+            return ethnicity.IsSet;
+        }
+
+        private static Label PickDemographicEthnicity(MapConfig mapConfig, WorldPos pos, IList<Label> allowed, string salt, out int candidateCount)
+        {
+            List<Label> demographicPool = GetDemographicEthnicityPool(mapConfig);
+            List<Label> candidates = new List<Label>();
+            if (demographicPool != null)
+            {
+                for (int i = 0; i < demographicPool.Count; i++)
+                {
+                    Label eth = demographicPool[i];
+                    if (eth.IsSet && (allowed == null || allowed.Contains(eth)))
+                    {
+                        candidates.Add(eth);
+                    }
+                }
+            }
+
+            if (candidates.Count == 0 && allowed != null)
+            {
+                for (int i = 0; i < allowed.Count; i++)
+                {
+                    if (allowed[i].IsSet)
+                    {
+                        candidates.Add(allowed[i]);
+                    }
+                }
+            }
+
+            if (candidates.Count == 0)
+            {
+                List<Label> unique = mapConfig?.GetEthnicitiesUniqueSorted();
+                if (unique != null)
+                {
+                    for (int i = 0; i < unique.Count; i++)
+                    {
+                        if (unique[i].IsSet)
+                        {
+                            candidates.Add(unique[i]);
+                        }
+                    }
+                }
+            }
+
+            candidateCount = candidates.Count;
+            if (candidates.Count == 0)
+            {
+                return Label.NULL;
+            }
+
+            return candidates[PickDeterministicIndex(pos, salt, candidates.Count)];
+        }
+
+        private static List<Label> GetDemographicEthnicityPool(MapConfig mapConfig)
+        {
+            if (mapConfig == null)
+            {
+                return null;
+            }
+
+            if (!ReferenceEquals(_ethnicityDemographicCacheConfig, mapConfig))
+            {
+                _ethnicityDemographicCacheConfig = mapConfig;
+                _ethnicityDemographicCache = mapConfig.GetEthnicitiesAllSorted()?.Where(eth => eth.IsSet).ToList();
+            }
+
+            return _ethnicityDemographicCache;
+        }
+
+        private static int PickDeterministicIndex(WorldPos pos, string salt, int count)
+        {
+            if (count <= 1)
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                uint hash = 2166136261u;
+                HashUInt(ref hash, (uint)Mathf.RoundToInt(pos.x * 100f));
+                HashUInt(ref hash, (uint)Mathf.RoundToInt(pos.y * 100f));
+                if (!string.IsNullOrEmpty(salt))
+                {
+                    for (int i = 0; i < salt.Length; i++)
+                    {
+                        HashUInt(ref hash, (uint)salt[i]);
+                    }
+                }
+
+                return (int)(hash % (uint)count);
+            }
+        }
+
+        private static void HashUInt(ref uint hash, uint value)
+        {
+            unchecked
+            {
+                hash ^= value;
+                hash *= 16777619u;
+            }
+        }
+
+        private static class EthnicityPlacementFindMainPatch
+        {
+            public static void ApplyManualPatch(Harmony harmony)
+            {
+                if (!EnableEthnicityPlacementFix.Value)
+                {
+                    return;
+                }
+
+                try
+                {
+                    MethodInfo original = AccessTools.Method(typeof(BoardManager), "FindMainEthnicity", new[] { typeof(WorldPos) });
+                    if (original == null)
+                    {
+                        Debug.LogWarning("[GameOptimizer] EthnicityPlacementFix: BoardManager.FindMainEthnicity target unavailable");
+                        return;
+                    }
+
+                    harmony.Patch(original, prefix: new HarmonyMethod(typeof(EthnicityPlacementFindMainPatch), nameof(Prefix)));
+                    Debug.Log("[GameOptimizer] EthnicityPlacementFix: BoardManager.FindMainEthnicity demographic fallback applied");
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[GameOptimizer] EthnicityPlacementFix: FindMainEthnicity patch failed: {e.Message}");
+                }
+            }
+
+            private static bool Prefix(WorldPos pos, ref Label __result)
+            {
+                if (TryPickMainEthnicityDemographicAware(pos, out Label ethnicity, out _, out _, out _))
+                {
+                    __result = ethnicity;
+                    return false;
+                }
+
+                return true;
+            }
+        }
+
         private static class CreateEmptyLotsOptimizationPatch
         {
             public static void ApplyManualPatch(Harmony harmony)

@@ -72,11 +72,23 @@ namespace GameplayTweaks
 					GameplayTweaksPlugin.VerificationLog("VehicleNodeAuthority", $"heal-skip pid={pid.id} reason=missing-peep peep={crew.peepId.id}");
 					return false;
 				}
-				CrewAssignment healActor = crew;
 				bool isHumanVehicleHeal = !_isApplyingVehicleGroupHealing
 					&& player?.IsHuman == true
 					&& crew.IsInVehicle
 					&& crew.VehicleID.IsValid;
+				if (!_isApplyingVehicleGroupHealing
+					&& !isHumanVehicleHeal
+					&& !TryIsAtOwnedHealingLocation(player, crew, out string ownedLocationSource))
+				{
+					MultiCrewVehicleHelper.LogVehicleAuthority(
+						"heal-location-blocked",
+						$"perform:{pid.id}:{crew.peepId.id}",
+						$"heal-location-blocked source=PerformHealing pid={pid.id} peep={crew.peepId.id} node={GetCrewNodeIdForLog(crew)} reason=not-at-own-safehouse-or-controlled-building location={ownedLocationSource}",
+						dedupe: true);
+					return false;
+				}
+
+				CrewAssignment healActor = crew;
 				if (isHumanVehicleHeal
 					&& !MultiCrewVehicleHelper.IsDriver(player.crew, crew))
 				{
@@ -284,6 +296,48 @@ namespace GameplayTweaks
 				&& driverCrew.VehicleID == requesterCrew.VehicleID
 				&& TryGetVehicleHealingTargets(humanCrew, driverCrew, out _)
 				&& TryIsAtVehicleHealingLocation(player, driverCrew, out _);
+		}
+
+		internal static bool TryIsAtOwnedHealingLocation(PlayerInfo player, CrewAssignment crew, out string source)
+		{
+			source = "none";
+			if (player?.territory == null || !crew.IsValid || !crew.peepId.IsValid)
+			{
+				return false;
+			}
+
+			Entity peep = crew.GetPeep();
+			Node peepNode = peep?.components?.agent?.GetNode();
+			NodeID peepNodeId = peepNode?.id ?? NodeID.INVALID;
+			if (!peepNodeId.IsValid)
+			{
+				source = "missing-peep-node";
+				return false;
+			}
+
+			foreach (NodeID nodeId in GetVehicleHealingLocationNodes(player).Where(nodeId => nodeId.IsValid).Distinct())
+			{
+				if (nodeId == peepNodeId)
+				{
+					source = $"{nodeId}:agent-node";
+					return true;
+				}
+			}
+
+			source = $"not-owned:{peepNodeId}";
+			return false;
+		}
+
+		internal static string GetCrewNodeIdForLog(CrewAssignment crew)
+		{
+			try
+			{
+				return crew.GetPeep()?.components?.agent?.GetNode()?.id.ToString() ?? "NID_0";
+			}
+			catch
+			{
+				return "unknown";
+			}
 		}
 
 		private static bool TryIsAtVehicleHealingLocation(PlayerInfo player, CrewAssignment crew, out string source)
@@ -523,8 +577,23 @@ namespace GameplayTweaks
 		{
 			try
 			{
-				if (__instance == null
-					|| !CombatManagerHealingGuardPatch.TryGetVehicleGroupHealActor(__instance.pid, __instance.peepId, out CrewAssignment requesterCrew, out CrewAssignment driverCrew))
+				if (__instance == null)
+				{
+					return true;
+				}
+
+				if (ShouldBlockHealCommandForLocation(__instance.pid, __instance.peepId, out string reason, out CrewAssignment checkedCrew))
+				{
+					__result = Command.StartStatus.Failed;
+					MultiCrewVehicleHelper.LogVehicleAuthority(
+						"heal-location-blocked",
+						$"canstart:{__instance.pid.id}:{__instance.peepId.id}:{reason}",
+						$"heal-location-blocked source=CommandHeal.CanStart pid={__instance.pid.id} peep={__instance.peepId.id} node={CombatManagerHealingGuardPatch.GetCrewNodeIdForLog(checkedCrew)} reason={reason}",
+						dedupe: true);
+					return false;
+				}
+
+				if (!CombatManagerHealingGuardPatch.TryGetVehicleGroupHealActor(__instance.pid, __instance.peepId, out CrewAssignment requesterCrew, out CrewAssignment driverCrew))
 				{
 					return true;
 				}
@@ -543,6 +612,52 @@ namespace GameplayTweaks
 				Debug.LogWarning("[GameplayTweaks] CommandButtonHealDriverPatch.CanStart: " + ex.Message);
 				return true;
 			}
+		}
+
+		private static bool ShouldBlockHealCommandForLocation(PlayerID pid, EntityID peepId, out string reason, out CrewAssignment crew)
+		{
+			reason = "none";
+			crew = CrewAssignment.EMPTY;
+			if (!peepId.IsValid || global::Game.Game.ctx?.IsInteractive != true)
+			{
+				return false;
+			}
+
+			PlayerInfo player = pid.FindPlayer();
+			if (player?.crew == null || player.IsJustCop || player.IsCopOrFed)
+			{
+				return false;
+			}
+
+			crew = player.crew.GetCrewForPeep(peepId);
+			if (!crew.IsValid || !crew.peepId.IsValid)
+			{
+				reason = "invalid-crew";
+				return true;
+			}
+
+			Entity peep = crew.GetPeep();
+			if (peep?.components?.agent == null || !peep.components.agent.HasHealthPointsLeft || !peep.components.agent.IsWounded)
+			{
+				return false;
+			}
+
+			bool isHumanVehicleGroupHeal = pid.IsHumanPlayer
+				&& crew.IsInVehicle
+				&& crew.VehicleID.IsValid
+				&& CombatManagerHealingGuardPatch.TryGetVehicleGroupHealActor(pid, peepId, out _, out _);
+			if (isHumanVehicleGroupHeal)
+			{
+				return false;
+			}
+
+			if (CombatManagerHealingGuardPatch.TryIsAtOwnedHealingLocation(player, crew, out string source))
+			{
+				return false;
+			}
+
+			reason = source;
+			return true;
 		}
 	}
 

@@ -2,9 +2,9 @@
 
 ## Public Release Status
 
-This package is the current public After Prohibition build for the v1.3.98 package line. It includes StreamingAssets content plus staged BepInEx plugins for the active runtime systems.
+This package is the current public After Prohibition Beta v0.3 build for the v1.3.98 package line. It includes StreamingAssets content plus staged BepInEx plugins for the active runtime systems.
 
-The June 5, 2026 cleanup pass removed the temporary dev-log noise from the robbery/front-pressure project while keeping compact first-report breadcrumbs in normal logs. Players can send a normal `Player.log` first; detailed diagnostics can be enabled later only if a bug needs a deeper repro.
+The June 17, 2026 v0.3 pass adds heat-based weapon stances, enemy outfit sit-down cooling, AI sit-down offers, and robbery/front-closure heat links for gang wars. Players can send a normal `Player.log` first; detailed diagnostics can be enabled later only if a bug needs a deeper repro.
 
 The older stable guide at `Things To Have\Old Stable\#Guide.txt` remains a legacy content reference and was not removed.
 
@@ -62,6 +62,32 @@ Main content changes included in the package:
 
 When installing a public build, copy the `CoG_Data` folder from this package along with `BepInEx` so these data changes are present.
 
+## StreamingAssets Roadmap Status
+
+The planning docs in `docs\streaming-assets-plans` are not all finished features. v0.3 includes visible content and gameplay systems from that roadmap, while the larger ladders remain planned.
+
+Finished or visible by v0.3:
+
+- Bank-counter/front content and controlled bank placement support.
+- Train-station bulk liquor shipment quest chains.
+- School support and church support/loan conversation paths.
+- Funeral-home/church fake-account paperwork style content.
+- Legal-front module expansion across many business types.
+- Gambling data updates for gym naming support and loan shark debtor slot caps.
+- Civic nonpurchase fallback support so schools and similar civic content can still expose actions when purchase data is missing.
+- Illegal backroom runtime fallback support for respect, territory influence, and production/consumption edge cases.
+- Heat-based weapon stances, outfit sit-down cooling, passive AI sit-down offers, and robbery/front-closure heat links.
+
+Still planned after v0.3:
+
+- Full municipal bank behavior with stronger city-controlled/non-buyout handling.
+- Expanded `45k` and `100k` connected drug and liquor deal tiers.
+- Offshore account discount handling if mixed dirty/clean payment math needs code.
+- School passive-income and recruit-muscle follow-through if recurring payments need code.
+- Maritime dock contracts, port security bribes, jewelry/ore smuggling, dock contacts, and union progression.
+- Ranked schemes such as mini vacations, fundraisers, weapon searches, hijacks, larger burglaries, and random business opportunity quests.
+- Any patch fallback that proves necessary after the content-only versions are tested.
+
 ## Quick Start
 
 - Use normal City of Gangsters play as the base.
@@ -70,6 +96,15 @@ When installing a public build, copy the `CoG_Data` folder from this package alo
 - Legal-front businesses, banks, schools, churches, train stations, and map generation are also changed through StreamingAssets data.
 - Safehouse and owned-building storage follow stricter vehicle-position rules.
 - Delivery routes can optionally try to expand collection fronts with the compact `+` toggle on `Collect front` steps.
+
+## Legal Protection In Crew Relations
+
+- `Political Bribe` costs `$10,000` in clean safehouse cash and protects the whole outfit for 180 days. It delays federal arrest pressure and unlocks a `$5,000` `Call In Favor` option during active police trouble. The favor can cool the involved precinct or end the remaining cop hostility.
+- `Bribe Judge` protects only the selected crew member. It requires local heat, costs `$2,080` at Low heat, `$4,160` at Medium, or `$8,320` at High, prevents that member's federal arrest countdown from progressing, and adds a 25% case-dismissal chance. It is consumed after a successful dismissal.
+- Lawyer controls appear when the selected crew member is jailed. Use `Add $1k` or `Add $10k` to fund that member's retainer from clean safehouse cash.
+- A lawyer balance of at least `$1,000`, `$2,000`, or `$3,000` adds a 10%, 20%, or 30% case-dismissal chance during eligible legal updates.
+- Turn `Retainer Confirmed` on to authorize active trial representation. A confirmed balance above `$20,000` gives a separate 60% chance to mark the trial paid off.
+- Confirmed retainers lose `$500` per jail upkeep update while below `$20,000`, or `$1,000` while at or above `$20,000`. Confirmation turns off when the balance reaches zero.
 
 ## Robbery And Front Pressure
 
@@ -82,6 +117,7 @@ When installing a public build, copy the `CoG_Data` folder from this package alo
 - Successful refusals can lead to important shop closures or, more rarely, a coordinated attack warning for the next turn.
 - Important-business closures target valid visible shops tied to the defender's territory or economic activity. Closed shops should block buying and selling until reopened by game rules.
 - Normal AI expansion and war pressure still exists alongside robbery. Robbery is an added pressure path, not the only reason outfits attack fronts or businesses.
+- AI robberies and completed front closures now add war heat, which can raise the future weapon stance for that outfit pair.
 
 ## Combat And Vehicle Crews
 
@@ -92,6 +128,29 @@ When installing a public build, copy the `CoG_Data` folder from this package alo
 - `Range` filters on-foot attacks between any, melee, and ranged weapons.
 - `Targets` switches between focused targeting and spread targeting when multiple enemy targets are available.
 - Passenger and driver routing remains strict for movement so future passengers should not be treated as already present attackers.
+
+## War Weapon Stances
+
+- Gang fights now use the current war heat between the two outfits to choose a weapon stance.
+- `Hands Only` allows fists.
+- `Street Weapons` allows fists and melee weapons.
+- `Sidearms` allows melee weapons plus pistols and revolvers.
+- `Open Arsenal` allows the full valid vehicle weapon pool.
+- The stance is recalculated for every fight from current heat; there is no separate war-start agreement to manage.
+- Player weapons stay selectable. If you choose a weapon above the current stance, the popup warns you before the fight commits.
+- If you confirm and use the prohibited weapon, the opposing outfit gains extra war heat against you and receives a relationship penalty.
+- AI attackers and defenders normally follow the stance, but AI-vs-AI fights can sometimes breach one tier when heat, pressure, personality, and available vehicle weapons support it.
+- AI breaches use only weapons already in that vehicle. They do not unlock weapons, buy from gun shops, or change weapon supply.
+
+## Outfit Sit-Downs
+
+- Select the boss and open Crew Relations to find outfit-level sit-down controls.
+- Outfit sit-downs are remote; you do not need to physically meet the enemy boss.
+- Player options can include Talk, Leisure, and the liquor business deal when requirements are met.
+- Successful sit-downs reduce war heat in both directions and can lower the next combat stance naturally.
+- Enemy outfits can offer Talk or Leisure sit-downs. These offers appear in Crew Relations instead of opening a forced popup.
+- AI outfits cannot offer the liquor deal to the player in this release.
+- Failed, unavailable, declined, or canceled sit-downs should not reduce heat.
 
 ## Public Logging And Diagnostics
 

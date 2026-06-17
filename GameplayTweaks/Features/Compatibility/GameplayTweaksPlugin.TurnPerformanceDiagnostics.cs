@@ -316,6 +316,8 @@ namespace GameplayTweaks
 		private static readonly MethodInfo CrewDialogRecreateAllCardsMethod = AccessTools.Method(typeof(CrewDialog), "RecreateAllCards");
 		private static readonly MethodInfo CrewDialogOnCurrentActiveChangedMethod = AccessTools.Method(typeof(CrewDialog), "OnCurrentActiveChanged");
 		private static readonly FieldInfo CrewDialogAllCardsField = AccessTools.Field(typeof(CrewDialog), "_allCards");
+		private static readonly FieldInfo CrewDialogSectionEditModeField = AccessTools.Field(typeof(CrewDialog), "sectionEditMode");
+		private static readonly FieldInfo CrewDialogEditSelectedField = AccessTools.Field(typeof(CrewDialog), "editSelected");
 		private static readonly MethodInfo PlayerTerritoryGetAllControlledBuildingsUnsafeMethod = AccessTools.Method(typeof(PlayerTerritory), "GetAllControlledBuildingsUnsafe");
 		private static readonly MethodInfo PlayerTerritoryGetAllOwnedNodesUnsafeMethod = AccessTools.Method(typeof(PlayerTerritory), "GetAllOwnedNodesUnsafe");
 		private static readonly FieldInfo BusinessTrackerBizCacheAllField = AccessTools.Field(typeof(BusinessTracker), "_bizCacheAll");
@@ -6794,6 +6796,18 @@ namespace GameplayTweaks
 					patched++;
 				}
 
+				MethodInfo crewDialogClearEditMode = FindInstanceMethodNoWarn(typeof(CrewDialog), "ClearEditMode");
+				if (crewDialogClearEditMode != null)
+				{
+					harmony.Patch(
+						crewDialogClearEditMode,
+						prefix: new HarmonyMethod(typeof(TurnPerformanceDiagnosticsPatch), nameof(CrewDialogClearEditModeNoOpPrefix))
+						{
+							priority = Priority.First
+						});
+					patched++;
+				}
+
 				MethodInfo pickAddOrRefresh = AccessTools.Method(typeof(PickContainer), nameof(PickContainer.AddOrRefreshPick), new[] { typeof(PickTarget), typeof(bool) });
 				if (pickAddOrRefresh != null)
 				{
@@ -9141,6 +9155,39 @@ namespace GameplayTweaks
 				{
 					Debug.Log("[PERF][CrewDialogSelectionDeferred] queued=1 active=" + sev.eid.id + " previous=" + (sev.ctx is Entity previous ? previous.Id.id : 0UL) + " coalesced=" + coalesced + " frame=" + frame + " earliest=" + (frame + DeferredCrewDialogSelectionDelayFrames) + " day=" + GetDayForLog() + " turn=" + GetTurnForLog());
 				}
+				return false;
+			}
+			catch
+			{
+				return true;
+			}
+		}
+
+		private static bool CrewDialogClearEditModeNoOpPrefix(CrewDialog __instance)
+		{
+			try
+			{
+				if (__instance == null
+					|| CrewDialogSectionEditModeField == null
+					|| CrewDialogEditSelectedField == null
+					|| CrewDialogEditSelectedField.GetValue(__instance) != null)
+				{
+					return true;
+				}
+
+				if (!(CrewDialogSectionEditModeField.GetValue(__instance) is System.Collections.IDictionary editModes))
+				{
+					return true;
+				}
+
+				foreach (System.Collections.DictionaryEntry editMode in editModes)
+				{
+					if (editMode.Value is bool isEditing && isEditing)
+					{
+						return true;
+					}
+				}
+
 				return false;
 			}
 			catch

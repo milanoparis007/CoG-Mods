@@ -2047,10 +2047,13 @@ public partial class GameplayTweaksPlugin
 
 	internal static class ConvoNullFixPatch
 	{
+		private static int _insideTerritoryMissingNodeCount;
+
 		public static void ApplyPatch(Harmony harmony)
 		{
 			try
 			{
+				TryPatchInsideTerritoryRequirement(harmony);
 				TryPatchDoesPassFinalizer(harmony, "Game.Session.Data.CheckHasSponsoredPoliticianInWard");
 				TryPatchDoesPassFinalizer(harmony, "Game.Session.Data.CheckCrewRole");
 				TryPatchDoesPassFinalizer(harmony, "Game.Session.Data.CheckCanBoostForGoon");
@@ -2059,6 +2062,94 @@ public partial class GameplayTweaksPlugin
 			catch (Exception arg)
 			{
 				Debug.LogError($"[GameplayTweaks] ConvoNullFixPatch failed: {arg}");
+			}
+		}
+
+		private static void TryPatchInsideTerritoryRequirement(Harmony harmony)
+		{
+			MethodInfo method = typeof(CheckIsConvoInsideTerritory).GetMethod("DoesPass", BindingFlags.Instance | BindingFlags.Public);
+			if (method == null)
+			{
+				return;
+			}
+			harmony.Patch(
+				(MethodBase)method,
+				new HarmonyMethod(typeof(ConvoNullFixPatch), nameof(CheckIsConvoInsideTerritoryPrefix)),
+				(HarmonyMethod)null,
+				(HarmonyMethod)null,
+				(HarmonyMethod)null,
+				(HarmonyMethod)null);
+			Debug.Log("[GameplayTweaks] ConvoNullFixPatch prefix applied to Game.Session.Data.CheckIsConvoInsideTerritory.DoesPass");
+		}
+
+		private static bool CheckIsConvoInsideTerritoryPrefix(CheckIsConvoInsideTerritory __instance, VisitState visit, ref bool __result)
+		{
+			try
+			{
+				PlayerID ownerPid = ResolveConvoTerritoryOwner(visit, out bool missingNode);
+				bool flag = false;
+				switch (__instance.player)
+				{
+				case CheckIsConvoInsideTerritory.Type.Human:
+					flag = ownerPid.IsHumanPlayer;
+					break;
+				case CheckIsConvoInsideTerritory.Type.AI:
+					flag = ownerPid.IsAIPlayer;
+					break;
+				case CheckIsConvoInsideTerritory.Type.Gang:
+					flag = ownerPid.IsAIPlayer && ownerPid.FindPlayer()?.IsJustGang == true;
+					break;
+				case CheckIsConvoInsideTerritory.Type.Goon:
+					flag = ownerPid.IsAIPlayer && ownerPid.FindPlayer()?.IsJustGoon == true;
+					break;
+				case CheckIsConvoInsideTerritory.Type.Any:
+					flag = ownerPid.IsAnyPlayer;
+					break;
+				case CheckIsConvoInsideTerritory.Type.None:
+					flag = ownerPid.IsNotValid;
+					break;
+				default:
+					Debug.LogWarning("[GameplayTweaks] Unknown CheckIsConvoInsideTerritory player type: " + __instance.player);
+					break;
+				}
+
+				__result = flag == __instance.expected;
+				if (missingNode)
+				{
+					_insideTerritoryMissingNodeCount++;
+					if (_insideTerritoryMissingNodeCount == 1 || _insideTerritoryMissingNodeCount % 25 == 0)
+					{
+						VerificationLog(
+							"ConvoNullFix",
+							$"inside-territory-missing-node player={__instance.player} expected={__instance.expected} result={__result} count={_insideTerritoryMissingNodeCount}");
+					}
+				}
+				return false;
+			}
+			catch (Exception ex)
+			{
+				__result = false;
+				VerificationLog("ConvoNullFix", $"inside-territory-safe-fallback exception={ex.GetType().Name} message={ex.Message}");
+				return false;
+			}
+		}
+
+		private static PlayerID ResolveConvoTerritoryOwner(VisitState visit, out bool missingNode)
+		{
+			missingNode = true;
+			try
+			{
+				var node = visit?.GetBldgNode();
+				if (node == null)
+				{
+					return PlayerID.INVALID;
+				}
+				missingNode = false;
+				return node.owner.Get();
+			}
+			catch
+			{
+				return PlayerID.INVALID;
 			}
 		}
 

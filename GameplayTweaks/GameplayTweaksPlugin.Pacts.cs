@@ -297,6 +297,7 @@ public partial class GameplayTweaksPlugin
 				int aiCrewRelationsProcessed = 0;
 				int aiCrewRelationsDeferred = 0;
 				ProcessAiCrewTurnMaintenance(now);
+				ProcessWarStanceAiSitDownOffers(now);
 				ReconcileRaidedGangSafehouseTerritory("pact-turn");
 				EnsureHumanSafehouseTerritoryColorOwner("pact-turn", refreshColors: false);
 				int lowRespectTerritoryClears = ReconcileLowRespectTerritoryOwnership("pact-turn", refreshColors: false);
@@ -968,6 +969,11 @@ public partial class GameplayTweaksPlugin
 		private const float AI_ROBBERY_CONTACT_VEHICLE_HEAT_GAIN = 2f;
 		private const float AI_ROBBERY_CONTACT_REFUSE_HEAT_GAIN = 4f;
 		private const float AI_ROBBERY_CONTACT_EVADE_HEAT_GAIN = 2f;
+		private const float AI_GANG_ROBBERY_PRE_FRONT_HEAT_GAIN = 8f;
+		private const float AI_GANG_ROBBERY_SUCCESS_LOW_HEAT_GAIN = 8f;
+		private const float AI_GANG_ROBBERY_SUCCESS_HIGH_HEAT_GAIN = 12f;
+		private const float AI_GANG_ROBBERY_FAILED_LOW_HEAT_GAIN = 16f;
+		private const float AI_GANG_ROBBERY_FAILED_HIGH_HEAT_GAIN = 22f;
 		private const float AI_ROBBERY_REFUSAL_ESCALATION_CHANCE = 0.2f;
 		private const float AI_ROBBERY_NEARBY_WORLD_DISTANCE = 24f;
 		private const float AI_ROBBERY_NEARBY_PROMPT_WORLD_DISTANCE = 14f;
@@ -1527,6 +1533,8 @@ public partial class GameplayTweaksPlugin
 
 			public int CreatedDay;
 
+			public int LastPendingKeepLogDay = int.MinValue;
+
 			public string Source = string.Empty;
 
 			public string Mode = string.Empty;
@@ -1627,6 +1635,8 @@ public partial class GameplayTweaksPlugin
 			public bool ActorReassignmentGranted;
 
 			public int TargetMoveRouteWindowResets;
+
+			public int LastRetainedLogDay = int.MinValue;
 		}
 
 		private sealed class AiRobberyResolutionPreview
@@ -4033,7 +4043,21 @@ public partial class GameplayTweaksPlugin
 				return false;
 			}
 
-			AddWarHeat(channel, victim.PID.id, robber.PID.id, AI_ROBBERY_CONTACT_VEHICLE_HEAT_GAIN, sourceTag);
+			AddAiRobberyWarHeatWithDiagnostic(
+				channel,
+				victim.PID.id,
+				robber.PID.id,
+				robber,
+				victim,
+				AI_GANG_ROBBERY_PRE_FRONT_HEAT_GAIN,
+				sourceTag,
+				"front-closure-before-robbery",
+				proposal.TradeKey,
+				cash: 0,
+				success: false,
+				highValue: string.Equals(proposal.TradeKey, "gang-robbery-high", StringComparison.Ordinal),
+				externalNetwork: externalNetwork,
+				direction: "victim-to-robber");
 			RecordAiGangRobberyPairCooldown(robber, victim, now);
 			LogGrapevine($"{(externalNetwork ? "ROBBERY" : "PACT")}: {GetGangDisplayName(robber.PID.id)} skipped the shakedown and leaned on one of {GetGangDisplayName(victim.PID.id)}'s fronts instead.");
 			VerificationLog(verificationChannel, $"type={proposal.TradeKey} phase=front-closure-before-robbery result=closed day={now.days} robber={robber.PID.id} victim={victim.PID.id} action={actionSummary} chance={closureChance:0.00} roll={roll:0.00} cooldownDays={AI_ROBBERY_GANG_PAIR_COOLDOWN_DAYS}");
@@ -4043,6 +4067,49 @@ public partial class GameplayTweaksPlugin
 		{
 			Debug.LogWarning("[GameplayTweaks] TryRunAiFrontClosureBeforeRobbery failed: " + ex.Message);
 			return false;
+		}
+	}
+
+	private static void AddAiRobberyWarHeatWithDiagnostic(
+		GangOpsChannel channel,
+		int heatSourcePid,
+		int heatTargetPid,
+		PlayerInfo robber,
+		PlayerInfo victim,
+		float heatGain,
+		string reason,
+		string phase,
+		string tradeKey,
+		int cash,
+		bool success,
+		bool highValue,
+		bool externalNetwork,
+		string direction)
+	{
+		bool heatApplied = false;
+		try
+		{
+			if (heatSourcePid < 0 || heatTargetPid < 0 || heatSourcePid == heatTargetPid || heatGain <= 0f)
+			{
+				return;
+			}
+			float directionalHeatBefore = GetWarHeat(heatSourcePid, heatTargetPid);
+			WarStanceSnapshot pairBefore = ResolveWarStanceSnapshot(heatSourcePid, heatTargetPid);
+			AddWarHeat(channel, heatSourcePid, heatTargetPid, heatGain, reason);
+			heatApplied = true;
+			float directionalHeatAfter = GetWarHeat(heatSourcePid, heatTargetPid);
+			WarStanceSnapshot pairAfter = ResolveWarStanceSnapshot(heatSourcePid, heatTargetPid);
+			VerificationLog(
+				"WarStance",
+				$"[WarStance][AiRobberyHeat] phase={phase} trade={tradeKey ?? "unknown"} channel={GetGangOpsChannelTag(channel)} robberPid={(robber != null ? robber.PID.id : -1)} victimPid={(victim != null ? victim.PID.id : -1)} victimHuman={victim != null && victim.PID.IsHumanPlayer} cash={cash} highValue={highValue} success={success} external={externalNetwork} heat=+{heatGain:0.0} reason={reason} direction={direction} heatSourcePid={heatSourcePid} heatTargetPid={heatTargetPid} directionalHeatBefore={directionalHeatBefore:0.0} directionalHeatAfter={directionalHeatAfter:0.0} effectiveHeatBefore={pairBefore.EffectiveHeat:0.0} effectiveHeatAfter={pairAfter.EffectiveHeat:0.0} stanceBefore={FormatWarWeaponStance(pairBefore.Stance)} stanceAfter={FormatWarWeaponStance(pairAfter.Stance)}");
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] AddAiRobberyWarHeatWithDiagnostic failed: " + ex.Message);
+			if (!heatApplied)
+			{
+				AddWarHeat(channel, heatSourcePid, heatTargetPid, heatGain, reason);
+			}
 		}
 	}
 
@@ -4082,7 +4149,9 @@ public partial class GameplayTweaksPlugin
 		float successChance = CalculateAiGangRobberySuccessChance(robber, victim, highValue);
 		bool success = SharedRng.NextDouble() < successChance;
 		GangOpsChannel channel = ResolveGangOpsChannelForGang(victim.PID.IsHumanPlayer ? robber.PID.id : victim.PID.id);
-		float heatGain = success ? (highValue ? 5f : 3f) : (highValue ? 8f : 6f);
+		float heatGain = success
+			? (highValue ? AI_GANG_ROBBERY_SUCCESS_HIGH_HEAT_GAIN : AI_GANG_ROBBERY_SUCCESS_LOW_HEAT_GAIN)
+			: (highValue ? AI_GANG_ROBBERY_FAILED_HIGH_HEAT_GAIN : AI_GANG_ROBBERY_FAILED_LOW_HEAT_GAIN);
 		string robberName = GetGangDisplayName(robber.PID.id);
 		string victimName = victim.PID.IsHumanPlayer ? "your outfit" : GetGangDisplayName(victim.PID.id);
 
@@ -4093,7 +4162,21 @@ public partial class GameplayTweaksPlugin
 				return false;
 			}
 			AddDirectedRelationshipBuff(victim, robber, "relbuff-gangs-robbery2-table-on-finish", GetCrewPeepForPlayer(victim), ShouldLogAiTradeRelationshipBuffs(victim, robber));
-			AddWarHeat(channel, victim.PID.id, robber.PID.id, heatGain, victim.PID.IsHumanPlayer ? "ai-robbery-player-success" : "ai-robbery-success");
+			AddAiRobberyWarHeatWithDiagnostic(
+				channel,
+				victim.PID.id,
+				robber.PID.id,
+				robber,
+				victim,
+				heatGain,
+				victim.PID.IsHumanPlayer ? "ai-robbery-player-success" : "ai-robbery-success",
+				"gang-robbery-success",
+				proposal.TradeKey,
+				cash,
+				success: true,
+				highValue: highValue,
+				externalNetwork: externalNetwork,
+				direction: "victim-to-robber");
 			LogGrapevine($"{(externalNetwork ? "ROBBERY" : "PACT")}: {robberName} robbed {victimName} for ${cash}. {victimName} is angry, but no shots were fired.");
 			RecordAiGangRobberyPairCooldown(robber, victim, now);
 			VerificationLog(verificationChannel, $"type={proposal.TradeKey} result=success day={now.days} robber={robber.PID.id} victim={victim.PID.id} cash={cash} chance={successChance:0.00} heat={heatGain:0.0} cooldownDays={AI_ROBBERY_GANG_PAIR_COOLDOWN_DAYS}");
@@ -4101,7 +4184,21 @@ public partial class GameplayTweaksPlugin
 		}
 
 		AddDirectedRelationshipBuff(victim, robber, "relbuff-gangs-robbery1-buff", GetCrewPeepForPlayer(victim), ShouldLogAiTradeRelationshipBuffs(victim, robber));
-		AddWarHeat(channel, victim.PID.id, robber.PID.id, heatGain, victim.PID.IsHumanPlayer ? "ai-robbery-player-failed" : "ai-robbery-failed");
+		AddAiRobberyWarHeatWithDiagnostic(
+			channel,
+			victim.PID.id,
+			robber.PID.id,
+			robber,
+			victim,
+			heatGain,
+			victim.PID.IsHumanPlayer ? "ai-robbery-player-failed" : "ai-robbery-failed",
+			"gang-robbery-failed",
+			proposal.TradeKey,
+			cash,
+			success: false,
+			highValue: highValue,
+			externalNetwork: externalNetwork,
+			direction: "victim-to-robber");
 		ActivateWarBetweenPlayers(victim, robber);
 		bool dispatched = false;
 		int dispatchedCount = 0;
@@ -4790,8 +4887,19 @@ public partial class GameplayTweaksPlugin
 			if (!ShouldReplaceDeferredAiHumanRobberyResponse(existing, candidate, now, source))
 			{
 				int oldExpireDay = existing.ExpireDay;
-				existing.ExpireDay = GetAiHumanRobberyDeferredResponseExpireDay(candidate.Robber.PID.id, humanPlayer.PID.id, Math.Max(existing.ExpireDay, now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS));
-				VerificationLog("AIPlayerRobbery", $"deferred phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} day={now.days} reason=pair-already-queued existingTarget={existing?.TargetCrewPeepId ?? 0L} existingNode=NID_{existing?.TargetNodeIndex ?? 0} existingSource={existing?.Source ?? string.Empty} expireDay={oldExpireDay}->{existing.ExpireDay} result=pending-kept");
+				int desiredExpireDay = GetAiHumanRobberyDeferredResponseExpireDay(candidate.Robber.PID.id, humanPlayer.PID.id, Math.Max(existing.ExpireDay, now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS));
+				bool sameDeferredContact = existing.TargetCrewPeepId == (long)candidate.TargetCrew.peepId.id
+					&& existing.TargetNodeIndex == (candidate.ContactNode?.id.index ?? 0)
+					&& string.Equals(existing.Source ?? string.Empty, source ?? string.Empty, StringComparison.Ordinal)
+					&& string.Equals(existing.Mode ?? string.Empty, mode ?? string.Empty, StringComparison.Ordinal);
+				if (!sameDeferredContact || desiredExpireDay > existing.ExpireDay)
+				{
+					existing.ExpireDay = desiredExpireDay;
+				}
+				if (ShouldLogKeptDeferredAiHumanRobberyResponse(existing, now, oldExpireDay))
+				{
+					VerificationLog("AIPlayerRobbery", $"deferred phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} day={now.days} reason=pair-already-queued existingTarget={existing?.TargetCrewPeepId ?? 0L} existingNode=NID_{existing?.TargetNodeIndex ?? 0} existingSource={existing?.Source ?? string.Empty} expireDay={oldExpireDay}->{existing.ExpireDay} result=pending-kept");
+				}
 				return true;
 			}
 			VerificationLog("AIPlayerRobbery", $"deferred phase=response-popup source={source} mode={mode} robber={candidate.Robber.PID.id} targetCrew={candidate.TargetCrew.peepId.id} vehicle={candidate.TargetCrew.VehicleID.id} node={candidate.ContactNode?.id ?? NodeID.INVALID} day={now.days} reason=pair-queued-replaced oldTarget={existing?.TargetCrewPeepId ?? 0L} oldNode=NID_{existing?.TargetNodeIndex ?? 0} oldSource={existing?.Source ?? string.Empty} result=pending-updated");
@@ -4899,6 +5007,7 @@ public partial class GameplayTweaksPlugin
 			if (!existingExpired && sameTarget && existingActorValid && routeCommitted)
 			{
 				int oldPriority = existing.Priority;
+				int oldExpireDay = existing.ExpireDay;
 				existing.Priority = Math.Max(existing.Priority, priority);
 				existing.ExpireDay = ClampPendingAiHumanRobberyMeetingExpireDay(existing, Math.Max(existing.ExpireDay, now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS));
 				if (priority >= oldPriority)
@@ -4908,9 +5017,12 @@ public partial class GameplayTweaksPlugin
 					existing.Reason = candidate.Reason ?? existing.Reason;
 					existing.CreatedDay = createdDay;
 				}
-				VerificationLog(
-					"AIPlayerRobbery",
-					$"robbery-meeting-retained robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} meetingPeep={existing.MeetingPeepId} meetingVehicle={existing.MeetingVehicleId} targetCrew={existing.TargetCrewPeepId} meetingNode=NID_{existing.MeetingNodeIndex} source={source} mode={mode} existingSource={existing.Source} priority={priority}/{oldPriority}->{existing.Priority} actorLock=True routeLock=True proposedPeep={meetingCrew.peepId.id} proposedVehicle={meetingCrew.VehicleID.id} proposedNode={candidate.ContactNode?.id ?? NodeID.INVALID} sameNode={sameNode} routeQueued={existing.RouteQueued} arrived={existing.Arrived} result=pending-kept");
+				if (ShouldLogRetainedAiHumanRobberyMeeting(existing, now, oldPriority, oldExpireDay))
+				{
+					VerificationLog(
+						"AIPlayerRobbery",
+						$"robbery-meeting-retained robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} meetingPeep={existing.MeetingPeepId} meetingVehicle={existing.MeetingVehicleId} targetCrew={existing.TargetCrewPeepId} meetingNode=NID_{existing.MeetingNodeIndex} source={source} mode={mode} existingSource={existing.Source} priority={priority}/{oldPriority}->{existing.Priority} actorLock=True routeLock=True proposedPeep={meetingCrew.peepId.id} proposedVehicle={meetingCrew.VehicleID.id} proposedNode={candidate.ContactNode?.id ?? NodeID.INVALID} sameNode={sameNode} routeQueued={existing.RouteQueued} arrived={existing.Arrived} result=pending-kept");
+				}
 				return true;
 			}
 			if (!existingExpired
@@ -4946,6 +5058,7 @@ public partial class GameplayTweaksPlugin
 			if (!existingExpired && sameTarget && sameNode && existingActorValid)
 			{
 				int oldPriority = existing.Priority;
+				int oldExpireDay = existing.ExpireDay;
 				existing.Priority = Math.Max(existing.Priority, priority);
 				existing.ExpireDay = ClampPendingAiHumanRobberyMeetingExpireDay(existing, Math.Max(existing.ExpireDay, now.days + AI_ROBBERY_PENDING_CONTACT_EXPIRE_DAYS));
 				if (priority >= oldPriority)
@@ -4955,16 +5068,22 @@ public partial class GameplayTweaksPlugin
 					existing.Reason = candidate.Reason ?? existing.Reason;
 					existing.CreatedDay = createdDay;
 				}
-				VerificationLog(
-					"AIPlayerRobbery",
-					$"robbery-meeting-retained robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} meetingPeep={existing.MeetingPeepId} meetingVehicle={existing.MeetingVehicleId} targetCrew={existing.TargetCrewPeepId} meetingNode=NID_{existing.MeetingNodeIndex} source={source} mode={mode} existingSource={existing.Source} priority={priority}/{oldPriority}->{existing.Priority} actorLock=True proposedPeep={meetingCrew.peepId.id} proposedVehicle={meetingCrew.VehicleID.id} result=pending-kept");
+				if (ShouldLogRetainedAiHumanRobberyMeeting(existing, now, oldPriority, oldExpireDay))
+				{
+					VerificationLog(
+						"AIPlayerRobbery",
+						$"robbery-meeting-retained robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} meetingPeep={existing.MeetingPeepId} meetingVehicle={existing.MeetingVehicleId} targetCrew={existing.TargetCrewPeepId} meetingNode=NID_{existing.MeetingNodeIndex} source={source} mode={mode} existingSource={existing.Source} priority={priority}/{oldPriority}->{existing.Priority} actorLock=True proposedPeep={meetingCrew.peepId.id} proposedVehicle={meetingCrew.VehicleID.id} result=pending-kept");
+				}
 				return true;
 			}
 			if (!existingExpired && existing.QueuedDay == now.days && priority <= existing.Priority && sameTarget && sameNode && sameActor)
 			{
-				VerificationLog(
-					"AIPlayerRobbery",
-					$"robbery-meeting-retained robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} meetingPeep={existing.MeetingPeepId} meetingVehicle={existing.MeetingVehicleId} targetCrew={existing.TargetCrewPeepId} meetingNode=NID_{existing.MeetingNodeIndex} source={source} mode={mode} existingSource={existing.Source} priority={priority}/{existing.Priority} result=pending-kept");
+				if (ShouldLogRetainedAiHumanRobberyMeeting(existing, now, existing.Priority, existing.ExpireDay))
+				{
+					VerificationLog(
+						"AIPlayerRobbery",
+						$"robbery-meeting-retained robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} meetingPeep={existing.MeetingPeepId} meetingVehicle={existing.MeetingVehicleId} targetCrew={existing.TargetCrewPeepId} meetingNode=NID_{existing.MeetingNodeIndex} source={source} mode={mode} existingSource={existing.Source} priority={priority}/{existing.Priority} result=pending-kept");
+				}
 				return true;
 			}
 			VerificationLog(
@@ -5007,6 +5126,21 @@ public partial class GameplayTweaksPlugin
 			"AIPlayerRobbery",
 			$"robbery-meeting-queued robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} meetingCrewNode=NID_{pending.MeetingCrewNodeIndex} meetingCrewSource={pending.MeetingCrewNodeSource} targetCrew={pending.TargetCrewPeepId} targetVehicle={pending.TargetVehicleId} meetingNode=NID_{pending.MeetingNodeIndex} queuedDay={pending.QueuedDay} notBeforeDay={pending.NotBeforeDay} expireDay={pending.ExpireDay} source={pending.Source} mode={pending.Mode} priority={pending.Priority} reason={pending.Reason} promptStillLegacy=True result=pending");
 		TryQueuePendingAiHumanRobberyMeetingRoute(pending, candidate.Robber, now, "record:" + (source ?? "unknown"), allowRequeue: false);
+		return true;
+	}
+
+	private static bool ShouldLogRetainedAiHumanRobberyMeeting(PendingAiHumanRobberyMeeting pending, SimTime now, int oldPriority, int oldExpireDay)
+	{
+		if (pending == null)
+		{
+			return false;
+		}
+		bool changed = pending.Priority != oldPriority || pending.ExpireDay != oldExpireDay;
+		if (!changed && pending.LastRetainedLogDay == now.days)
+		{
+			return false;
+		}
+		pending.LastRetainedLogDay = now.days;
 		return true;
 	}
 
@@ -5769,6 +5903,21 @@ public partial class GameplayTweaksPlugin
 		VerificationLog(
 			"AIPlayerRobbery",
 			$"robbery-meeting-cleared robber={pending.RobberPid} human={pending.HumanPid} meetingPeep={pending.MeetingPeepId} meetingVehicle={pending.MeetingVehicleId} targetCrew={pending.TargetCrewPeepId} currentNode={currentNodeId} currentSource={currentNodeSource} routeTargetNode=NID_{pending.RouteTargetNodeIndex} meetingNode=NID_{pending.MeetingNodeIndex} queuedDay={pending.QueuedDay} source={source} reason={reason} routeQueued={pending.RouteQueued} arrived={pending.Arrived} noProgressChecks={pending.NoProgressChecks} requeues={pending.RouteRequeueCount} result=cleared");
+	}
+
+	private static bool ShouldLogKeptDeferredAiHumanRobberyResponse(DeferredAiHumanRobberyResponse deferred, SimTime now, int oldExpireDay)
+	{
+		if (deferred == null)
+		{
+			return false;
+		}
+		bool changed = deferred.ExpireDay != oldExpireDay;
+		if (!changed && deferred.LastPendingKeepLogDay == now.days)
+		{
+			return false;
+		}
+		deferred.LastPendingKeepLogDay = now.days;
+		return true;
 	}
 
 	private static bool ShouldReplaceDeferredAiHumanRobberyResponse(DeferredAiHumanRobberyResponse existing, AiRobberyCandidate candidate, SimTime now, string source)
@@ -6733,7 +6882,21 @@ public partial class GameplayTweaksPlugin
 		if (retaliationQueued)
 		{
 			ActivateWarBetweenPlayers(candidate.Robber, humanPlayer);
-			AddWarHeat(channel, candidate.Robber.PID.id, humanPlayer.PID.id, AI_ROBBERY_CONTACT_EVADE_HEAT_GAIN, "ai-human-robbery-evaded");
+			AddAiRobberyWarHeatWithDiagnostic(
+				channel,
+				candidate.Robber.PID.id,
+				humanPlayer.PID.id,
+				candidate.Robber,
+				humanPlayer,
+				AI_ROBBERY_CONTACT_EVADE_HEAT_GAIN,
+				"ai-human-robbery-evaded",
+				"human-robbery-evaded",
+				"ai-human-contact",
+				cash: 0,
+				success: false,
+				highValue: false,
+				externalNetwork: true,
+				direction: "robber-to-human");
 		}
 		VerificationLog(
 			"AIPlayerRobbery",
@@ -6772,7 +6935,21 @@ public partial class GameplayTweaksPlugin
 
 		GangOpsChannel channel = ResolveGangOpsChannelForGang(candidate.Robber.PID.id);
 		ActivateWarBetweenPlayers(candidate.Robber, humanPlayer);
-		AddWarHeat(channel, candidate.Robber.PID.id, humanPlayer.PID.id, AI_ROBBERY_CONTACT_REFUSE_HEAT_GAIN, "ai-human-robbery-refused");
+		AddAiRobberyWarHeatWithDiagnostic(
+			channel,
+			candidate.Robber.PID.id,
+			humanPlayer.PID.id,
+			candidate.Robber,
+			humanPlayer,
+			AI_ROBBERY_CONTACT_REFUSE_HEAT_GAIN,
+			"ai-human-robbery-refused",
+			"human-robbery-refused",
+			"ai-human-contact",
+			cash: 0,
+			success: false,
+			highValue: false,
+			externalNetwork: true,
+			direction: "robber-to-human");
 		int desiredCrewCount = Mathf.Clamp((candidate.Robber?.crew?.LivingCrewCount ?? 1) >= 3 || candidate.DirectAggro ? 3 : 2, 1, 3);
 		bool retaliationQueued = false;
 		bool retaliationInitializedSameTurn = false;
@@ -6789,7 +6966,21 @@ public partial class GameplayTweaksPlugin
 			if (cashDebited)
 			{
 				bool robberCredited = TryCreditGangSafehouseCash(candidate.Robber, preview.Amount);
-				AddWarHeat(channel, humanPlayer.PID.id, candidate.Robber.PID.id, AI_ROBBERY_CONTACT_VEHICLE_HEAT_GAIN, "ai-human-robbery-refusal-failed");
+				AddAiRobberyWarHeatWithDiagnostic(
+					channel,
+					humanPlayer.PID.id,
+					candidate.Robber.PID.id,
+					candidate.Robber,
+					humanPlayer,
+					AI_ROBBERY_CONTACT_VEHICLE_HEAT_GAIN,
+					"ai-human-robbery-refusal-failed",
+					"human-robbery-refusal-failed",
+					"ai-human-contact",
+					preview.Amount,
+					success: true,
+					highValue: false,
+					externalNetwork: true,
+					direction: "human-to-robber");
 				attackAction = "refusal-failed-paid";
 				result = "refusal-failed-paid";
 				VerificationLog("AIPlayerRobbery", $"refusal-payment phase=response-popup robber={candidate.Robber.PID.id} human={humanPlayer.PID.id} targetCrew={candidate.TargetCrew.peepId.id} cash={preview.Amount} cashSource={cashSource} cashBefore={cashBefore} cashAfter={cashAfter} robberCredited={robberCredited} source={source} mode={mode}");
@@ -7206,7 +7397,21 @@ public partial class GameplayTweaksPlugin
 
 		bool robberCredited = TryCreditGangSafehouseCash(candidate.Robber, preview.Amount);
 		GangOpsChannel channel = ResolveGangOpsChannelForGang(candidate.Robber.PID.id);
-		AddWarHeat(channel, humanPlayer.PID.id, candidate.Robber.PID.id, AI_ROBBERY_CONTACT_VEHICLE_HEAT_GAIN, "ai-vehicle-robbery-success");
+		AddAiRobberyWarHeatWithDiagnostic(
+			channel,
+			humanPlayer.PID.id,
+			candidate.Robber.PID.id,
+			candidate.Robber,
+			humanPlayer,
+			AI_ROBBERY_CONTACT_VEHICLE_HEAT_GAIN,
+			"ai-vehicle-robbery-success",
+			"vehicle-robbery-success",
+			"ai-human-contact",
+			preview.Amount,
+			success: true,
+			highValue: false,
+			externalNetwork: true,
+			direction: "human-to-robber");
 		RecordAiHumanRobberyDiagnosticCooldown(candidate, now);
 		RecordAiHumanRobberyPairCooldown(candidate, humanPlayer, now, "success");
 		string created = createdDay >= 0 ? $" createdDay={createdDay}" : string.Empty;

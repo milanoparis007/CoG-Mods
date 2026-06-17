@@ -756,10 +756,11 @@ namespace GameplayTweaks
 			List<PlayerCrewGrowth.CandidateData> candidates = new List<PlayerCrewGrowth.CandidateData>();
 			__instance.GetAllCrewCandidateFrom(playersFriend, candidates);
 			EntityID replacement = candidates
-				.Where(candidate => candidate.candidate.IsValid && IsAllowedCrewHireCandidate(candidate.candidate.FindEntity(), out _))
-				.OrderBy(candidate => GetCrewHireAgeBucket(candidate.candidate.FindEntity()))
-				.ThenByDescending(candidate => candidate.candidate.FindEntity()?.data?.person?.born.days ?? int.MinValue)
-				.Select(candidate => candidate.candidate)
+				.Select(candidate => candidate.candidate.FindEntity())
+				.Where(candidate => candidate != null && IsAllowedCrewHireCandidate(candidate, out _))
+				.OrderBy(GetCrewHireAgeBucket)
+				.ThenByDescending(candidate => candidate.data?.person?.born.days ?? int.MinValue)
+				.Select(candidate => candidate.Id)
 				.FirstOrDefault();
 			if (replacement.IsValid)
 			{
@@ -768,10 +769,91 @@ namespace GameplayTweaks
 				return;
 			}
 
+			if (FindFallbackCrewCandidateFromIntroducer(playersFriend, out EntityID fallback, out string fallbackSource))
+			{
+				GameplayTweaksPlugin.VerificationLog("CrewHire", $"candidate-fallback introducer={playersFriend.id} old={__result.id} replacement={fallback.id} source={fallbackSource} cachedCandidates={candidates.Count}");
+				__result = fallback;
+				return;
+			}
+
 			if (__result.IsValid)
 			{
 				IsAllowedCrewHireCandidate(__result.FindEntity(), out string reason);
 				GameplayTweaksPlugin.VerificationLog("CrewHire", $"candidate-left-for-ui introducer={playersFriend.id} old={__result.id} reason={reason}");
+			}
+		}
+
+		private static bool FindFallbackCrewCandidateFromIntroducer(EntityID playersFriend, out EntityID candidateId, out string source)
+		{
+			candidateId = EntityID.INVALID;
+			source = "none";
+			if (playersFriend.IsNotValid)
+			{
+				return false;
+			}
+
+			try
+			{
+				RelationshipList relationships = global::Game.Game.ctx?.simman?.rels?.GetListOrNull(playersFriend);
+				if (relationships?.data == null || relationships.data.Count == 0)
+				{
+					return false;
+				}
+
+				SimTime now = G.GetNow();
+				Entity strictCandidate = relationships.data
+					.Select(rel => rel.to.FindEntity())
+					.Where(candidate => candidate != null && IsAllowedCrewHireCandidate(candidate, out _))
+					.OrderBy(GetCrewHireAgeBucket)
+					.ThenByDescending(candidate => candidate.data?.person?.born.days ?? int.MinValue)
+					.FirstOrDefault();
+				if (strictCandidate != null)
+				{
+					candidateId = strictCandidate.Id;
+					source = "relationship-strict";
+					return true;
+				}
+
+				Entity vanillaCandidate = relationships.data
+					.Select(rel => rel.to.FindEntity())
+					.Where(candidate => IsVanillaEligibleNeutralCrewCandidate(now, candidate))
+					.OrderByDescending(candidate => candidate.data?.person?.born.days ?? int.MinValue)
+					.FirstOrDefault();
+				if (vanillaCandidate != null)
+				{
+					candidateId = vanillaCandidate.Id;
+					source = "relationship-vanilla";
+					return true;
+				}
+			}
+			catch (Exception ex)
+			{
+				GameplayTweaksPlugin.VerificationLog("CrewHire", $"candidate-fallback-failed introducer={playersFriend.id} reason={ex.GetType().Name}:{ex.Message}");
+			}
+
+			return false;
+		}
+
+		private static bool IsVanillaEligibleNeutralCrewCandidate(SimTime now, Entity candidate)
+		{
+			try
+			{
+				PersonData person = candidate?.data?.person;
+				if (person == null || candidate.data.agent == null)
+				{
+					return false;
+				}
+
+				return person.IsAlive
+					&& person.GetAge(now).YearsFloat >= 20f
+					&& person.business.IsNotValid
+					&& person.resassigned.IsNotValid
+					&& global::Game.Game.ctx?.simman?.politics?.GetPoliticianData(candidate.Id) == null
+					&& candidate.data.agent.pid.id == 0;
+			}
+			catch
+			{
+				return false;
 			}
 		}
 

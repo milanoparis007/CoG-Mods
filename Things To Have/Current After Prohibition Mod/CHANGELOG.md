@@ -1,5 +1,44 @@
 # Current After Prohibition Mod Changelog
 
+## 2026-06-17 Beta v0.3 Release Candidate
+
+- Added heat-based war weapon stances for player, AI, and AI-vs-AI combat.
+- Added player warnings and penalties when breaking the current weapon stance.
+- Added controlled AI weapon breaches so wars can escalate without changing weapon supply.
+- Added enemy outfit sit-down cooling in boss Crew Relations.
+- Added AI sit-down offers that appear in Crew Relations without forced popups.
+- Added AI robbery and front-closure heat so hostile actions affect future weapon stance.
+- Stabilized grouped combat, player defense, and AI breach heat so stance penalties apply once per committed fight.
+- Fixed a conversation territory null reference that could happen when opening conversation buttons without a valid building node.
+- Updated the public v0.3 folder and staged DLLs.
+
+## 2026-06-14 Beta v0.2 Final Package Update
+
+- Stabilized public v0.2 DLL packaging for `GameplayTweaks`, `AfterProhibitionEconomy`, and `GameOptimizer`.
+- Fixed territory/front conversion edge cases around backroom respect and defeated safehouse cleanup.
+- Restored gambler debt warning and debtor conversation behavior.
+- Fixed player garage and truck repair bay backroom visibility.
+- Fixed loan shark slot caps and gym naming support from the Gambling data pass.
+- Confirmed Cincinnati/Kentucky-side front setup is a map-start exclusion issue, not a front conversion regression.
+- Kept weapon stance and weapon procurement work planned for v0.3.
+
+## 2026-06-13 Beta v0.2 Update
+
+- Fixed player garages and truck repair bays not appearing correctly.
+- Fixed crew hiring and crew relations prompts that could fail or stay open.
+- Reduced four-week gang outing costs to `$10`, `$25`, or `$50` per crew member.
+- Fixed illegal backroom respect and territory influence not updating correctly.
+- Improved ethnicity placement when map heatmaps are empty or tied.
+- Fixed prize fights to recognize the current player gym module.
+- Set Low Level Bookies to `2` base debtor slots and High Level Bookies to `3`.
+- Updated the public package DLLs.
+
+## 2026-06-11 Public Garage And Hiring Hotfix
+
+- Fixed player garage and truck repair bay backroom choices being removed from the backroom operation list by the Dirty Cash compatibility filter.
+- Added a crew-hire candidate fallback so the Crew Information dialog can recover hireable people from the introducer relationship list when the cached candidate list is stale or over-filtered.
+- Release package DLL signal: `GameplayTweaks.dll` `2026-06-11 16:30:47` size `2689536`.
+
 ## 2026-06-05 Public Robbery And Log Cleanup Release
 
 This is the cleaned public release pass for the robbery/front-pressure project. The temporary development logging has been gated behind diagnostics toggles while compact first-report breadcrumbs remain available in normal logs.

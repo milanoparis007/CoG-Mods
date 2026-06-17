@@ -136,6 +136,7 @@ public partial class GameplayTweaksPlugin
 			TurnPerformanceDiagnosticsPatch.ClearRuntimeCheatPlayerSetupCache();
 			RouteShopStagingState.ClearAll("load", source);
 			LoadModData(saveName);
+			RestoreWarStanceAiOffersAfterLoad();
 			DirtyCashEconomyCompatibilityPatch.RequestDeferredHumanTerritoryRefresh("load-postfix", 30, 1);
 			ResetTransientPolicePortraitState("load-postfix");
 			_lastGangTrackDay = -1;
@@ -179,6 +180,7 @@ public partial class GameplayTweaksPlugin
 	internal static void SaveModData()
 		{
 		ClearDeferredModDataSaveState();
+		CaptureWarStanceAiOffersForSave();
 		if (ShouldBlockCriticalTextRecoverySaveOverwrite())
 		{
 			if (!_v2CriticalTextRecoverySaveBlockLogged)
@@ -1835,6 +1837,10 @@ public partial class GameplayTweaksPlugin
 		if (SaveData.GangWarMediationLastAttemptDayByPair == null)
 		{
 			SaveData.GangWarMediationLastAttemptDayByPair = new Dictionary<string, int>();
+		}
+		if (SaveData.WarStanceAiOffers == null)
+		{
+			SaveData.WarStanceAiOffers = new Dictionary<int, WarStanceAiOfferState>();
 		}
 		if (SaveData.IndependentLastAutoProtectDayByGang == null)
 		{

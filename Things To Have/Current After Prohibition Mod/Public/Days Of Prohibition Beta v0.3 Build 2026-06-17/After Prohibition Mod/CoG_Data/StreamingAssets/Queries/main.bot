@@ -1,0 +1,38 @@
+require "StreamingAssets/Queries/intros.bot";
+require "StreamingAssets/Queries/socialinference.bot";
+
+/*
+	notation reminders:
+
+	+ARG	: ARG is a fully instantiated (neither null nor a var) input
+	-ARG	: ARG is meant to be an output (okay if it isn't, though)
+	?ARG	: ARG is okay to be input or output
+*/
+
+//
+// helpers
+
+// findEntity(+EID, -Entity)
+findEntity(EID, Entity) <-- Entity = $Game.ctx.entityman.Find(EID);
+
+// meetable(+EntityID, +AgentID)
+meetable(EntityID, ActorID) <--
+	EntityID != ActorID, // can't meet yourself
+	findEntity(EntityID, E),
+	E.data.person.IsAlive,
+	(E.data.agent.pid.IsAnyPlayer | $BuildingUtil.FindBuildingForBizOwner(E) != null);
+
+// findHistory(+Source, +Target, -History)
+findHistory(Source, Target, History) <--
+	Source.id != Target.id, // please don't do inference unto yourself
+	Result = $Game.ctx.simman.rels.GetOrNull(Source, Target),
+	Result != null,
+	History = Result.GetOrCreateHistory();
+
+
+// logging: make sure that $islogging (i.e. BotlManager.islogging) is true for this to work
+// you can also use "trace fn/n" and "untrace fn/n" which log always once enabled
+logg(A) <-- $islogging = true, $BotlManager.Log(A);
+logg(_) <-- true;
+logg(A,B) <-- $islogging = true, $BotlManager.Log(A,B);
+logg(_,_) <-- true;

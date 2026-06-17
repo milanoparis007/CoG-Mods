@@ -1,0 +1,66 @@
+# Current After Prohibition Mod Changelog
+
+## 2026-06-17 Beta v0.3 Build
+
+- Added heat-based war weapon stances.
+- Added player warnings and penalties for breaking weapon stance.
+- Added controlled AI weapon breaches for AI-vs-AI wars.
+- Added outfit sit-down cooling in boss Crew Relations.
+- Added passive AI sit-down offers in Crew Relations.
+- Added AI robbery and front-closure heat links for future stance escalation.
+- Stabilized grouped combat, player defense, AI breach heat, and stance penalty timing.
+- Fixed a conversation territory null reference from missing building-node context.
+- Updated the v0.3 public package DLLs.
+
+## 2026-06-14 Beta v0.2 Final Package Update
+
+- Updated the v0.2 public package DLLs.
+- Fixed player garages and truck repair bays.
+- Fixed gambler debt warning and debtor conversation behavior.
+- Fixed territory/front conversion edge cases from backroom respect and defeated safehouses.
+- Fixed loan shark slot caps and gym naming support.
+- Confirmed Kentucky-side Cincinnati starts explain missing outside-front setup there.
+- Left weapon stance, weapon procurement, and sit-down cooling for v0.3.
+
+## 2026-06-13 Beta v0.2 Update
+
+- Fixed player garages and truck repair bays not appearing correctly.
+- Fixed crew hiring and crew relations prompts that could fail or stay open.
+- Reduced four-week gang outing costs to $10, $25, or $50 per crew member.
+- Fixed illegal backroom respect and territory influence not updating correctly.
+- Improved ethnicity placement when map heatmaps are empty or tied.
+- Fixed prize fights to recognize the current player gym module.
+- Set Low Level Bookies to 2 base debtor slots and High Level Bookies to 3.
+- Updated the public package DLLs.
+
+## 2026-06-09 Beta v0.2 Build
+
+This beta build keeps the separate public beta line moving without overwriting the older public releases.
+
+- Tightened dirty-cash route handling so command flushes do not clear the wrong vehicle or business state too early.
+- Added a civic nonpurchase fallback so school and similar civic content can still appear when custom data is missing or partial.
+- Kept the route and front-pressure work aimed at reliable movement, closures, and important-business pressure.
+- Added crew relations coverage for pacts, grapevine, spouse search, family growth, loyalty, and witness/state-case tracking.
+- Added murder witness pressure so a crew member can build toward a state case instead of every witness acting like one immediate case.
+- Kept the player-facing witness flow around search, threaten, silence, and case reset behavior in the current beta line.
+- Kept the current split-DLL package structure so gameplay, UI, economy, family, politics, routes, and compatibility stay easier to debug.
+- Updated the public beta package with the current plugin DLLs and matching `CoG_Data` content.
+- Included the latest CopKilling beta package changes alongside the GameplayTweaks update.
+
+## 2026-06-08 Beta v0.1 Build
+
+- Enemy robberies now start from a meeting route instead of feeling like an instant background event.
+- Robbery prompts now clean up better when closed, interrupted, or when the player moves too far away.
+- Front closures should be more reliable, with enemies getting more time to reach the target before changing plans.
+- Non-boss enemy crew and multiple vehicles can now take part in front and business pressure more often.
+- Important businesses can now be targeted through war pressure, not only robbery outcomes.
+- Defended fronts, retaliation, truce checks, and combat timing were cleaned up so attacks happen at more believable moments.
+
+## 2026-06-05 Public Robbery And Log Cleanup Release
+
+- Added AI-human robbery and extortion pressure for exposed, weak, or locally pressured human crews.
+- Robbery prompts now resolve at the start of the next human turn.
+- Added the boss crew relations robbery response toggle for prompt or auto-evade behavior.
+- Refusal and evasion outcomes can now lead to payment, pressure, or rare attack warnings.
+- Important-business closures now target valid visible shops and block buy/sell interactions.
+- Default logs now suppress routine spam while keeping compact first-report breadcrumbs.

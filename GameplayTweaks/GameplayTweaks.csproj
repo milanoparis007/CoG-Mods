@@ -100,6 +100,7 @@
     <Compile Include="Features\Compatibility\GameplayTweaksPlugin.AfterProhibitionAssemblyPort.cs" />
     <Compile Include="Features\Compatibility\GameplayTweaksPlugin.CivicNonpurchaseFallback.cs" />
     <Compile Include="Features\Compatibility\GameplayTweaksPlugin.DirtyCashEconomyCompatibility.cs" />
+    <Compile Include="Features\Compatibility\GameplayTweaksPlugin.GamblerDebtDiagnostics.cs" />
     <Compile Include="Features\Compatibility\GameplayTweaksPlugin.GoonAdvisorPerformance.cs" />
     <Compile Include="Features\Compatibility\GameplayTweaksPlugin.TerritoryAndGangWarsCompatibility.cs" />
     <Compile Include="Features\Compatibility\GameplayTweaksPlugin.TurnPerformanceDiagnostics.cs" />

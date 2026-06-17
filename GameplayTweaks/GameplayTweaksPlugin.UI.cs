@@ -47,11 +47,11 @@ public partial class GameplayTweaksPlugin
 			switch (tier)
 			{
 			case GangMeetingTier.Standard:
-				return 50;
-			case GangMeetingTier.Luxury:
-				return 100;
-			default:
 				return 25;
+			case GangMeetingTier.Luxury:
+				return 50;
+			default:
+				return 10;
 			}
 		}
 

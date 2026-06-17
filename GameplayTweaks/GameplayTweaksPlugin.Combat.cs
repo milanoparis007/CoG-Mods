@@ -123,6 +123,3038 @@ public partial class GameplayTweaksPlugin
 		return attackerPeepIds.Count > 0;
 	}
 
+	private enum WarWeaponStance
+	{
+		HandsOnly,
+		StreetWeapons,
+		Sidearms,
+		OpenArsenal
+	}
+
+	private enum WarStanceWeaponCategory
+	{
+		Unarmed,
+		Melee,
+		Sidearm,
+		LongGun,
+		Automatic,
+		Unknown
+	}
+
+	private sealed class WarStanceSnapshot
+	{
+		public int AttackerPid;
+
+		public int DefenderPid;
+
+		public float AttackerToDefenderHeat;
+
+		public float DefenderToAttackerHeat;
+
+		public float EffectiveHeat;
+
+		public float PactAttackerToDefenderHeat;
+
+		public float PactDefenderToAttackerHeat;
+
+		public float IndependentAttackerToDefenderHeat;
+
+		public float IndependentDefenderToAttackerHeat;
+
+		public WarWeaponStance Stance;
+	}
+
+	private sealed class AiWarStanceBreachDecision
+	{
+		public WeaponConfig BreachWeapon;
+
+		public WarWeaponStance BreachStance;
+
+		public bool BossVehicle;
+
+		public bool BossVehicleEscalation;
+
+		public bool PressureTierEscalation;
+
+		public bool BreachAvailable;
+
+		public string BreachBlockReason;
+
+		public bool StoredHeatFloorSatisfied;
+
+		public string ActorVehicleWeaponCoverage;
+
+
+		public WeaponConfig NextAvailableProhibitedWeapon;
+
+		public WarWeaponStance NextAvailableProhibitedStance;
+
+		public float NextAvailablePressureGap;
+
+		public bool DirectAggro;
+
+		public bool Peaceful;
+
+		public bool Isolationist;
+
+		public bool AggressivePersonality;
+
+		public bool Expansionist;
+
+		public bool AggressiveBoss;
+
+		public bool CautiousBoss;
+
+		public int ActorPower;
+
+		public int OpponentPower;
+
+		public int HeatPressureFloor;
+
+		public float HeatPressure;
+
+		public bool HeatPressureAdjusted;
+
+		public WarWeaponStance HeatPressureStance;
+
+		public float HeatPressureScale;
+
+		public int Chance;
+
+		public int ChanceCap;
+
+		public int Roll;
+
+		public bool WouldBreach;
+	}
+
+	private sealed class WarStanceSitDownDiagnosticEntry
+	{
+		public int GangId;
+
+		public string GangName;
+
+		public float HumanToGangHeat;
+
+		public float GangToHumanHeat;
+
+		public float EffectiveHeat;
+
+		public string Stance;
+
+		public int PlayerPower;
+
+		public int EnemyPower;
+
+		public bool DirectAggro;
+
+		public string Posture;
+
+		public int DeterministicRoll;
+
+		public int TalkAcceptance;
+
+		public int LeisureAcceptance;
+
+		public int LiquorAcceptance;
+
+		public float TalkResultHeat;
+
+		public float LeisureResultHeat;
+
+		public float LiquorResultHeat;
+
+		public string TalkResultStance;
+
+		public string LeisureResultStance;
+
+		public string LiquorResultStance;
+
+		public int CooldownRemainingDays;
+
+		public bool TalkAvailable;
+
+		public bool BossCanPayConversationAction;
+
+		public bool LeisureAvailable;
+
+		public bool PlayerCanPayLeisure;
+
+		public bool LiquorAvailable;
+
+		public bool PlayerCanPayLiquor;
+
+		public bool PlayerCanReceiveLiquor;
+
+		public bool HasPendingAiOffer;
+
+		public string AiOfferType;
+
+		public string AiOfferPosture;
+
+		public int AiOfferRemainingDays;
+
+		public bool AiPaysForOffer;
+	}
+
+	private const int WarStanceTalkCoolingAmount = 5;
+
+	private const int WarStanceLeisureCoolingAmount = 10;
+
+	private const int WarStanceLeisureCost = 1000;
+
+	private const int WarStanceLiquorCoolingAmount = 20;
+
+	private const int WarStanceLiquorCost = 3000;
+
+	private const int WarStanceLiquorXp = 150;
+
+	private const int WarStanceSitDownSuccessCooldownDays = 14;
+
+	private const int WarStanceSitDownDeclineCooldownDays = 7;
+
+	private const int WarStanceAiOfferLifetimeDays = 14;
+
+	private const int WarStanceAiLeisureMinimumSafehouseCash = 4200;
+
+	private const int WarStanceAiBreachMeleeHeat = 5;
+
+	private const int WarStanceAiBreachSidearmHeat = 10;
+
+	private const int WarStanceAiBreachHeavyHeat = 15;
+
+	private static readonly Dictionary<int, WarStanceAiOfferState> WarStancePendingAiOffers = new Dictionary<int, WarStanceAiOfferState>();
+
+	private static int WarStanceLastAiOfferEvaluationDay = -1;
+
+	private sealed class WarStanceArsenalSummary
+	{
+		public int CrewCount;
+
+		public int ActiveVehicleCount;
+
+		public int MeleeVehicleCount;
+
+		public int SidearmVehicleCount;
+
+		public int LongGunVehicleCount;
+
+		public int AutomaticVehicleCount;
+
+		public string Format()
+		{
+			return $"crew={CrewCount} vehicles={ActiveVehicleCount} meleeVehicles={MeleeVehicleCount} sidearmVehicles={SidearmVehicleCount} longGunVehicles={LongGunVehicleCount} automaticVehicles={AutomaticVehicleCount}";
+		}
+	}
+
+	private sealed class WarStanceProposedViolation
+	{
+		public string TransactionKey;
+
+		public string Source;
+
+		public int AttackerPid;
+
+		public int DefenderPid;
+
+		public float EffectiveHeat;
+
+		public WarWeaponStance CurrentStance;
+
+		public WeaponConfig Weapon;
+
+		public WarStanceWeaponCategory Category;
+
+		public int ProposedHeat;
+	}
+
+	private sealed class WarStanceGangOpsDirectionalHeat
+	{
+		public string ChannelTag;
+
+		public float RawHeat;
+
+		public float AdjustedHeat;
+
+		public int RelationshipScore;
+
+		public float RelationshipHostility;
+
+		public float RelationshipHeatBonus;
+
+		public bool RelationshipHostileBuff;
+	}
+
+	private sealed class WarStanceGangOpsHeatComparison
+	{
+		public WarStanceGangOpsDirectionalHeat AttackerToDefender;
+
+		public WarStanceGangOpsDirectionalHeat DefenderToAttacker;
+
+		public float EffectiveAdjustedHeat;
+
+		public WarWeaponStance AdjustedStance;
+	}
+
+	private static readonly HashSet<string> WarStanceLoggedHeatTierKeys = new HashSet<string>(StringComparer.Ordinal);
+
+	private static readonly HashSet<string> WarStanceLoggedUnknownWeaponIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+	private static readonly HashSet<string> WarStanceLoggedProposedViolationKeys = new HashSet<string>(StringComparer.Ordinal);
+
+	private static readonly HashSet<string> WarStanceLoggedAiBreachHeatKeys = new HashSet<string>(StringComparer.Ordinal);
+
+	private static readonly HashSet<string> WarStanceLoggedGroupedSnapshotDeltaKeys = new HashSet<string>(StringComparer.Ordinal);
+
+	private static readonly HashSet<string> WarStanceLoggedGangOpsHeatCompareKeys = new HashSet<string>(StringComparer.Ordinal);
+
+	private static readonly Dictionary<string, WarStanceProposedViolation> WarStancePendingProposedViolations = new Dictionary<string, WarStanceProposedViolation>(StringComparer.Ordinal);
+
+	private static readonly Dictionary<string, WarStanceSnapshot> WarStanceActivePlayerCommitSnapshots = new Dictionary<string, WarStanceSnapshot>(StringComparer.Ordinal);
+
+	private static string WarStanceActivePlayerCommitToken = string.Empty;
+
+	private static readonly Dictionary<string, WarStanceSnapshot> WarStanceActiveAiCommitSnapshots = new Dictionary<string, WarStanceSnapshot>(StringComparer.Ordinal);
+
+	private static readonly Dictionary<string, WarStanceSnapshot> WarStanceActiveGroupedCommitSnapshots = new Dictionary<string, WarStanceSnapshot>(StringComparer.Ordinal);
+
+	private static readonly HashSet<string> WarStanceUnarmedWeaponIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+	{
+		"weapon-fists"
+	};
+
+	private static readonly HashSet<string> WarStanceMeleeWeaponIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+	{
+		"weapon-bat",
+		"weapon-billy-club",
+		"weapon-crowbar",
+		"weapon-knife",
+		"weapon-switchblade"
+	};
+
+	private static readonly HashSet<string> WarStanceSidearmWeaponIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+	{
+		"weapon-bearcat",
+		"weapon-beretta",
+		"weapon-broomhandle",
+		"weapon-colt",
+		"weapon-iver-johnson",
+		"weapon-lemat",
+		"weapon-pistol"
+	};
+
+	private static readonly HashSet<string> WarStanceLongGunWeaponIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+	{
+		"weapon-1912-winchester",
+		"weapon-1934-winchester",
+		"weapon-enfield",
+		"weapon-remington",
+		"weapon-winchester"
+	};
+
+	private static readonly HashSet<string> WarStanceAutomaticWeaponIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+	{
+		"weapon-beretta-m1918",
+		"weapon-browning-1918",
+		"weapon-emp-35",
+		"weapon-mp18",
+		"weapon-mp-28",
+		"weapon-thompson"
+	};
+
+	private static bool IsWarWeaponStanceEnabled()
+	{
+		return EnableWarWeaponStances?.Value ?? true;
+	}
+
+	private static bool AreAiWarStanceBreachesEnabled()
+	{
+		return IsWarWeaponStanceEnabled() && (WarWeaponStanceEnableAiBreaches?.Value ?? true);
+	}
+
+	private static void LogWarStanceCombatDiagnostic(CombatResults result, string source)
+	{
+		try
+		{
+			if (!IsWarWeaponStanceEnabled())
+			{
+				return;
+			}
+			if (result == null || result.attacker.peep == null || result.target.peep == null)
+			{
+				return;
+			}
+			PlayerID attackerPid = result.attacker.peep.data.agent.pid;
+			PlayerID defenderPid = result.target.peep.data.agent.pid;
+			if (attackerPid.id < 0 || defenderPid.id < 0 || attackerPid.id == defenderPid.id)
+			{
+				return;
+			}
+
+			WarStanceSnapshot snapshot = ResolveWarStanceSnapshotForCombat(attackerPid.id, defenderPid.id);
+			WarStanceArsenalSummary attackerArsenal = BuildWarStanceArsenalSummary(attackerPid.id);
+			WarStanceArsenalSummary defenderArsenal = BuildWarStanceArsenalSummary(defenderPid.id);
+			string sourceTag = string.IsNullOrWhiteSpace(source) ? "PerformCombat" : source;
+			bool attackerComplies = WarStanceWeaponComplies(snapshot.Stance, result.attacker.weapon);
+			bool defenderComplies = WarStanceWeaponComplies(snapshot.Stance, result.target.weapon);
+			string attackerAggro = FormatWarStanceAggro(attackerPid.id, defenderPid.id);
+			string defenderAggro = FormatWarStanceAggro(defenderPid.id, attackerPid.id);
+			string transactionKey = BuildWarStanceTransactionKey(sourceTag, result);
+			bool groupedTransaction = sourceTag.IndexOf("txn=", StringComparison.OrdinalIgnoreCase) >= 0;
+			LogGroupedWarStanceSnapshotDeltaIfNeeded(sourceTag, transactionKey, snapshot, groupedTransaction);
+			LogWarStanceGangOpsHeatComparisonIfNeeded(sourceTag, transactionKey, snapshot);
+
+			if (WarStanceLoggedHeatTierKeys.Add(transactionKey))
+			{
+				VerificationLog(
+					"WarStance",
+					$"[WarStance][HeatTier] source={sourceTag} attackerPid={snapshot.AttackerPid} defenderPid={snapshot.DefenderPid} heatAB={snapshot.AttackerToDefenderHeat:0.0} heatBA={snapshot.DefenderToAttackerHeat:0.0} effectiveHeat={snapshot.EffectiveHeat:0.0} stance={FormatWarWeaponStance(snapshot.Stance)} pactAB={snapshot.PactAttackerToDefenderHeat:0.0} pactBA={snapshot.PactDefenderToAttackerHeat:0.0} independentAB={snapshot.IndependentAttackerToDefenderHeat:0.0} independentBA={snapshot.IndependentDefenderToAttackerHeat:0.0} aggroAB={attackerAggro} aggroBA={defenderAggro}");
+				VerificationLog(
+					"WarStance",
+					$"[WarStance][Arsenal] source={sourceTag} attackerPid={snapshot.AttackerPid} {attackerArsenal.Format()} defenderPid={snapshot.DefenderPid} {defenderArsenal.Format()}");
+			}
+
+			VerificationLog(
+				"WarStance",
+				$"[WarStance][Combat] source={sourceTag} node={result.nodeId} attackerPid={snapshot.AttackerPid} defenderPid={snapshot.DefenderPid} attackerHuman={attackerPid.IsHumanPlayer} defenderHuman={defenderPid.IsHumanPlayer} attackerPeep={result.attacker.peep.Id.id} defenderPeep={result.target.peep.Id.id} stance={FormatWarWeaponStance(snapshot.Stance)} effectiveHeat={snapshot.EffectiveHeat:0.0} attackerWeapon={DescribeWarStanceWeapon(result.attacker.weapon)} attackerCategory={ClassifyWarStanceWeapon(result.attacker.weapon)} attackerComplies={attackerComplies} defenderWeapon={DescribeWarStanceWeapon(result.target.weapon)} defenderCategory={ClassifyWarStanceWeapon(result.target.weapon)} defenderComplies={defenderComplies} grouped={groupedTransaction}");
+			LogWarStanceWouldSelectDiagnostic(result, sourceTag, snapshot, attackerComplies, defenderComplies, groupedTransaction);
+			RecordWarStanceProposedViolation(result, sourceTag, snapshot, attackerComplies, groupedTransaction);
+			ApplyAiWarStanceBreachHeatIfNeeded(result, sourceTag, snapshot, attackerComplies, defenderComplies, transactionKey);
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] WarStance diagnostics failed: " + ex.Message);
+		}
+	}
+
+	private static void LogWarStanceGangOpsHeatComparisonIfNeeded(string sourceTag, string transactionKey, WarStanceSnapshot snapshot)
+	{
+		if (snapshot == null)
+		{
+			return;
+		}
+		WarStanceGangOpsHeatComparison comparison = BuildWarStanceGangOpsHeatComparison(snapshot);
+		if (comparison == null)
+		{
+			return;
+		}
+		bool adjustedDiffers = Mathf.Abs(comparison.EffectiveAdjustedHeat - snapshot.EffectiveHeat) > 0.1f;
+		bool adjustedRaisesTier = comparison.AdjustedStance > snapshot.Stance;
+		if (!adjustedDiffers && !adjustedRaisesTier)
+		{
+			return;
+		}
+		string key = $"{transactionKey}:gangops-heat-compare:{snapshot.AttackerPid}->{snapshot.DefenderPid}";
+		if (!WarStanceLoggedGangOpsHeatCompareKeys.Add(key))
+		{
+			return;
+		}
+		WarStanceGangOpsDirectionalHeat ab = comparison.AttackerToDefender;
+		WarStanceGangOpsDirectionalHeat ba = comparison.DefenderToAttacker;
+		VerificationLog(
+			"WarStance",
+			$"[WarStance][GangOpsHeatCompare] source={sourceTag} attackerPid={snapshot.AttackerPid} defenderPid={snapshot.DefenderPid} stanceHeat={snapshot.EffectiveHeat:0.0} stanceTier={FormatWarWeaponStance(snapshot.Stance)} adjustedHeat={comparison.EffectiveAdjustedHeat:0.0} adjustedTier={FormatWarWeaponStance(comparison.AdjustedStance)} adjustedRaisesTier={adjustedRaisesTier} abChannel={ab.ChannelTag} abRaw={ab.RawHeat:0.0} abAdjusted={ab.AdjustedHeat:0.0} abRelScore={ab.RelationshipScore} abRelHostility={ab.RelationshipHostility:0.00} abRelBonus={ab.RelationshipHeatBonus:0.0} abHostileBuff={ab.RelationshipHostileBuff} baChannel={ba.ChannelTag} baRaw={ba.RawHeat:0.0} baAdjusted={ba.AdjustedHeat:0.0} baRelScore={ba.RelationshipScore} baRelHostility={ba.RelationshipHostility:0.00} baRelBonus={ba.RelationshipHeatBonus:0.0} baHostileBuff={ba.RelationshipHostileBuff}");
+	}
+
+	private static WarStanceGangOpsHeatComparison BuildWarStanceGangOpsHeatComparison(WarStanceSnapshot snapshot)
+	{
+		PlayerInfo attacker = G.FindPlayerById(snapshot.AttackerPid);
+		PlayerInfo defender = G.FindPlayerById(snapshot.DefenderPid);
+		if (attacker == null || defender == null)
+		{
+			return null;
+		}
+		WarStanceGangOpsDirectionalHeat ab = BuildWarStanceGangOpsDirectionalHeat(attacker, defender);
+		WarStanceGangOpsDirectionalHeat ba = BuildWarStanceGangOpsDirectionalHeat(defender, attacker);
+		float effectiveAdjustedHeat = Mathf.Max(ab.AdjustedHeat, ba.AdjustedHeat);
+		return new WarStanceGangOpsHeatComparison
+		{
+			AttackerToDefender = ab,
+			DefenderToAttacker = ba,
+			EffectiveAdjustedHeat = effectiveAdjustedHeat,
+			AdjustedStance = ResolveWarWeaponStance(effectiveAdjustedHeat)
+		};
+	}
+
+	private static WarStanceGangOpsDirectionalHeat BuildWarStanceGangOpsDirectionalHeat(PlayerInfo source, PlayerInfo target)
+	{
+		WarStanceGangOpsDirectionalHeat best = null;
+		foreach (GangOpsChannel channel in new[] { GangOpsChannel.Pact, GangOpsChannel.Independent })
+		{
+			float rawHeat = GetWarHeat(channel, source.PID.id, target.PID.id);
+			float adjustedHeat = GetRelationshipAdjustedWarHeat(channel, source, target, rawHeat, out int relationshipScore, out float relationshipHostility, out float relationshipHeatBonus, out bool hostileBuff);
+			var candidate = new WarStanceGangOpsDirectionalHeat
+			{
+				ChannelTag = GetGangOpsChannelTag(channel),
+				RawHeat = rawHeat,
+				AdjustedHeat = adjustedHeat,
+				RelationshipScore = relationshipScore,
+				RelationshipHostility = relationshipHostility,
+				RelationshipHeatBonus = relationshipHeatBonus,
+				RelationshipHostileBuff = hostileBuff
+			};
+			if (best == null || candidate.AdjustedHeat > best.AdjustedHeat)
+			{
+				best = candidate;
+			}
+		}
+		return best;
+	}
+
+	private static void LogGroupedWarStanceSnapshotDeltaIfNeeded(string sourceTag, string transactionKey, WarStanceSnapshot frozenSnapshot, bool groupedTransaction)
+	{
+		if (!groupedTransaction || frozenSnapshot == null)
+		{
+			return;
+		}
+		WarStanceSnapshot liveSnapshot = ResolveWarStanceSnapshot(frozenSnapshot.AttackerPid, frozenSnapshot.DefenderPid);
+		bool heatChanged = Mathf.Abs(liveSnapshot.EffectiveHeat - frozenSnapshot.EffectiveHeat) > 0.1f;
+		bool stanceChanged = liveSnapshot.Stance != frozenSnapshot.Stance;
+		if (!heatChanged && !stanceChanged)
+		{
+			return;
+		}
+		string key = $"{transactionKey}:snapshot-delta:{frozenSnapshot.AttackerPid}->{frozenSnapshot.DefenderPid}";
+		if (!WarStanceLoggedGroupedSnapshotDeltaKeys.Add(key))
+		{
+			return;
+		}
+		VerificationLog(
+			"WarStance",
+			$"[WarStance][GroupedSnapshotLiveDelta] source={sourceTag} attackerPid={frozenSnapshot.AttackerPid} defenderPid={frozenSnapshot.DefenderPid} frozenStance={FormatWarWeaponStance(frozenSnapshot.Stance)} liveStance={FormatWarWeaponStance(liveSnapshot.Stance)} frozenHeat={frozenSnapshot.EffectiveHeat:0.0} liveHeat={liveSnapshot.EffectiveHeat:0.0} frozenAB={frozenSnapshot.AttackerToDefenderHeat:0.0} liveAB={liveSnapshot.AttackerToDefenderHeat:0.0} frozenBA={frozenSnapshot.DefenderToAttackerHeat:0.0} liveBA={liveSnapshot.DefenderToAttackerHeat:0.0}");
+	}
+
+	private static void LogWarStanceWouldSelectDiagnostic(CombatResults result, string sourceTag, WarStanceSnapshot snapshot, bool attackerComplies, bool defenderComplies, bool groupedTransaction)
+	{
+		CrewAssignment attackerCrew = TryFindWarStanceCrewForPeep(result.attacker.peep);
+		CrewAssignment defenderCrew = TryFindWarStanceCrewForPeep(result.target.peep);
+		WeaponConfig attackerWould = FindBestWarStanceCompliantWeapon(attackerCrew, snapshot.Stance);
+		WeaponConfig defenderWould = FindBestWarStanceCompliantWeapon(defenderCrew, snapshot.Stance);
+		VerificationLog(
+			"WarStance",
+			$"[WarStance][WouldSelect] source={sourceTag} node={result.nodeId} attackerPid={snapshot.AttackerPid} defenderPid={snapshot.DefenderPid} stance={FormatWarWeaponStance(snapshot.Stance)} effectiveHeat={snapshot.EffectiveHeat:0.0} attackerPeep={result.attacker.peep.Id.id} attackerVehicle={attackerCrew.VehicleID.id} attackerActual={DescribeWarStanceWeapon(result.attacker.weapon)} attackerActualCategory={ClassifyWarStanceWeapon(result.attacker.weapon)} attackerWould={DescribeWarStanceWeapon(attackerWould)} attackerWouldCategory={ClassifyWarStanceWeapon(attackerWould)} attackerWouldComplies={WarStanceWeaponComplies(snapshot.Stance, attackerWould)} defenderPeep={result.target.peep.Id.id} defenderVehicle={defenderCrew.VehicleID.id} defenderActual={DescribeWarStanceWeapon(result.target.weapon)} defenderActualCategory={ClassifyWarStanceWeapon(result.target.weapon)} defenderWould={DescribeWarStanceWeapon(defenderWould)} defenderWouldCategory={ClassifyWarStanceWeapon(defenderWould)} defenderWouldComplies={WarStanceWeaponComplies(snapshot.Stance, defenderWould)} grouped={groupedTransaction}");
+		if (!attackerComplies || !defenderComplies)
+		{
+			VerificationLog(
+				"WarStance",
+				$"[WarStance][WouldViolate] source={sourceTag} node={result.nodeId} attackerPid={snapshot.AttackerPid} defenderPid={snapshot.DefenderPid} stance={FormatWarWeaponStance(snapshot.Stance)} effectiveHeat={snapshot.EffectiveHeat:0.0} attackerViolation={!attackerComplies} attackerActual={DescribeWarStanceWeapon(result.attacker.weapon)} attackerWould={DescribeWarStanceWeapon(attackerWould)} defenderViolation={!defenderComplies} defenderActual={DescribeWarStanceWeapon(result.target.weapon)} defenderWould={DescribeWarStanceWeapon(defenderWould)} grouped={groupedTransaction}");
+		}
+	}
+
+	private static void RecordWarStanceProposedViolation(CombatResults result, string sourceTag, WarStanceSnapshot snapshot, bool attackerComplies, bool groupedTransaction)
+	{
+		PlayerID attackerPid = result.attacker.peep.data.agent.pid;
+		PlayerID defenderPid = result.target.peep.data.agent.pid;
+		if (!attackerPid.IsHumanPlayer
+			|| defenderPid.IsHumanPlayer
+			|| defenderPid.FindPlayer()?.IsCopOrFed == true
+			|| attackerComplies)
+		{
+			return;
+		}
+
+		WarStanceWeaponCategory category = ClassifyWarStanceWeapon(result.attacker.weapon);
+		int proposedHeat = GetWarStanceProposedViolationHeat(category);
+		if (proposedHeat <= 0)
+		{
+			return;
+		}
+		bool popupCommitActive = !string.IsNullOrEmpty(WarStanceActivePlayerCommitToken);
+		string transactionKey = popupCommitActive
+			? BuildPlayerWarStanceCommitKey(WarStanceActivePlayerCommitToken)
+			: BuildWarStanceTransactionKey(sourceTag, result);
+		var proposal = new WarStanceProposedViolation
+		{
+			TransactionKey = transactionKey,
+			Source = sourceTag,
+			AttackerPid = attackerPid.id,
+			DefenderPid = defenderPid.id,
+			EffectiveHeat = snapshot.EffectiveHeat,
+			CurrentStance = snapshot.Stance,
+			Weapon = result.attacker.weapon,
+			Category = category,
+			ProposedHeat = proposedHeat
+		};
+		if (!groupedTransaction && !popupCommitActive)
+		{
+			LogWarStanceProposedViolation(proposal);
+			return;
+		}
+		if (!WarStancePendingProposedViolations.TryGetValue(transactionKey, out WarStanceProposedViolation pending)
+			|| proposal.ProposedHeat > pending.ProposedHeat)
+		{
+			WarStancePendingProposedViolations[transactionKey] = proposal;
+		}
+	}
+
+	private static void ApplyAiWarStanceBreachHeatIfNeeded(CombatResults result, string sourceTag, WarStanceSnapshot snapshot, bool attackerComplies, bool defenderComplies, string transactionKey)
+	{
+		if (!AreAiWarStanceBreachesEnabled()
+			|| result == null
+			|| snapshot == null
+			|| snapshot.Stance == WarWeaponStance.OpenArsenal
+			|| result.attacker.peep == null
+			|| result.target.peep == null)
+		{
+			return;
+		}
+		PlayerID attackerPid = result.attacker.peep.data.agent.pid;
+		PlayerID defenderPid = result.target.peep.data.agent.pid;
+		if (!attackerPid.IsAIPlayer
+			|| !defenderPid.IsAIPlayer
+			|| attackerPid.id == defenderPid.id)
+		{
+			return;
+		}
+
+		TryApplyAiWarStanceBreachHeatForSide(
+			sourceTag,
+			transactionKey,
+			"attacker",
+			attackerPid.id,
+			defenderPid.id,
+			result.attacker.weapon,
+			snapshot,
+			attackerComplies);
+		TryApplyAiWarStanceBreachHeatForSide(
+			sourceTag,
+			transactionKey,
+			"defender",
+			defenderPid.id,
+			attackerPid.id,
+			result.target.weapon,
+			snapshot,
+			defenderComplies);
+	}
+
+	private static void TryApplyAiWarStanceBreachHeatForSide(string sourceTag, string transactionKey, string role, int violatorPid, int offendedPid, WeaponConfig weapon, WarStanceSnapshot snapshot, bool compliesCurrentStance)
+	{
+		if (compliesCurrentStance
+			|| violatorPid < 0
+			|| offendedPid < 0
+			|| violatorPid == offendedPid
+			|| weapon == null)
+		{
+			return;
+		}
+		WarWeaponStance breachStance = GetMinimumWarStanceForWeapon(weapon);
+		if (breachStance <= snapshot.Stance || !WarStanceWeaponComplies(breachStance, weapon))
+		{
+			return;
+		}
+		WarStanceWeaponCategory category = ClassifyWarStanceWeapon(weapon);
+		int heat = GetAiWarStanceBreachHeat(category);
+		if (heat <= 0)
+		{
+			return;
+		}
+		string key = $"{transactionKey}:ai-breach-heat:{role}:{violatorPid}->{offendedPid}";
+		if (!WarStanceLoggedAiBreachHeatKeys.Add(key))
+		{
+			return;
+		}
+		float directionalHeatBefore = GetWarHeat(offendedPid, violatorPid);
+		WarStanceSnapshot pairBefore = ResolveWarStanceSnapshot(offendedPid, violatorPid);
+		AddWarHeat(offendedPid, violatorPid, heat, "ai-war-stance-breach");
+		float directionalHeatAfter = GetWarHeat(offendedPid, violatorPid);
+		WarStanceSnapshot pairAfter = ResolveWarStanceSnapshot(offendedPid, violatorPid);
+		VerificationLog(
+			"WarStance",
+			$"[WarStance][AIBreachHeat] source={sourceTag} transaction={transactionKey} role={role} violatorPid={violatorPid} offendedPid={offendedPid} weapon={DescribeWarStanceWeapon(weapon)} category={category} violatedStance={FormatWarWeaponStance(snapshot.Stance)} breachStance={FormatWarWeaponStance(breachStance)} breachHeat=+{heat} direction=offended-to-violator directionalHeatBefore={directionalHeatBefore:0.0} directionalHeatAfter={directionalHeatAfter:0.0} effectiveHeatBefore={pairBefore.EffectiveHeat:0.0} effectiveHeatAfter={pairAfter.EffectiveHeat:0.0} nextStance={FormatWarWeaponStance(pairAfter.Stance)} heatApplied=true");
+	}
+
+	private static int GetAiWarStanceBreachHeat(WarStanceWeaponCategory category)
+	{
+		switch (category)
+		{
+			case WarStanceWeaponCategory.Melee:
+				return WarStanceAiBreachMeleeHeat;
+			case WarStanceWeaponCategory.Sidearm:
+				return WarStanceAiBreachSidearmHeat;
+			case WarStanceWeaponCategory.LongGun:
+			case WarStanceWeaponCategory.Automatic:
+			case WarStanceWeaponCategory.Unknown:
+				return WarStanceAiBreachHeavyHeat;
+			default:
+				return 0;
+		}
+	}
+
+	private static int GetWarStanceProposedViolationHeat(WarStanceWeaponCategory category)
+	{
+		return GetConfiguredWarStanceViolationHeat(category);
+	}
+
+	private static int GetConfiguredWarStanceViolationHeat(WarStanceWeaponCategory category)
+	{
+		switch (category)
+		{
+			case WarStanceWeaponCategory.Melee:
+				return Mathf.Clamp(WarWeaponStanceMeleeViolationHeat?.Value ?? 10, 0, 100);
+			case WarStanceWeaponCategory.Sidearm:
+				return Mathf.Clamp(WarWeaponStanceSidearmViolationHeat?.Value ?? 20, 0, 100);
+			case WarStanceWeaponCategory.LongGun:
+			case WarStanceWeaponCategory.Automatic:
+			case WarStanceWeaponCategory.Unknown:
+				return Mathf.Clamp(WarWeaponStanceHeavyViolationHeat?.Value ?? 30, 0, 100);
+			default:
+				return 0;
+		}
+	}
+
+	private static void FlushWarStanceProposedViolation(string transactionKey)
+	{
+		if (string.IsNullOrWhiteSpace(transactionKey)
+			|| !WarStancePendingProposedViolations.TryGetValue(transactionKey, out WarStanceProposedViolation proposal))
+		{
+			return;
+		}
+		WarStancePendingProposedViolations.Remove(transactionKey);
+		LogWarStanceProposedViolation(proposal);
+	}
+
+	private static void LogWarStanceProposedViolation(WarStanceProposedViolation proposal)
+	{
+		if (proposal == null || !WarStanceLoggedProposedViolationKeys.Add(proposal.TransactionKey))
+		{
+			return;
+		}
+		float resultingHeat = Mathf.Clamp(proposal.EffectiveHeat + proposal.ProposedHeat, 0f, 100f);
+		WarWeaponStance resultingStance = ResolveWarWeaponStance(resultingHeat);
+		VerificationLog(
+			"WarStance",
+			$"[WarStance][ProposedViolation] source={proposal.Source} transaction={proposal.TransactionKey} attackerPid={proposal.AttackerPid} defenderPid={proposal.DefenderPid} weapon={DescribeWarStanceWeapon(proposal.Weapon)} category={proposal.Category} currentStance={FormatWarWeaponStance(proposal.CurrentStance)} currentHeat={proposal.EffectiveHeat:0.0} proposedHeat=+{proposal.ProposedHeat} proposedDirection=defender-to-attacker resultingHeat={resultingHeat:0.0} resultingStance={FormatWarWeaponStance(resultingStance)} proposedRelationshipPenalty=one-hostile-buff penaltiesApplied=false");
+		ApplyWarStanceViolationHeat(proposal);
+	}
+
+	private static void ApplyWarStanceViolationHeat(WarStanceProposedViolation proposal)
+	{
+		if (proposal == null
+			|| proposal.ProposedHeat <= 0
+			|| proposal.AttackerPid < 0
+			|| proposal.DefenderPid < 0
+			|| proposal.AttackerPid == proposal.DefenderPid)
+		{
+			return;
+		}
+
+		float directionalHeatBefore = GetWarHeat(proposal.DefenderPid, proposal.AttackerPid);
+		WarStanceSnapshot pairBefore = ResolveWarStanceSnapshot(proposal.DefenderPid, proposal.AttackerPid);
+		AddWarHeat(
+			proposal.DefenderPid,
+			proposal.AttackerPid,
+			proposal.ProposedHeat,
+			"player-war-stance-violation");
+		float directionalHeatAfter = GetWarHeat(proposal.DefenderPid, proposal.AttackerPid);
+		WarStanceSnapshot pairAfter = ResolveWarStanceSnapshot(proposal.DefenderPid, proposal.AttackerPid);
+		const string relationshipBuffId = "relbuff-war-stance-violated";
+		PlayerInfo offendedOutfit = G.FindPlayerById(proposal.DefenderPid);
+		PlayerInfo humanPlayer = G.FindPlayerById(proposal.AttackerPid);
+		bool relationshipPenaltyApplied = EnsureWarStanceViolationRelationshipBuffDefinition()
+			&& AddDirectedRelationshipBuff(
+				offendedOutfit,
+				humanPlayer,
+				relationshipBuffId,
+				GetCrewPeepForPlayer(offendedOutfit),
+				logSuccess: false);
+		VerificationLog(
+			"WarStance",
+			$"[WarStance][StanceViolated] source={proposal.Source} transaction={proposal.TransactionKey} attackerPid={proposal.AttackerPid} defenderPid={proposal.DefenderPid} weapon={DescribeWarStanceWeapon(proposal.Weapon)} category={proposal.Category} violatedStance={FormatWarWeaponStance(proposal.CurrentStance)} violationHeat=+{proposal.ProposedHeat} direction=defender-to-attacker directionalHeatBefore={directionalHeatBefore:0.0} directionalHeatAfter={directionalHeatAfter:0.0} effectiveHeatBefore={pairBefore.EffectiveHeat:0.0} effectiveHeatAfter={pairAfter.EffectiveHeat:0.0} nextStance={FormatWarWeaponStance(pairAfter.Stance)} heatApplied=true relationshipBuff={relationshipBuffId} relationshipPenaltyApplied={relationshipPenaltyApplied}");
+	}
+
+	private static string BuildWarStanceTransactionKey(string source, CombatResults result)
+	{
+		string baseSource = string.IsNullOrWhiteSpace(source) ? "PerformCombat" : source;
+		int txnIndex = baseSource.IndexOf(":txn=", StringComparison.OrdinalIgnoreCase);
+		if (txnIndex >= 0)
+		{
+			return baseSource;
+		}
+		int day = -1;
+		try
+		{
+			day = G.GetNow().days;
+		}
+		catch
+		{
+		}
+		int attackerPid = result?.attacker.peep?.data.agent.pid.id ?? -1;
+		int defenderPid = result?.target.peep?.data.agent.pid.id ?? -1;
+		ulong attackerPeep = result?.attacker.peep?.Id.id ?? 0UL;
+		ulong defenderPeep = result?.target.peep?.Id.id ?? 0UL;
+		return $"{baseSource}:day={day}:node={result?.nodeId.ToString() ?? "0"}:a={attackerPid}:{attackerPeep}:d={defenderPid}:{defenderPeep}";
+	}
+
+	private static WarStanceSnapshot ResolveWarStanceSnapshot(int attackerPid, int defenderPid)
+	{
+		float pactAB = GetWarHeat(GangOpsChannel.Pact, attackerPid, defenderPid);
+		float pactBA = GetWarHeat(GangOpsChannel.Pact, defenderPid, attackerPid);
+		float independentAB = GetWarHeat(GangOpsChannel.Independent, attackerPid, defenderPid);
+		float independentBA = GetWarHeat(GangOpsChannel.Independent, defenderPid, attackerPid);
+		float directionalAB = Mathf.Max(pactAB, independentAB);
+		float directionalBA = Mathf.Max(pactBA, independentBA);
+		float effectiveHeat = Mathf.Max(directionalAB, directionalBA);
+		return new WarStanceSnapshot
+		{
+			AttackerPid = attackerPid,
+			DefenderPid = defenderPid,
+			AttackerToDefenderHeat = directionalAB,
+			DefenderToAttackerHeat = directionalBA,
+			EffectiveHeat = effectiveHeat,
+			PactAttackerToDefenderHeat = pactAB,
+			PactDefenderToAttackerHeat = pactBA,
+			IndependentAttackerToDefenderHeat = independentAB,
+			IndependentDefenderToAttackerHeat = independentBA,
+			Stance = ResolveWarWeaponStance(effectiveHeat)
+		};
+	}
+
+	private static List<WarStanceSitDownDiagnosticEntry> BuildWarStanceSitDownDiagnosticEntries()
+	{
+		List<WarStanceSitDownDiagnosticEntry> entries = new List<WarStanceSitDownDiagnosticEntry>();
+		if (!IsWarWeaponStanceEnabled())
+		{
+			return entries;
+		}
+		PlayerInfo human = G.GetHumanPlayer();
+		if (human == null || human.crew == null || human.crew.IsCrewDefeated)
+		{
+			return entries;
+		}
+		int playerPower = CalculateGangPower(human);
+		int nowDay = G.GetNow().days;
+		PruneWarStanceAiSitDownOffers(human, nowDay);
+		bool bossCanPayConversationAction = CanPayWarStanceSitDownConversationAction();
+		bool playerCanPayLeisure = human.finances != null
+			&& human.finances.CanChangeMoneyOnSafehouse(new Price((Fixnum)(-WarStanceLeisureCost)));
+		bool playerCanPayLiquor = human.finances != null
+			&& human.finances.CanChangeMoneyOnSafehouse(new Price((Fixnum)(-WarStanceLiquorCost)));
+		bool playerCanReceiveLiquor = TryGetWarStancePlayerSafehouseInventory(human, out _, out _);
+		foreach (PlayerInfo enemy in G.GetAllPlayers())
+		{
+			if (!IsAliveGangPlayer(enemy)
+				|| enemy.PID.IsHumanPlayer
+				|| enemy.PID.id == human.PID.id
+				|| ArePlayersProtectedByPactAlliance(human, enemy)
+				|| HasMutualTruce(human, enemy))
+			{
+				continue;
+			}
+			WarStanceSnapshot snapshot = ResolveWarStanceSnapshot(human.PID.id, enemy.PID.id);
+			bool directAggro = IsAggroWithoutTruceEitherWay(human, enemy);
+			bool hostileRelationship = GetSignedGangRelationshipBias(human, enemy) < -0.05f
+				|| GetSignedGangRelationshipBias(enemy, human) < -0.05f;
+			if (snapshot.EffectiveHeat <= 0.1f && !directAggro && !hostileRelationship)
+			{
+				continue;
+			}
+			int enemyPower = CalculateGangPower(enemy);
+			bool peaceful = IsAiPersonalityPeaceful(enemy);
+			bool isolationist = IsAiPersonalityIsolationist(enemy);
+			bool aggressive = IsAiPersonalityAggressive(enemy)
+				|| HasGangBossAnyTraitForRetaliation(enemy, "trait-aggressive", "trait-bold", "trait-cruel", "trait-vindictive");
+			bool cautious = HasGangBossAnyTraitForRetaliation(enemy, "trait-cautious", "trait-nervous");
+			int baseAcceptance = 50;
+			if (peaceful)
+			{
+				baseAcceptance += 20;
+			}
+			if (isolationist || cautious)
+			{
+				baseAcceptance += 10;
+			}
+			if (aggressive)
+			{
+				baseAcceptance -= 15;
+			}
+			if (playerPower >= Mathf.CeilToInt(enemyPower * 1.25f))
+			{
+				baseAcceptance += 20;
+			}
+			else if (enemyPower >= Mathf.CeilToInt(playerPower * 1.25f))
+			{
+				baseAcceptance -= 20;
+			}
+			if (snapshot.EffectiveHeat >= 75f)
+			{
+				baseAcceptance -= 25;
+			}
+			else if (snapshot.EffectiveHeat >= 50f)
+			{
+				baseAcceptance -= 10;
+			}
+			int roll = ComputeWarStanceSitDownDiagnosticRoll(human.PID.id, enemy.PID.id, nowDay);
+			int cooldownRemaining = GetWarStanceSitDownCooldownRemaining(human.PID.id, enemy.PID.id);
+			float talkHeat = Mathf.Max(0f, snapshot.EffectiveHeat - 5f);
+			float leisureHeat = Mathf.Max(0f, snapshot.EffectiveHeat - 10f);
+			float liquorHeat = Mathf.Max(0f, snapshot.EffectiveHeat - 20f);
+			WarStancePendingAiOffers.TryGetValue(enemy.PID.id, out WarStanceAiOfferState pendingOffer);
+			entries.Add(new WarStanceSitDownDiagnosticEntry
+			{
+				GangId = enemy.PID.id,
+				GangName = GetGangDisplayName(enemy.PID.id),
+				HumanToGangHeat = snapshot.AttackerToDefenderHeat,
+				GangToHumanHeat = snapshot.DefenderToAttackerHeat,
+				EffectiveHeat = snapshot.EffectiveHeat,
+				Stance = FormatWarWeaponStanceForSitDownUi(snapshot.Stance),
+				PlayerPower = playerPower,
+				EnemyPower = enemyPower,
+				DirectAggro = directAggro,
+				Posture = peaceful || isolationist ? "Peaceful" : (playerPower >= Mathf.CeilToInt(enemyPower * 1.25f) ? "Wary" : "Guarded"),
+				DeterministicRoll = roll,
+				TalkAcceptance = Mathf.Clamp(baseAcceptance, 5, 95),
+				LeisureAcceptance = Mathf.Clamp(baseAcceptance + 15, 5, 95),
+				LiquorAcceptance = Mathf.Clamp(baseAcceptance, 5, 95),
+				TalkResultHeat = talkHeat,
+				LeisureResultHeat = leisureHeat,
+				LiquorResultHeat = liquorHeat,
+				TalkResultStance = FormatWarWeaponStanceForSitDownUi(ResolveWarWeaponStance(talkHeat)),
+				LeisureResultStance = FormatWarWeaponStanceForSitDownUi(ResolveWarWeaponStance(leisureHeat)),
+				LiquorResultStance = FormatWarWeaponStanceForSitDownUi(ResolveWarWeaponStance(liquorHeat)),
+				CooldownRemainingDays = cooldownRemaining,
+				TalkAvailable = snapshot.EffectiveHeat > 0.1f
+					&& snapshot.EffectiveHeat < 50f
+					&& cooldownRemaining <= 0
+					&& bossCanPayConversationAction,
+				BossCanPayConversationAction = bossCanPayConversationAction,
+				LeisureAvailable = snapshot.EffectiveHeat > 0.1f
+					&& snapshot.EffectiveHeat < 75f
+					&& cooldownRemaining <= 0
+					&& bossCanPayConversationAction
+					&& playerCanPayLeisure,
+				PlayerCanPayLeisure = playerCanPayLeisure,
+				LiquorAvailable = snapshot.EffectiveHeat > 0.1f
+					&& snapshot.EffectiveHeat < 100f
+					&& cooldownRemaining <= 0
+					&& bossCanPayConversationAction
+					&& playerCanPayLiquor
+					&& playerCanReceiveLiquor,
+				PlayerCanPayLiquor = playerCanPayLiquor,
+				PlayerCanReceiveLiquor = playerCanReceiveLiquor,
+				HasPendingAiOffer = pendingOffer != null,
+				AiOfferType = pendingOffer?.OfferType ?? string.Empty,
+				AiOfferPosture = pendingOffer?.Posture ?? string.Empty,
+				AiOfferRemainingDays = pendingOffer == null ? 0 : Math.Max(0, pendingOffer.ExpireDay - nowDay),
+				AiPaysForOffer = string.Equals(pendingOffer?.OfferType, "Leisure", StringComparison.Ordinal)
+			});
+		}
+		return entries
+			.OrderByDescending(entry => entry.EffectiveHeat)
+			.ThenBy(entry => entry.GangName, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+	}
+
+	private static void ProcessWarStanceAiSitDownOffers(SimTime now)
+	{
+		if (!IsWarWeaponStanceEnabled())
+		{
+			ResetWarStanceAiOfferRuntime();
+			return;
+		}
+		PlayerInfo human = G.GetHumanPlayer();
+		if (human == null || human.crew == null || human.crew.IsCrewDefeated)
+		{
+			return;
+		}
+		PruneWarStanceAiSitDownOffers(human, now.days);
+		if (WarStanceLastAiOfferEvaluationDay == now.days)
+		{
+			return;
+		}
+		WarStanceLastAiOfferEvaluationDay = now.days;
+		int playerPower = CalculateGangPower(human);
+		foreach (PlayerInfo enemy in G.GetAllPlayers()
+			.Where(candidate => candidate != null && !candidate.PID.IsHumanPlayer)
+			.OrderBy(candidate => ComputeWarStanceAiOfferRoll(human.PID.id, candidate.PID.id, now.days)))
+		{
+			if (!TryBuildWarStanceAiOfferCandidate(human, enemy, playerPower, now.days, out WarStanceAiOfferState offer, out int score, out int roll, out int safehouseCash))
+			{
+				continue;
+			}
+			WarStancePendingAiOffers[enemy.PID.id] = offer;
+			VerificationLog("WarStance", $"[WarStance][AIOfferCreated] gang={enemy.PID.id} type={offer.OfferType} posture={offer.Posture} createdDay={offer.CreatedDay} expireDay={offer.ExpireDay} score={score} roll={roll} safehouseCash={safehouseCash} popupOpened=false");
+			break;
+		}
+	}
+
+	private static bool TryBuildWarStanceAiOfferCandidate(PlayerInfo human, PlayerInfo enemy, int playerPower, int nowDay, out WarStanceAiOfferState offer, out int score, out int roll, out int safehouseCash)
+	{
+		offer = null;
+		score = 0;
+		roll = 100;
+		safehouseCash = 0;
+		if (!IsAliveGangPlayer(enemy)
+			|| !enemy.IsJustGang
+			|| enemy.PID.IsHumanPlayer
+			|| WarStancePendingAiOffers.ContainsKey(enemy.PID.id)
+			|| ArePlayersProtectedByPactAlliance(human, enemy)
+			|| HasMutualTruce(human, enemy)
+			|| GetWarStanceSitDownCooldownRemaining(human.PID.id, enemy.PID.id) > 0)
+		{
+			return false;
+		}
+		WarStanceSnapshot snapshot = ResolveWarStanceSnapshot(human.PID.id, enemy.PID.id);
+		if (snapshot.EffectiveHeat <= 0.1f)
+		{
+			return false;
+		}
+		bool peaceful = IsAiPersonalityPeaceful(enemy) || IsAiPersonalityIsolationist(enemy);
+		bool aggressive = IsAiPersonalityAggressive(enemy)
+			|| HasGangBossAnyTraitForRetaliation(enemy, "trait-aggressive", "trait-bold", "trait-cruel", "trait-vindictive");
+		int enemyPower = CalculateGangPower(enemy);
+		bool weaker = playerPower >= Mathf.CeilToInt(enemyPower * 1.25f);
+		bool stronger = enemyPower >= Mathf.CeilToInt(playerPower * 1.25f);
+		bool wary = weaker || snapshot.EffectiveHeat >= 50f;
+		if (!peaceful && !wary)
+		{
+			return false;
+		}
+		score = 15;
+		if (peaceful)
+		{
+			score += 45;
+		}
+		if (weaker)
+		{
+			score += 25;
+		}
+		if (snapshot.EffectiveHeat >= 25f && snapshot.EffectiveHeat < 75f)
+		{
+			score += 10;
+		}
+		if (snapshot.EffectiveHeat >= 75f)
+		{
+			score -= 10;
+		}
+		if (stronger && !peaceful)
+		{
+			score -= 35;
+		}
+		if (aggressive)
+		{
+			score -= 30;
+		}
+		score = Mathf.Clamp(score, 5, 90);
+		roll = ComputeWarStanceAiOfferRoll(human.PID.id, enemy.PID.id, nowDay);
+		if (roll > score)
+		{
+			return false;
+		}
+		string posture = peaceful ? "Peaceful" : "Wary";
+		string offerType = "Talk";
+		if (!peaceful && wary && TryGetWarStanceAiSafehouseCash(enemy, out safehouseCash) && safehouseCash >= WarStanceAiLeisureMinimumSafehouseCash)
+		{
+			offerType = "Leisure";
+		}
+		offer = new WarStanceAiOfferState
+		{
+			EnemyPid = enemy.PID.id,
+			OfferType = offerType,
+			Posture = posture,
+			CreatedDay = nowDay,
+			ExpireDay = nowDay + WarStanceAiOfferLifetimeDays
+		};
+		return true;
+	}
+
+	private static int ComputeWarStanceAiOfferRoll(int humanPid, int enemyPid, int nowDay)
+	{
+		unchecked
+		{
+			int hash = 23;
+			hash = hash * 31 + humanPid;
+			hash = hash * 31 + enemyPid;
+			hash = hash * 31 + Math.Max(0, nowDay);
+			hash ^= hash >> 16;
+			return (int)((uint)hash % 100u) + 1;
+		}
+	}
+
+	private static bool TryGetWarStanceAiSafehouseCash(PlayerInfo enemy, out int cash)
+	{
+		cash = 0;
+		try
+		{
+			EntityID safehouseId = enemy?.territory?.Safehouse ?? EntityID.INVALID;
+			Entity safehouse = safehouseId.IsValid ? safehouseId.FindEntity() : null;
+			if (safehouse == null || enemy?.finances == null || enemy.crew?.IsCrewDefeated == true)
+			{
+				return false;
+			}
+			cash = Math.Max(0, ReadFixnum(enemy.finances.GetMoney(safehouse).cash));
+			return true;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static void PruneWarStanceAiSitDownOffers(PlayerInfo human, int nowDay)
+	{
+		foreach (KeyValuePair<int, WarStanceAiOfferState> pair in WarStancePendingAiOffers.ToList())
+		{
+			PlayerInfo enemy = G.FindPlayerById(pair.Key);
+			WarStanceSnapshot snapshot = enemy == null ? null : ResolveWarStanceSnapshot(human.PID.id, enemy.PID.id);
+			string reason = null;
+			if (pair.Value == null || nowDay >= pair.Value.ExpireDay)
+			{
+				reason = "lifetime";
+			}
+			else if (!IsAliveGangPlayer(enemy) || !enemy.IsJustGang)
+			{
+				reason = "outfit-invalid";
+			}
+			else if (ArePlayersProtectedByPactAlliance(human, enemy) || HasMutualTruce(human, enemy))
+			{
+				reason = "protected";
+			}
+			else if (snapshot == null || snapshot.EffectiveHeat <= 0.1f)
+			{
+				reason = "zero-heat";
+			}
+			else if (string.Equals(pair.Value.OfferType, "Leisure", StringComparison.Ordinal)
+				&& (!TryGetWarStanceAiSafehouseCash(enemy, out int cash) || cash < WarStanceAiLeisureMinimumSafehouseCash))
+			{
+				reason = "leisure-treasury";
+			}
+			if (reason == null)
+			{
+				continue;
+			}
+			WarStancePendingAiOffers.Remove(pair.Key);
+			VerificationLog("WarStance", $"[WarStance][AIOfferExpired] gang={pair.Key} type={pair.Value?.OfferType ?? "unknown"} posture={pair.Value?.Posture ?? "unknown"} reason={reason} day={nowDay}");
+		}
+	}
+
+	private static int GetWarStancePendingAiOfferCount()
+	{
+		return WarStancePendingAiOffers.Count;
+	}
+
+	private static bool TryAcceptWarStanceAiOffer(int enemyPid, out string message)
+	{
+		message = "That sit-down offer is no longer available.";
+		PlayerInfo human = G.GetHumanPlayer();
+		PlayerInfo enemy = G.FindPlayerById(enemyPid);
+		if (human == null)
+		{
+			return false;
+		}
+		PruneWarStanceAiSitDownOffers(human, G.GetNow().days);
+		if (!WarStancePendingAiOffers.TryGetValue(enemyPid, out WarStanceAiOfferState offer)
+			|| offer == null
+			|| !IsAliveGangPlayer(enemy)
+			|| !enemy.IsJustGang
+			|| ArePlayersProtectedByPactAlliance(human, enemy)
+			|| HasMutualTruce(human, enemy))
+		{
+			return false;
+		}
+		WarStanceSnapshot before = ResolveWarStanceSnapshot(human.PID.id, enemyPid);
+		if (before.EffectiveHeat <= 0.1f)
+		{
+			WarStancePendingAiOffers.Remove(enemyPid);
+			VerificationLog("WarStance", $"[WarStance][AIOfferExpired] gang={enemyPid} type={offer.OfferType} posture={offer.Posture} reason=zero-heat-on-accept day={G.GetNow().days}");
+			return false;
+		}
+
+		int coolingAmount;
+		int aiCashBefore = -1;
+		int aiCashAfter = -1;
+		bool finishBuffApplied = false;
+		bool leisureBuffApplied = false;
+		bool streetCreditApplied = false;
+		if (string.Equals(offer.OfferType, "Talk", StringComparison.Ordinal))
+		{
+			coolingAmount = WarStanceTalkCoolingAmount;
+		}
+		else if (string.Equals(offer.OfferType, "Leisure", StringComparison.Ordinal))
+		{
+			coolingAmount = WarStanceLeisureCoolingAmount;
+			if (!TryDebitWarStanceAiLeisure(enemy, out aiCashBefore, out aiCashAfter))
+			{
+				WarStancePendingAiOffers.Remove(enemyPid);
+				message = enemy != null
+					? GetGangDisplayName(enemyPid) + " can no longer fund the Leisure offer."
+					: "The offering outfit can no longer fund Leisure.";
+				VerificationLog("WarStance", $"[WarStance][AIOfferExpired] gang={enemyPid} type=Leisure posture={offer.Posture} reason=treasury-revalidation cashBefore={aiCashBefore} cashAfter={aiCashAfter} day={G.GetNow().days}");
+				return false;
+			}
+			AddMutualRelationshipBuff(human, enemy, "relbuff-gangs-leisure-table-on-finish", GetCrewPeepForPlayer(human), GetCrewPeepForPlayer(enemy));
+			AddMutualRelationshipBuff(human, enemy, "relbuff-gangs-leisure-buff", GetCrewPeepForPlayer(human), GetCrewPeepForPlayer(enemy));
+			finishBuffApplied = RelationshipHasBuff(human, enemy, "relbuff-gangs-leisure-table-on-finish")
+				&& RelationshipHasBuff(enemy, human, "relbuff-gangs-leisure-table-on-finish");
+			leisureBuffApplied = RelationshipHasBuff(human, enemy, "relbuff-gangs-leisure-buff")
+				&& RelationshipHasBuff(enemy, human, "relbuff-gangs-leisure-buff");
+			streetCreditApplied = CrewRelationshipHandlerPatch.TryAwardCrewStreetCreditProgress(
+				human,
+				GetCrewPeepForPlayer(human),
+				0.03f,
+				0.05f,
+				"hostile-ai-offer-leisure");
+		}
+		else
+		{
+			WarStancePendingAiOffers.Remove(enemyPid);
+			VerificationLog("WarStance", $"[WarStance][AIOfferExpired] gang={enemyPid} type={offer.OfferType} posture={offer.Posture} reason=unknown-type day={G.GetNow().days}");
+			return false;
+		}
+
+		if (!ReduceWarHeatBothWays(human.PID.id, enemyPid, coolingAmount, "ai-offer-" + offer.OfferType.ToLowerInvariant()))
+		{
+			message = "No WarHeat record remained to cool.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=AIOffer gang={enemyPid} type={offer.OfferType} reason=no-record-after-validation aiCashBefore={aiCashBefore} aiCashAfter={aiCashAfter}");
+			return false;
+		}
+		WarStancePendingAiOffers.Remove(enemyPid);
+		SetWarStanceSitDownCooldown(human.PID.id, enemyPid, WarStanceSitDownSuccessCooldownDays);
+		WarStanceSnapshot after = ResolveWarStanceSnapshot(human.PID.id, enemyPid);
+		string gangName = GetGangDisplayName(enemyPid);
+		message = $"{gangName}'s {offer.OfferType} offer was accepted. WarHeat {before.EffectiveHeat:0} -> {after.EffectiveHeat:0}.";
+		VerificationLog("WarStance", $"[WarStance][AIOfferAccepted] gang={enemyPid} type={offer.OfferType} posture={offer.Posture} amount={coolingAmount} effectiveHeatBefore={before.EffectiveHeat:0.0} effectiveHeatAfter={after.EffectiveHeat:0.0} stanceBefore={FormatWarWeaponStance(before.Stance)} stanceAfter={FormatWarWeaponStance(after.Stance)} playerActionsCharged=0 aiCashBefore={aiCashBefore} aiCashAfter={aiCashAfter} finishBuffApplied={finishBuffApplied} leisureBuffApplied={leisureBuffApplied} streetCreditApplied={streetCreditApplied} cooldownDays={WarStanceSitDownSuccessCooldownDays}");
+		LogGrapevine($"SIT-DOWN: You accepted {gangName}'s {offer.Posture.ToLowerInvariant()} {offer.OfferType.ToLowerInvariant()} offer.");
+		return true;
+	}
+
+	private static bool TryDeclineWarStanceAiOffer(int enemyPid, out string message)
+	{
+		message = "That sit-down offer is no longer available.";
+		PlayerInfo human = G.GetHumanPlayer();
+		if (human == null)
+		{
+			return false;
+		}
+		PruneWarStanceAiSitDownOffers(human, G.GetNow().days);
+		if (!WarStancePendingAiOffers.TryGetValue(enemyPid, out WarStanceAiOfferState offer) || offer == null)
+		{
+			return false;
+		}
+		WarStanceSnapshot unchanged = ResolveWarStanceSnapshot(human.PID.id, enemyPid);
+		WarStancePendingAiOffers.Remove(enemyPid);
+		SetWarStanceSitDownCooldown(human.PID.id, enemyPid, WarStanceSitDownDeclineCooldownDays);
+		message = $"{GetGangDisplayName(enemyPid)}'s {offer.OfferType} offer was declined.";
+		VerificationLog("WarStance", $"[WarStance][AIOfferDeclined] gang={enemyPid} type={offer.OfferType} posture={offer.Posture} effectiveHeatBefore={unchanged.EffectiveHeat:0.0} effectiveHeatAfter={unchanged.EffectiveHeat:0.0} humanToGang={unchanged.AttackerToDefenderHeat:0.0} gangToHuman={unchanged.DefenderToAttackerHeat:0.0} playerActionsCharged=0 playerCashCharged=0 aiCashCharged=0 cooldownDays={WarStanceSitDownDeclineCooldownDays}");
+		return true;
+	}
+
+	private static bool TryDebitWarStanceAiLeisure(PlayerInfo enemy, out int cashBefore, out int cashAfter)
+	{
+		cashBefore = -1;
+		cashAfter = -1;
+		try
+		{
+			EntityID safehouseId = enemy?.territory?.Safehouse ?? EntityID.INVALID;
+			Entity safehouse = safehouseId.IsValid ? safehouseId.FindEntity() : null;
+			if (safehouse == null || enemy?.finances == null || enemy.crew?.IsCrewDefeated == true)
+			{
+				return false;
+			}
+			cashBefore = Math.Max(0, ReadFixnum(enemy.finances.GetMoney(safehouse).cash));
+			if (cashBefore < WarStanceAiLeisureMinimumSafehouseCash)
+			{
+				cashAfter = cashBefore;
+				return false;
+			}
+			enemy.finances.DoChangeMoneyOnSafehouse(new Price((Fixnum)(-WarStanceLeisureCost)), (MoneyReason)1);
+			cashAfter = Math.Max(0, ReadFixnum(enemy.finances.GetMoney(safehouse).cash));
+			if (cashBefore - cashAfter == WarStanceLeisureCost && cashAfter >= 3200)
+			{
+				return true;
+			}
+			if (cashAfter < cashBefore)
+			{
+				enemy.finances.DoChangeMoneyOnSafehouse(new Price((Fixnum)(cashBefore - cashAfter)), (MoneyReason)1);
+				cashAfter = Math.Max(0, ReadFixnum(enemy.finances.GetMoney(safehouse).cash));
+			}
+			return false;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] AI Leisure offer payment failed: " + ex.Message);
+			return false;
+		}
+	}
+
+	private static void ResetWarStanceAiOfferRuntime()
+	{
+		WarStancePendingAiOffers.Clear();
+		WarStanceLastAiOfferEvaluationDay = -1;
+		if (SaveData?.WarStanceAiOffers != null)
+		{
+			SaveData.WarStanceAiOffers.Clear();
+		}
+	}
+
+	private static void CaptureWarStanceAiOffersForSave()
+	{
+		if (SaveData == null)
+		{
+			SaveData = new ModSaveData();
+		}
+		SaveData.WarStanceAiOffers = WarStancePendingAiOffers
+			.Where(pair => pair.Value != null)
+			.ToDictionary(
+				pair => pair.Key,
+				pair => new WarStanceAiOfferState
+				{
+					EnemyPid = pair.Value.EnemyPid,
+					OfferType = pair.Value.OfferType ?? string.Empty,
+					Posture = pair.Value.Posture ?? string.Empty,
+					CreatedDay = pair.Value.CreatedDay,
+					ExpireDay = pair.Value.ExpireDay
+				});
+	}
+
+	private static void RestoreWarStanceAiOffersAfterLoad()
+	{
+		WarStancePendingAiOffers.Clear();
+		WarStanceLastAiOfferEvaluationDay = -1;
+		if (!IsWarWeaponStanceEnabled() || SaveData?.WarStanceAiOffers == null || SaveData.WarStanceAiOffers.Count == 0)
+		{
+			return;
+		}
+
+		int restored = 0;
+		int rejected = 0;
+		int latestCreatedDay = -1;
+		foreach (KeyValuePair<int, WarStanceAiOfferState> pair in SaveData.WarStanceAiOffers)
+		{
+			WarStanceAiOfferState saved = pair.Value;
+			bool validType = string.Equals(saved?.OfferType, "Talk", StringComparison.Ordinal)
+				|| string.Equals(saved?.OfferType, "Leisure", StringComparison.Ordinal);
+			bool validPosture = string.Equals(saved?.Posture, "Peaceful", StringComparison.Ordinal)
+				|| string.Equals(saved?.Posture, "Wary", StringComparison.Ordinal);
+			if (saved == null
+				|| pair.Key < 0
+				|| saved.EnemyPid != pair.Key
+				|| !validType
+				|| !validPosture
+				|| saved.CreatedDay < 0
+				|| saved.ExpireDay <= saved.CreatedDay)
+			{
+				rejected++;
+				continue;
+			}
+			WarStancePendingAiOffers[pair.Key] = new WarStanceAiOfferState
+			{
+				EnemyPid = saved.EnemyPid,
+				OfferType = saved.OfferType,
+				Posture = saved.Posture,
+				CreatedDay = saved.CreatedDay,
+				ExpireDay = saved.ExpireDay
+			};
+			restored++;
+			latestCreatedDay = Math.Max(latestCreatedDay, saved.CreatedDay);
+		}
+
+		PlayerInfo human = G.GetHumanPlayer();
+		int loadDay = G.GetNow().days;
+		bool worldReady = human != null && loadDay > 0;
+		if (worldReady)
+		{
+			PruneWarStanceAiSitDownOffers(human, loadDay);
+		}
+		if (restored > 0)
+		{
+			WarStanceLastAiOfferEvaluationDay = worldReady
+				? loadDay
+				: latestCreatedDay;
+		}
+		CaptureWarStanceAiOffersForSave();
+		VerificationLog("WarStance", $"[WarStance][AIOffersRestored] restored={restored} active={WarStancePendingAiOffers.Count} rejected={rejected} loadDay={loadDay} evaluationDay={WarStanceLastAiOfferEvaluationDay} validation={(worldReady ? "immediate" : "deferred-until-world-ready")}");
+	}
+
+	private static int ComputeWarStanceSitDownDiagnosticRoll(int humanPid, int enemyPid, int nowDay)
+	{
+		unchecked
+		{
+			int window = Math.Max(0, nowDay) / 14;
+			int hash = 17;
+			hash = hash * 31 + humanPid;
+			hash = hash * 31 + enemyPid;
+			hash = hash * 31 + window;
+			hash ^= hash >> 16;
+			return (int)((uint)hash % 100u) + 1;
+		}
+	}
+
+	private static string FormatWarWeaponStanceForSitDownUi(WarWeaponStance stance)
+	{
+		switch (stance)
+		{
+			case WarWeaponStance.HandsOnly:
+				return "Hands Only";
+			case WarWeaponStance.StreetWeapons:
+				return "Street Weapons";
+			case WarWeaponStance.Sidearms:
+				return "Sidearms";
+			case WarWeaponStance.OpenArsenal:
+				return "Open Arsenal";
+			default:
+				return stance.ToString();
+		}
+	}
+
+	private static string GetWarStanceSitDownCooldownKey(int firstPid, int secondPid)
+	{
+		return "war-stance-sitdown:" + GetGangWarMediationPairKey(firstPid, secondPid);
+	}
+
+	private static int GetWarStanceSitDownCooldownRemaining(int firstPid, int secondPid)
+	{
+		Dictionary<string, int> store = GetGangWarMediationCooldownStore();
+		if (!store.TryGetValue(GetWarStanceSitDownCooldownKey(firstPid, secondPid), out int untilDay))
+		{
+			return 0;
+		}
+		int remaining = untilDay - G.GetNow().days;
+		if (remaining > 0)
+		{
+			return remaining;
+		}
+		store.Remove(GetWarStanceSitDownCooldownKey(firstPid, secondPid));
+		return 0;
+	}
+
+	private static void SetWarStanceSitDownCooldown(int firstPid, int secondPid, int days)
+	{
+		GetGangWarMediationCooldownStore()[GetWarStanceSitDownCooldownKey(firstPid, secondPid)] = G.GetNow().days + Math.Max(1, days);
+	}
+
+	private static bool TryResolveWarStanceTalkProposal(int enemyPid, out string message)
+	{
+		message = "Talk could not be started.";
+		if (!IsWarWeaponStanceEnabled())
+		{
+			return false;
+		}
+		PlayerInfo human = G.GetHumanPlayer();
+		PlayerInfo enemy = G.FindPlayerById(enemyPid);
+		if (human == null || !IsAliveGangPlayer(enemy) || ArePlayersProtectedByPactAlliance(human, enemy) || HasMutualTruce(human, enemy))
+		{
+			message = "That outfit is no longer eligible.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Talk gang={enemyPid} reason=ineligible");
+			return false;
+		}
+		WarStanceSnapshot snapshot = ResolveWarStanceSnapshot(human.PID.id, enemyPid);
+		if (snapshot.EffectiveHeat <= 0.1f)
+		{
+			message = "There is no WarHeat left to cool.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Talk gang={enemyPid} reason=no-heat");
+			return false;
+		}
+		if (snapshot.EffectiveHeat >= 50f)
+		{
+			message = "WarHeat is too high for plain talk.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Talk gang={enemyPid} reason=heat-too-high heat={snapshot.EffectiveHeat:0.0}");
+			return false;
+		}
+		int cooldownRemaining = GetWarStanceSitDownCooldownRemaining(human.PID.id, enemyPid);
+		if (cooldownRemaining > 0)
+		{
+			message = $"Sit-down cooling is available again in {cooldownRemaining} day(s).";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Talk gang={enemyPid} reason=cooldown remaining={cooldownRemaining}");
+			return false;
+		}
+		WarStanceSitDownDiagnosticEntry entry = BuildWarStanceSitDownDiagnosticEntries().FirstOrDefault(candidate => candidate.GangId == enemyPid);
+		if (entry == null)
+		{
+			message = "That outfit is no longer available.";
+			return false;
+		}
+		if (!TryConsumeWarStanceSitDownConversationAction(out int actionsBefore, out int actionsAfter))
+		{
+			message = "The boss needs enough action points for a conversation.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Talk gang={enemyPid} reason=insufficient-actions");
+			return false;
+		}
+		if (entry.DeterministicRoll > entry.TalkAcceptance)
+		{
+			SetWarStanceSitDownCooldown(human.PID.id, enemyPid, WarStanceSitDownDeclineCooldownDays);
+			message = entry.GangName + " declined the talk.";
+			WarStanceSnapshot unchanged = ResolveWarStanceSnapshot(human.PID.id, enemyPid);
+			VerificationLog("WarStance", $"[WarStance][ProposalDeclined] option=Talk gang={enemyPid} score={entry.TalkAcceptance} roll={entry.DeterministicRoll} heatBefore={snapshot.EffectiveHeat:0.0} heatAfter={unchanged.EffectiveHeat:0.0} humanToGangBefore={snapshot.AttackerToDefenderHeat:0.0} humanToGangAfter={unchanged.AttackerToDefenderHeat:0.0} gangToHumanBefore={snapshot.DefenderToAttackerHeat:0.0} gangToHumanAfter={unchanged.DefenderToAttackerHeat:0.0} actionsBefore={actionsBefore} actionsAfter={actionsAfter} cooldownDays={WarStanceSitDownDeclineCooldownDays}");
+			return false;
+		}
+		if (!ReduceWarHeatBothWays(human.PID.id, enemyPid, WarStanceTalkCoolingAmount, "player-talk"))
+		{
+			message = "WarHeat changed before the talk completed.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Talk gang={enemyPid} reason=no-record-after-action actionsBefore={actionsBefore} actionsAfter={actionsAfter}");
+			return false;
+		}
+		SetWarStanceSitDownCooldown(human.PID.id, enemyPid, WarStanceSitDownSuccessCooldownDays);
+		WarStanceSnapshot after = ResolveWarStanceSnapshot(human.PID.id, enemyPid);
+		message = $"{entry.GangName} accepted. WarHeat {snapshot.EffectiveHeat:0} -> {after.EffectiveHeat:0}.";
+		VerificationLog("WarStance", $"[WarStance][ProposalAccepted] option=Talk gang={enemyPid} score={entry.TalkAcceptance} roll={entry.DeterministicRoll} actionsBefore={actionsBefore} actionsAfter={actionsAfter}");
+		VerificationLog("WarStance", $"[WarStance][CoolingCompleted] option=Talk gang={enemyPid} amount={WarStanceTalkCoolingAmount} effectiveHeatBefore={snapshot.EffectiveHeat:0.0} effectiveHeatAfter={after.EffectiveHeat:0.0} stanceBefore={FormatWarWeaponStance(snapshot.Stance)} stanceAfter={FormatWarWeaponStance(after.Stance)} cooldownDays={WarStanceSitDownSuccessCooldownDays}");
+		LogGrapevine($"TALK: Your outfit cooled tensions with {entry.GangName}.");
+		return true;
+	}
+
+	private static bool TryResolveWarStanceLeisureProposal(int enemyPid, out string message)
+	{
+		message = "Leisure sit-down could not be started.";
+		if (!IsWarWeaponStanceEnabled())
+		{
+			return false;
+		}
+		PlayerInfo human = G.GetHumanPlayer();
+		PlayerInfo enemy = G.FindPlayerById(enemyPid);
+		if (human == null || !IsAliveGangPlayer(enemy) || ArePlayersProtectedByPactAlliance(human, enemy) || HasMutualTruce(human, enemy))
+		{
+			message = "That outfit is no longer eligible.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Leisure gang={enemyPid} reason=ineligible");
+			return false;
+		}
+		WarStanceSnapshot snapshot = ResolveWarStanceSnapshot(human.PID.id, enemyPid);
+		if (snapshot.EffectiveHeat <= 0.1f)
+		{
+			message = "There is no WarHeat left to cool.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Leisure gang={enemyPid} reason=no-heat");
+			return false;
+		}
+		if (snapshot.EffectiveHeat >= 75f)
+		{
+			message = "WarHeat is too high for a leisure sit-down.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Leisure gang={enemyPid} reason=heat-too-high heat={snapshot.EffectiveHeat:0.0}");
+			return false;
+		}
+		int cooldownRemaining = GetWarStanceSitDownCooldownRemaining(human.PID.id, enemyPid);
+		if (cooldownRemaining > 0)
+		{
+			message = $"Sit-down cooling is available again in {cooldownRemaining} day(s).";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Leisure gang={enemyPid} reason=cooldown remaining={cooldownRemaining}");
+			return false;
+		}
+		if (human.finances == null || !human.finances.CanChangeMoneyOnSafehouse(new Price((Fixnum)(-WarStanceLeisureCost))))
+		{
+			message = $"You need ${WarStanceLeisureCost} clean cash for Leisure.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Leisure gang={enemyPid} reason=insufficient-cash cost={WarStanceLeisureCost}");
+			return false;
+		}
+		WarStanceSitDownDiagnosticEntry entry = BuildWarStanceSitDownDiagnosticEntries().FirstOrDefault(candidate => candidate.GangId == enemyPid);
+		if (entry == null)
+		{
+			message = "That outfit is no longer available.";
+			return false;
+		}
+		if (!TryConsumeWarStanceSitDownConversationAction(out int actionsBefore, out int actionsAfter))
+		{
+			message = "The boss needs enough action points for a conversation.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Leisure gang={enemyPid} reason=insufficient-actions");
+			return false;
+		}
+		if (entry.DeterministicRoll > entry.LeisureAcceptance)
+		{
+			SetWarStanceSitDownCooldown(human.PID.id, enemyPid, WarStanceSitDownDeclineCooldownDays);
+			message = entry.GangName + " declined the leisure sit-down. No cash was charged.";
+			WarStanceSnapshot unchanged = ResolveWarStanceSnapshot(human.PID.id, enemyPid);
+			VerificationLog("WarStance", $"[WarStance][ProposalDeclined] option=Leisure gang={enemyPid} score={entry.LeisureAcceptance} roll={entry.DeterministicRoll} heatBefore={snapshot.EffectiveHeat:0.0} heatAfter={unchanged.EffectiveHeat:0.0} humanToGangBefore={snapshot.AttackerToDefenderHeat:0.0} humanToGangAfter={unchanged.AttackerToDefenderHeat:0.0} gangToHumanBefore={snapshot.DefenderToAttackerHeat:0.0} gangToHumanAfter={unchanged.DefenderToAttackerHeat:0.0} cashCharged=0 actionsBefore={actionsBefore} actionsAfter={actionsAfter} cooldownDays={WarStanceSitDownDeclineCooldownDays}");
+			return false;
+		}
+		if (!human.finances.CanChangeMoneyOnSafehouse(new Price((Fixnum)(-WarStanceLeisureCost))))
+		{
+			message = "Clean cash changed before Leisure completed.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Leisure gang={enemyPid} reason=cash-revalidation-failed cost={WarStanceLeisureCost} actionsBefore={actionsBefore} actionsAfter={actionsAfter}");
+			return false;
+		}
+		int cashBefore = GetPlayerCleanCash();
+		human.finances.DoChangeMoneyOnSafehouse(new Price((Fixnum)(-WarStanceLeisureCost)), (MoneyReason)1);
+		int cashAfter = GetPlayerCleanCash();
+		AddMutualRelationshipBuff(human, enemy, "relbuff-gangs-leisure-table-on-finish", GetCrewPeepForPlayer(human), GetCrewPeepForPlayer(enemy));
+		AddMutualRelationshipBuff(human, enemy, "relbuff-gangs-leisure-buff", GetCrewPeepForPlayer(human), GetCrewPeepForPlayer(enemy));
+		bool finishBuffApplied = RelationshipHasBuff(human, enemy, "relbuff-gangs-leisure-table-on-finish")
+			&& RelationshipHasBuff(enemy, human, "relbuff-gangs-leisure-table-on-finish");
+		bool leisureBuffApplied = RelationshipHasBuff(human, enemy, "relbuff-gangs-leisure-buff")
+			&& RelationshipHasBuff(enemy, human, "relbuff-gangs-leisure-buff");
+		bool streetCreditApplied = CrewRelationshipHandlerPatch.TryAwardCrewStreetCreditProgress(
+			human,
+			GetCrewPeepForPlayer(human),
+			0.03f,
+			0.05f,
+			"hostile-sitdown-leisure");
+		if (!ReduceWarHeatBothWays(human.PID.id, enemyPid, WarStanceLeisureCoolingAmount, "player-leisure"))
+		{
+			message = "WarHeat changed before Leisure cooling completed.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Leisure gang={enemyPid} reason=no-record-after-payment cashBefore={cashBefore} cashAfter={cashAfter} cashCharged={WarStanceLeisureCost} actionsBefore={actionsBefore} actionsAfter={actionsAfter}");
+			return false;
+		}
+		SetWarStanceSitDownCooldown(human.PID.id, enemyPid, WarStanceSitDownSuccessCooldownDays);
+		WarStanceSnapshot after = ResolveWarStanceSnapshot(human.PID.id, enemyPid);
+		message = $"{entry.GangName} accepted Leisure. WarHeat {snapshot.EffectiveHeat:0} -> {after.EffectiveHeat:0}.";
+		VerificationLog("WarStance", $"[WarStance][ProposalAccepted] option=Leisure gang={enemyPid} score={entry.LeisureAcceptance} roll={entry.DeterministicRoll} cashBefore={cashBefore} cashAfter={cashAfter} cashCharged={WarStanceLeisureCost} actionsBefore={actionsBefore} actionsAfter={actionsAfter}");
+		VerificationLog("WarStance", $"[WarStance][CoolingCompleted] option=Leisure gang={enemyPid} amount={WarStanceLeisureCoolingAmount} effectiveHeatBefore={snapshot.EffectiveHeat:0.0} effectiveHeatAfter={after.EffectiveHeat:0.0} stanceBefore={FormatWarWeaponStance(snapshot.Stance)} stanceAfter={FormatWarWeaponStance(after.Stance)} finishBuffApplied={finishBuffApplied} leisureBuffApplied={leisureBuffApplied} streetCreditApplied={streetCreditApplied} cooldownDays={WarStanceSitDownSuccessCooldownDays}");
+		LogGrapevine($"LEISURE: Your outfit paid ${WarStanceLeisureCost} for a sit-down with {entry.GangName}.");
+		return true;
+	}
+
+	private static bool TryResolveWarStanceLiquorProposal(int enemyPid, out string message)
+	{
+		message = "Liquor deal could not be started.";
+		if (!IsWarWeaponStanceEnabled())
+		{
+			return false;
+		}
+		PlayerInfo human = G.GetHumanPlayer();
+		PlayerInfo enemy = G.FindPlayerById(enemyPid);
+		if (human == null || !IsAliveGangPlayer(enemy) || ArePlayersProtectedByPactAlliance(human, enemy) || HasMutualTruce(human, enemy))
+		{
+			message = "That outfit is no longer eligible.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Liquor gang={enemyPid} reason=ineligible");
+			return false;
+		}
+		WarStanceSnapshot snapshot = ResolveWarStanceSnapshot(human.PID.id, enemyPid);
+		if (snapshot.EffectiveHeat <= 0.1f)
+		{
+			message = "There is no WarHeat left to cool.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Liquor gang={enemyPid} reason=no-heat");
+			return false;
+		}
+		if (snapshot.EffectiveHeat >= 100f)
+		{
+			message = "WarHeat is too high for a liquor deal.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Liquor gang={enemyPid} reason=heat-too-high heat={snapshot.EffectiveHeat:0.0}");
+			return false;
+		}
+		int cooldownRemaining = GetWarStanceSitDownCooldownRemaining(human.PID.id, enemyPid);
+		if (cooldownRemaining > 0)
+		{
+			message = $"Sit-down cooling is available again in {cooldownRemaining} day(s).";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Liquor gang={enemyPid} reason=cooldown remaining={cooldownRemaining}");
+			return false;
+		}
+		if (human.finances == null || !human.finances.CanChangeMoneyOnSafehouse(new Price((Fixnum)(-WarStanceLiquorCost))))
+		{
+			message = $"You need ${WarStanceLiquorCost} clean cash for the liquor deal.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Liquor gang={enemyPid} reason=insufficient-cash cost={WarStanceLiquorCost}");
+			return false;
+		}
+		if (!TryGetWarStancePlayerSafehouseInventory(human, out _, out _))
+		{
+			message = "Your safehouse cannot receive the liquor shipment.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Liquor gang={enemyPid} reason=safehouse-delivery-unavailable");
+			return false;
+		}
+		WarStanceSitDownDiagnosticEntry entry = BuildWarStanceSitDownDiagnosticEntries().FirstOrDefault(candidate => candidate.GangId == enemyPid);
+		if (entry == null)
+		{
+			message = "That outfit is no longer available.";
+			return false;
+		}
+		if (!TryConsumeWarStanceSitDownConversationAction(out int actionsBefore, out int actionsAfter))
+		{
+			message = "The boss needs enough action points for a conversation.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Liquor gang={enemyPid} reason=insufficient-actions");
+			return false;
+		}
+		if (entry.DeterministicRoll > entry.LiquorAcceptance)
+		{
+			SetWarStanceSitDownCooldown(human.PID.id, enemyPid, WarStanceSitDownDeclineCooldownDays);
+			message = entry.GangName + " declined the liquor deal. No cash or goods changed hands.";
+			WarStanceSnapshot unchanged = ResolveWarStanceSnapshot(human.PID.id, enemyPid);
+			VerificationLog("WarStance", $"[WarStance][ProposalDeclined] option=Liquor gang={enemyPid} score={entry.LiquorAcceptance} roll={entry.DeterministicRoll} heatBefore={snapshot.EffectiveHeat:0.0} heatAfter={unchanged.EffectiveHeat:0.0} humanToGangBefore={snapshot.AttackerToDefenderHeat:0.0} humanToGangAfter={unchanged.AttackerToDefenderHeat:0.0} gangToHumanBefore={snapshot.DefenderToAttackerHeat:0.0} gangToHumanAfter={unchanged.DefenderToAttackerHeat:0.0} cashCharged=0 goodsGranted=false actionsBefore={actionsBefore} actionsAfter={actionsAfter} cooldownDays={WarStanceSitDownDeclineCooldownDays}");
+			return false;
+		}
+		if (!TryCompleteWarStanceLiquorTransaction(human, enemy, out string transactionSummary))
+		{
+			message = "The liquor shipment could not be completed. No cash was charged.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Liquor gang={enemyPid} reason=transaction-failed actionsBefore={actionsBefore} actionsAfter={actionsAfter}");
+			return false;
+		}
+		if (!ReduceWarHeatBothWays(human.PID.id, enemyPid, WarStanceLiquorCoolingAmount, "player-liquor-deal"))
+		{
+			message = "The liquor deal completed, but no WarHeat record remained to cool.";
+			VerificationLog("WarStance", $"[WarStance][CoolingBlocked] option=Liquor gang={enemyPid} reason=no-record-after-transaction transaction={transactionSummary}");
+			return false;
+		}
+		SetWarStanceSitDownCooldown(human.PID.id, enemyPid, WarStanceSitDownSuccessCooldownDays);
+		WarStanceSnapshot after = ResolveWarStanceSnapshot(human.PID.id, enemyPid);
+		message = $"{entry.GangName} accepted the liquor deal. WarHeat {snapshot.EffectiveHeat:0} -> {after.EffectiveHeat:0}.";
+		VerificationLog("WarStance", $"[WarStance][ProposalAccepted] option=Liquor gang={enemyPid} score={entry.LiquorAcceptance} roll={entry.DeterministicRoll} actionsBefore={actionsBefore} actionsAfter={actionsAfter} transaction={transactionSummary}");
+		VerificationLog("WarStance", $"[WarStance][CoolingCompleted] option=Liquor gang={enemyPid} amount={WarStanceLiquorCoolingAmount} effectiveHeatBefore={snapshot.EffectiveHeat:0.0} effectiveHeatAfter={after.EffectiveHeat:0.0} stanceBefore={FormatWarWeaponStance(snapshot.Stance)} stanceAfter={FormatWarWeaponStance(after.Stance)} cooldownDays={WarStanceSitDownSuccessCooldownDays}");
+		LogGrapevine($"LIQUOR: Your outfit paid ${WarStanceLiquorCost} for a liquor deal with {entry.GangName}.");
+		return true;
+	}
+
+	private static bool TryCompleteWarStanceLiquorTransaction(PlayerInfo human, PlayerInfo enemy, out string summary)
+	{
+		summary = string.Empty;
+		if (human?.finances == null
+			|| enemy == null
+			|| !human.finances.CanChangeMoneyOnSafehouse(new Price((Fixnum)(-WarStanceLiquorCost)))
+			|| !TryGetWarStancePlayerSafehouseInventory(human, out Entity safehouse, out _))
+		{
+			return false;
+		}
+		var grants = new[]
+		{
+			Tuple.Create("streetcredit", 2),
+			Tuple.Create("moonshine", 50),
+			Tuple.Create("home-brew", 100),
+			Tuple.Create("cider", 50),
+			Tuple.Create("brick-wine", 45)
+		};
+		Dictionary<string, int> before = grants.ToDictionary(grant => grant.Item1, grant => ReadInventoryAmount(safehouse, grant.Item1), StringComparer.OrdinalIgnoreCase);
+		int cashBefore = GetPlayerCleanCash();
+		try
+		{
+			human.finances.DoChangeMoneyOnSafehouse(new Price((Fixnum)(-WarStanceLiquorCost)), (MoneyReason)1);
+			int cashAfterDebit = GetPlayerCleanCash();
+			if (cashBefore - cashAfterDebit != WarStanceLiquorCost)
+			{
+				if (cashAfterDebit < cashBefore)
+				{
+					human.finances.DoChangeMoneyOnSafehouse(new Price((Fixnum)(cashBefore - cashAfterDebit)), (MoneyReason)1);
+				}
+				return false;
+			}
+			foreach (Tuple<string, int> grant in grants)
+			{
+				if (!TryAddWarStanceInventoryResource(safehouse, grant.Item1, grant.Item2)
+					|| ReadInventoryAmount(safehouse, grant.Item1) < before[grant.Item1] + grant.Item2)
+				{
+					RollbackWarStanceLiquorResources(safehouse, grants, before);
+					human.finances.DoChangeMoneyOnSafehouse(new Price((Fixnum)WarStanceLiquorCost), (MoneyReason)1);
+					return false;
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			RollbackWarStanceLiquorResources(safehouse, grants, before);
+			int currentCash = GetPlayerCleanCash();
+			if (currentCash < cashBefore)
+			{
+				human.finances.DoChangeMoneyOnSafehouse(new Price((Fixnum)(cashBefore - currentCash)), (MoneyReason)1);
+			}
+			Debug.LogWarning("[GameplayTweaks] Liquor sit-down transaction failed: " + ex.Message);
+			return false;
+		}
+		AddMutualRelationshipBuff(human, enemy, "relbuff-gangs-loot1-table-on-finish", GetCrewPeepForPlayer(human), GetCrewPeepForPlayer(enemy));
+		AddMutualRelationshipBuff(human, enemy, "relbuff-gangs-loot2-buff", GetCrewPeepForPlayer(human), GetCrewPeepForPlayer(enemy));
+		bool finishBuffApplied = RelationshipHasBuff(human, enemy, "relbuff-gangs-loot1-table-on-finish")
+			&& RelationshipHasBuff(enemy, human, "relbuff-gangs-loot1-table-on-finish");
+		bool liquorBuffApplied = RelationshipHasBuff(human, enemy, "relbuff-gangs-loot2-buff")
+			&& RelationshipHasBuff(enemy, human, "relbuff-gangs-loot2-buff");
+		bool xpApplied = TryAwardWarStanceBossXp(WarStanceLiquorXp);
+		bool localHeatApplied = TryApplyWarStanceLiquorLocalHeat(human);
+		int cashAfter = GetPlayerCleanCash();
+		summary = $"cashBefore={cashBefore} cashAfter={cashAfter} cashCharged={cashBefore - cashAfter} goods=streetcredit:2,moonshine:50,home-brew:100,cider:50,brick-wine:45 xp={WarStanceLiquorXp} xpApplied={xpApplied} finishBuffApplied={finishBuffApplied} liquorBuffApplied={liquorBuffApplied} localHeatApplied={localHeatApplied}";
+		VerificationLog("WarStance", $"[WarStance][LiquorTransaction] {summary}");
+		return true;
+	}
+
+	private static bool TryGetWarStancePlayerSafehouseInventory(PlayerInfo player, out Entity safehouse, out InventoryModule inventory)
+	{
+		safehouse = null;
+		inventory = null;
+		EntityID safehouseId = player?.territory?.Safehouse ?? EntityID.INVALID;
+		if (safehouseId.IsNotValid)
+		{
+			return false;
+		}
+		safehouse = safehouseId.FindEntity();
+		inventory = safehouse != null ? ModulesUtil.GetInventory(safehouse) : null;
+		return inventory != null;
+	}
+
+	private static bool TryAddWarStanceInventoryResource(Entity entity, string labelName, int amount)
+	{
+		try
+		{
+			InventoryModule inventory = entity != null ? ModulesUtil.GetInventory(entity) : null;
+			return inventory != null && inventory.ForceAddResourcesRegardlessOfSpace(new Label(labelName), amount) == amount;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static void RollbackWarStanceLiquorResources(Entity safehouse, IEnumerable<Tuple<string, int>> grants, IReadOnlyDictionary<string, int> before)
+	{
+		foreach (Tuple<string, int> grant in grants)
+		{
+			int excess = Math.Max(0, ReadInventoryAmount(safehouse, grant.Item1) - before[grant.Item1]);
+			if (excess <= 0)
+			{
+				continue;
+			}
+			try
+			{
+				ModulesUtil.GetInventory(safehouse)?.TryRemoveResourcesUpToAll(new Label(grant.Item1), excess);
+			}
+			catch
+			{
+			}
+		}
+	}
+
+	private static bool TryAwardWarStanceBossXp(int amount)
+	{
+		CrewAssignment boss = G.GetHumanCrew()?.GetCrewForIndex(0) ?? default(CrewAssignment);
+		AgentComponent agent = boss.IsValid ? boss.GetPeep()?.components?.agent : null;
+		if (agent == null || amount <= 0)
+		{
+			return false;
+		}
+		agent.AddXP(amount);
+		return true;
+	}
+
+	private static bool TryApplyWarStanceLiquorLocalHeat(PlayerInfo human)
+	{
+		try
+		{
+			EntityID bossPeep = GetCrewPeepForPlayer(human);
+			Node node = bossPeep.FindEntity()?.components?.agent?.GetNode();
+			if (human?.territory == null || bossPeep.IsNotValid || node == null)
+			{
+				return false;
+			}
+			human.territory.AddHeatBuff(node, new Label("heatbuff-gangs-loot1-table-on-finish"), bossPeep, new ModQuery(human.PID, EntityID.INVALID, bossPeep, node.id));
+			human.territory.RecomputeHeat(node, forceCurrent: true);
+			return true;
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] Liquor sit-down local heat failed: " + ex.Message);
+			return false;
+		}
+	}
+
+	private static bool TryConsumeWarStanceSitDownConversationAction(out int actionsBefore, out int actionsAfter)
+	{
+		actionsBefore = -1;
+		actionsAfter = -1;
+		PlayerCrew crew = G.GetHumanCrew();
+		CrewAssignment boss = crew != null ? crew.GetCrewForIndex(0) : default(CrewAssignment);
+		Entity bossPeep = boss.IsValid ? boss.GetPeep() : null;
+		AgentComponent agent = bossPeep?.components?.agent;
+		CrewCost cost = global::Game.Game.serv?.globals?.settings?.people?.social?.costs?.convoCost ?? default(CrewCost);
+		if (agent == null || !agent.CanPay(cost))
+		{
+			return false;
+		}
+		actionsBefore = agent.ActionsRemaining;
+		if (!agent.DoPay(cost, "war-stance-sitdown-talk"))
+		{
+			return false;
+		}
+		actionsAfter = agent.ActionsRemaining;
+		return true;
+	}
+
+	private static bool CanPayWarStanceSitDownConversationAction()
+	{
+		PlayerCrew crew = G.GetHumanCrew();
+		CrewAssignment boss = crew != null ? crew.GetCrewForIndex(0) : default(CrewAssignment);
+		Entity bossPeep = boss.IsValid ? boss.GetPeep() : null;
+		AgentComponent agent = bossPeep?.components?.agent;
+		CrewCost cost = global::Game.Game.serv?.globals?.settings?.people?.social?.costs?.convoCost ?? default(CrewCost);
+		return agent != null && agent.CanPay(cost);
+	}
+
+	private static bool ReduceWarHeatBothWays(int firstPid, int secondPid, float amount, string reason)
+	{
+		if (firstPid < 0 || secondPid < 0 || firstPid == secondPid || amount <= 0f)
+		{
+			return false;
+		}
+		WarStanceSnapshot beforeSnapshot = ResolveWarStanceSnapshot(firstPid, secondPid);
+		float firstToSecondBefore = beforeSnapshot.AttackerToDefenderHeat;
+		float secondToFirstBefore = beforeSnapshot.DefenderToAttackerHeat;
+		bool changed = false;
+		int nowDay = G.GetNow().days;
+		foreach (GangOpsChannel channel in new[] { GangOpsChannel.Pact, GangOpsChannel.Independent })
+		{
+			Dictionary<string, WarHeatEntry> store = GetWarHeatStore(channel);
+			foreach (Tuple<int, int> direction in new[]
+			{
+				Tuple.Create(firstPid, secondPid),
+				Tuple.Create(secondPid, firstPid)
+			})
+			{
+				string key = MakeGangPairKey(direction.Item1, direction.Item2);
+				if (!store.TryGetValue(key, out WarHeatEntry entry) || entry == null)
+				{
+					continue;
+				}
+				float before = Mathf.Clamp(entry.Heat, 0f, 100f);
+				entry.Heat = Mathf.Clamp(before - amount, 0f, 100f);
+				entry.LastUpdatedDay = nowDay;
+				changed |= entry.Heat < before;
+				if (entry.Heat <= 0.001f)
+				{
+					store.Remove(key);
+				}
+			}
+		}
+		WarStanceSnapshot afterSnapshot = ResolveWarStanceSnapshot(firstPid, secondPid);
+		float firstToSecondAfter = afterSnapshot.AttackerToDefenderHeat;
+		float secondToFirstAfter = afterSnapshot.DefenderToAttackerHeat;
+		VerificationLog("WarStance", $"[WarStance][CoolingHeat] reason={reason} firstPid={firstPid} secondPid={secondPid} amount={amount:0.0} firstToSecondBefore={firstToSecondBefore:0.0} firstToSecondAfter={firstToSecondAfter:0.0} secondToFirstBefore={secondToFirstBefore:0.0} secondToFirstAfter={secondToFirstAfter:0.0} changed={changed}");
+		return changed;
+	}
+
+	private static WarStanceSnapshot ResolveWarStanceSnapshotForCombat(int attackerPid, int defenderPid)
+	{
+		string key = BuildWarStancePairKey(attackerPid, defenderPid);
+		if (!string.IsNullOrEmpty(WarStanceActivePlayerCommitToken)
+			&& WarStanceActivePlayerCommitSnapshots.TryGetValue(key, out WarStanceSnapshot snapshot))
+		{
+			return snapshot;
+		}
+		if (WarStanceActiveAiCommitSnapshots.TryGetValue(key, out WarStanceSnapshot aiSnapshot))
+		{
+			return aiSnapshot;
+		}
+		if (WarStanceActiveGroupedCommitSnapshots.TryGetValue(key, out WarStanceSnapshot groupedSnapshot))
+		{
+			return groupedSnapshot;
+		}
+		return ResolveWarStanceSnapshot(attackerPid, defenderPid);
+	}
+
+	private static WarStanceSnapshot BeginGroupedWarStanceCommit(int attackerPid, int defenderPid, string sourceTag)
+	{
+		WarStanceSnapshot snapshot = ResolveWarStanceSnapshot(attackerPid, defenderPid);
+		if (!IsWarWeaponStanceEnabled())
+		{
+			return snapshot;
+		}
+		string key = BuildWarStancePairKey(attackerPid, defenderPid);
+		WarStanceActiveGroupedCommitSnapshots[key] = snapshot;
+		VerificationLog(
+			"WarStance",
+			$"[WarStance][GroupedCommitSnapshot] source={sourceTag} attackerPid={snapshot.AttackerPid} defenderPid={snapshot.DefenderPid} stance={FormatWarWeaponStance(snapshot.Stance)} effectiveHeat={snapshot.EffectiveHeat:0.0}");
+		return snapshot;
+	}
+
+	private static void ClearGroupedWarStanceCommit()
+	{
+		WarStanceActiveGroupedCommitSnapshots.Clear();
+	}
+
+	private static void BeginAiWarStanceCommit(WarStanceSnapshot snapshot, string sourceTag)
+	{
+		WarStanceActiveAiCommitSnapshots.Clear();
+		if (!IsWarWeaponStanceEnabled() || snapshot == null)
+		{
+			return;
+		}
+		string key = BuildWarStancePairKey(snapshot.AttackerPid, snapshot.DefenderPid);
+		WarStanceActiveAiCommitSnapshots[key] = snapshot;
+		VerificationLog(
+			"WarStance",
+			$"[WarStance][AICommitSnapshot] source={sourceTag} attackerPid={snapshot.AttackerPid} defenderPid={snapshot.DefenderPid} stance={FormatWarWeaponStance(snapshot.Stance)} effectiveHeat={snapshot.EffectiveHeat:0.0}");
+	}
+
+	private static void ClearAiWarStanceCommit()
+	{
+		WarStanceActiveAiCommitSnapshots.Clear();
+	}
+
+	private static bool HasActiveAiWarStanceCommit(int attackerPid, int defenderPid)
+	{
+		return WarStanceActiveAiCommitSnapshots.ContainsKey(BuildWarStancePairKey(attackerPid, defenderPid));
+	}
+
+	private static void BeginPlayerWarStanceCommit(string popupToken, IEnumerable<Tuple<short, short>> pairs)
+	{
+		ClearPlayerWarStanceCommit();
+		if (!IsWarWeaponStanceEnabled())
+		{
+			return;
+		}
+		WarStanceActivePlayerCommitToken = popupToken ?? string.Empty;
+		foreach (Tuple<short, short> pair in pairs ?? Enumerable.Empty<Tuple<short, short>>())
+		{
+			int attackerPid = pair.Item1;
+			int defenderPid = pair.Item2;
+			string key = BuildWarStancePairKey(attackerPid, defenderPid);
+			if (attackerPid < 0
+				|| defenderPid < 0
+				|| attackerPid == defenderPid
+				|| WarStanceActivePlayerCommitSnapshots.ContainsKey(key))
+			{
+				continue;
+			}
+			PlayerID attacker = new PlayerID(pair.Item1);
+			PlayerID defender = new PlayerID(pair.Item2);
+			if (!attacker.IsHumanPlayer
+				|| !defender.IsAIPlayer
+				|| defender.FindPlayer()?.IsCopOrFed == true)
+			{
+				continue;
+			}
+			WarStanceSnapshot snapshot = ResolveWarStanceSnapshot(attackerPid, defenderPid);
+			WarStanceActivePlayerCommitSnapshots[key] = snapshot;
+			VerificationLog(
+				"WarStance",
+				$"[WarStance][PlayerCommitSnapshot] token={WarStanceActivePlayerCommitToken} attackerPid={attackerPid} defenderPid={defenderPid} stance={FormatWarWeaponStance(snapshot.Stance)} effectiveHeat={snapshot.EffectiveHeat:0.0}");
+		}
+	}
+
+	private static void ClearPlayerWarStanceCommit()
+	{
+		if (!string.IsNullOrEmpty(WarStanceActivePlayerCommitToken))
+		{
+			WarStancePendingProposedViolations.Remove(BuildPlayerWarStanceCommitKey(WarStanceActivePlayerCommitToken));
+		}
+		WarStanceActivePlayerCommitSnapshots.Clear();
+		WarStanceActivePlayerCommitToken = string.Empty;
+	}
+
+	private static string BuildPlayerWarStanceCommitKey(string popupToken)
+	{
+		return "CombatPopupCommit:" + (popupToken ?? string.Empty);
+	}
+
+	private static string BuildWarStancePairKey(int attackerPid, int defenderPid)
+	{
+		return attackerPid.ToString(CultureInfo.InvariantCulture) + ":" + defenderPid.ToString(CultureInfo.InvariantCulture);
+	}
+
+	private static WarWeaponStance ResolveWarWeaponStance(float effectiveHeat)
+	{
+		GetWarWeaponStanceThresholds(out int streetThreshold, out int sidearmThreshold, out int openArsenalThreshold);
+		if (effectiveHeat >= openArsenalThreshold)
+		{
+			return WarWeaponStance.OpenArsenal;
+		}
+		if (effectiveHeat >= sidearmThreshold)
+		{
+			return WarWeaponStance.Sidearms;
+		}
+		if (effectiveHeat >= streetThreshold)
+		{
+			return WarWeaponStance.StreetWeapons;
+		}
+		return WarWeaponStance.HandsOnly;
+	}
+
+	private static void GetWarWeaponStanceThresholds(out int streetThreshold, out int sidearmThreshold, out int openArsenalThreshold)
+	{
+		streetThreshold = Mathf.Clamp(WarWeaponStanceStreetThreshold?.Value ?? 25, 1, 98);
+		sidearmThreshold = Mathf.Clamp(WarWeaponStanceSidearmThreshold?.Value ?? 50, streetThreshold + 1, 99);
+		openArsenalThreshold = Mathf.Clamp(WarWeaponStanceOpenArsenalThreshold?.Value ?? 75, sidearmThreshold + 1, 100);
+	}
+
+	private static int GetWarWeaponStanceMinimumHeat(WarWeaponStance stance)
+	{
+		GetWarWeaponStanceThresholds(out int streetThreshold, out int sidearmThreshold, out int openArsenalThreshold);
+		switch (stance)
+		{
+			case WarWeaponStance.StreetWeapons:
+				return streetThreshold;
+			case WarWeaponStance.Sidearms:
+				return sidearmThreshold;
+			case WarWeaponStance.OpenArsenal:
+				return openArsenalThreshold;
+			default:
+				return 0;
+		}
+	}
+
+	private static string FormatWarWeaponStance(WarWeaponStance stance)
+	{
+		switch (stance)
+		{
+			case WarWeaponStance.HandsOnly:
+				return "HandsOnly";
+			case WarWeaponStance.StreetWeapons:
+				return "StreetWeapons";
+			case WarWeaponStance.Sidearms:
+				return "Sidearms";
+			case WarWeaponStance.OpenArsenal:
+				return "OpenArsenal";
+			default:
+				return stance.ToString();
+		}
+	}
+
+	private static bool WarStanceWeaponComplies(WarWeaponStance stance, WeaponConfig weapon)
+	{
+		WarStanceWeaponCategory category = ClassifyWarStanceWeapon(weapon);
+		if (stance == WarWeaponStance.OpenArsenal)
+		{
+			return true;
+		}
+		if (category == WarStanceWeaponCategory.Unarmed)
+		{
+			return true;
+		}
+		if (stance == WarWeaponStance.StreetWeapons)
+		{
+			return category == WarStanceWeaponCategory.Melee;
+		}
+		if (stance == WarWeaponStance.Sidearms)
+		{
+			return category == WarStanceWeaponCategory.Melee || category == WarStanceWeaponCategory.Sidearm;
+		}
+		return false;
+	}
+
+	private static bool WarStanceAllowsDriveBy(WarWeaponStance stance)
+	{
+		return stance == WarWeaponStance.Sidearms || stance == WarWeaponStance.OpenArsenal;
+	}
+
+	private static WarWeaponStance GetOneTierHigherWarWeaponStance(WarWeaponStance stance)
+	{
+		switch (stance)
+		{
+			case WarWeaponStance.HandsOnly:
+				return WarWeaponStance.StreetWeapons;
+			case WarWeaponStance.StreetWeapons:
+				return WarWeaponStance.Sidearms;
+			case WarWeaponStance.Sidearms:
+				return WarWeaponStance.OpenArsenal;
+			default:
+				return WarWeaponStance.OpenArsenal;
+		}
+	}
+
+	private static WeaponConfig FindBestWarStanceCompliantWeapon(CrewAssignment crew, WarWeaponStance stance)
+	{
+		CombatManager combat = global::Game.Game.ctx?.simman?.combat;
+		WeaponConfig fists = null;
+		try
+		{
+			fists = combat?.GetFistsWeapon();
+		}
+		catch
+		{
+		}
+		try
+		{
+			if (combat == null || !crew.IsValid)
+			{
+				return fists;
+			}
+			Entity vehicle = crew.GetVehicle();
+			if (vehicle == null)
+			{
+				return fists;
+			}
+			using (ListPool<WeaponConfig>.PooledBlockList weapons = ListPool<WeaponConfig>.Allocate())
+			{
+				combat.FindAllWeaponsSorted(vehicle, weapons);
+				WeaponConfig bestWeapon = null;
+				int bestRank = int.MinValue;
+				foreach (WeaponConfig weapon in weapons)
+				{
+					if (WarStanceWeaponComplies(stance, weapon))
+					{
+						if (stance == WarWeaponStance.OpenArsenal)
+						{
+							return weapon ?? fists;
+						}
+						int rank = GetWarStancePreferredWeaponRank(stance, weapon);
+						if (bestWeapon == null || rank > bestRank)
+						{
+							bestWeapon = weapon;
+							bestRank = rank;
+						}
+					}
+				}
+				if (bestWeapon != null)
+				{
+					return bestWeapon;
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] WarStance would-select failed: " + ex.Message);
+		}
+		return fists;
+	}
+
+	private static WeaponConfig FindBestAiBossVehicleEscalationWeapon(CrewAssignment crew, WarWeaponStance currentStance, out WarWeaponStance escalationStance)
+	{
+		escalationStance = currentStance;
+		WarWeaponStance allowedEscalationStance = GetOneTierHigherWarWeaponStance(currentStance);
+		if (allowedEscalationStance == currentStance
+			|| currentStance == WarWeaponStance.HandsOnly)
+		{
+			return null;
+		}
+		CombatManager combat = global::Game.Game.ctx?.simman?.combat;
+		try
+		{
+			if (combat == null || !crew.IsValid)
+			{
+				return null;
+			}
+			Entity vehicle = crew.GetVehicle();
+			if (vehicle == null)
+			{
+				return null;
+			}
+			using (ListPool<WeaponConfig>.PooledBlockList weapons = ListPool<WeaponConfig>.Allocate())
+			{
+				combat.FindAllWeaponsSorted(vehicle, weapons);
+				WeaponConfig bestWeapon = null;
+				int bestRank = int.MinValue;
+				foreach (WeaponConfig weapon in weapons)
+				{
+					WarStanceWeaponCategory category = ClassifyWarStanceWeapon(weapon);
+					if (allowedEscalationStance == WarWeaponStance.Sidearms && category != WarStanceWeaponCategory.Sidearm)
+					{
+						continue;
+					}
+					if (allowedEscalationStance == WarWeaponStance.OpenArsenal && category != WarStanceWeaponCategory.LongGun)
+					{
+						continue;
+					}
+					if (WarStanceWeaponComplies(currentStance, weapon))
+					{
+						continue;
+					}
+					if (!WarStanceWeaponComplies(allowedEscalationStance, weapon))
+					{
+						continue;
+					}
+					int rank = GetWarStancePreferredWeaponRank(allowedEscalationStance, weapon);
+					if (bestWeapon == null || rank > bestRank)
+					{
+						bestWeapon = weapon;
+						bestRank = rank;
+						escalationStance = allowedEscalationStance;
+					}
+				}
+				return bestWeapon;
+			}
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] WarStance boss-vehicle escalation select failed: " + ex.Message);
+		}
+		return null;
+	}
+
+	private static WeaponConfig FindBestWarStanceProhibitedWeapon(CrewAssignment crew, WarWeaponStance currentStance, out WarWeaponStance requiredStance)
+	{
+		requiredStance = currentStance;
+		CombatManager combat = global::Game.Game.ctx?.simman?.combat;
+		try
+		{
+			if (combat == null || !crew.IsValid)
+			{
+				return null;
+			}
+			Entity vehicle = crew.GetVehicle();
+			if (vehicle == null)
+			{
+				return null;
+			}
+			using (ListPool<WeaponConfig>.PooledBlockList weapons = ListPool<WeaponConfig>.Allocate())
+			{
+				combat.FindAllWeaponsSorted(vehicle, weapons);
+				WeaponConfig bestWeapon = null;
+				WarWeaponStance bestRequiredStance = WarWeaponStance.OpenArsenal;
+				int bestRank = int.MinValue;
+				foreach (WeaponConfig weapon in weapons)
+				{
+					if (WarStanceWeaponComplies(currentStance, weapon))
+					{
+						continue;
+					}
+					WarWeaponStance weaponRequiredStance = GetMinimumWarStanceForWeapon(weapon);
+					if (weaponRequiredStance <= currentStance)
+					{
+						continue;
+					}
+					int rank = GetWarStancePreferredWeaponRank(weaponRequiredStance, weapon);
+					if (bestWeapon == null
+						|| weaponRequiredStance < bestRequiredStance
+						|| (weaponRequiredStance == bestRequiredStance && rank > bestRank))
+					{
+						bestWeapon = weapon;
+						bestRequiredStance = weaponRequiredStance;
+						bestRank = rank;
+					}
+				}
+				if (bestWeapon != null)
+				{
+					requiredStance = bestRequiredStance;
+				}
+				return bestWeapon;
+			}
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] WarStance prohibited-weapon scan failed: " + ex.Message);
+			return null;
+		}
+	}
+
+	private static WarWeaponStance GetMinimumWarStanceForWeapon(WeaponConfig weapon)
+	{
+		switch (ClassifyWarStanceWeapon(weapon))
+		{
+			case WarStanceWeaponCategory.Unarmed:
+				return WarWeaponStance.HandsOnly;
+			case WarStanceWeaponCategory.Melee:
+				return WarWeaponStance.StreetWeapons;
+			case WarStanceWeaponCategory.Sidearm:
+				return WarWeaponStance.Sidearms;
+			default:
+				return WarWeaponStance.OpenArsenal;
+		}
+	}
+
+	private static bool IsBossWarStanceCrew(PlayerInfo player, CrewAssignment crew)
+	{
+		if (player == null || !crew.IsValid || crew.peepId.IsNotValid)
+		{
+			return false;
+		}
+		try
+		{
+			if (player.social != null && player.social.PlayerPeepId.IsValid && player.social.PlayerPeepId == crew.peepId)
+			{
+				return true;
+			}
+		}
+		catch
+		{
+		}
+		try
+		{
+			CrewAssignment boss = player.crew != null ? player.crew.GetCrewForIndex(0) : default(CrewAssignment);
+			return boss.IsValid && boss.peepId == crew.peepId;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static void LogAiWarStanceBreachDiagnostics(string source, string mode, WarStanceSnapshot snapshot, CrewAssignment attacker, CrewAssignment defender, WeaponConfig attackerCurrentWeapon, WeaponConfig defenderCurrentWeapon)
+	{
+		try
+		{
+			if (!IsWarWeaponStanceEnabled() || snapshot == null)
+			{
+				return;
+			}
+			Entity attackerPeep = attacker.GetPeep();
+			Entity defenderPeep = defender.GetPeep();
+			PlayerInfo attackerPlayer = attackerPeep?.data?.agent?.pid.FindPlayer();
+			PlayerInfo defenderPlayer = defenderPeep?.data?.agent?.pid.FindPlayer();
+			if (attackerPlayer == null
+				|| defenderPlayer == null
+				|| !attackerPlayer.PID.IsAIPlayer
+				|| !defenderPlayer.PID.IsAIPlayer
+				|| attackerPlayer.PID.id == defenderPlayer.PID.id)
+			{
+				return;
+			}
+			LogAiWarStanceBreachDiagnosticForSide(source, mode, "attacker", snapshot, attackerPlayer, defenderPlayer, attacker, defender, attackerCurrentWeapon);
+			LogAiWarStanceBreachDiagnosticForSide(source, mode, "defender", snapshot, defenderPlayer, attackerPlayer, defender, attacker, defenderCurrentWeapon);
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] WarStance AI breach diagnostics failed: " + ex.Message);
+		}
+	}
+
+	private static void LogAiWarStanceBreachDiagnosticForSide(string source, string mode, string role, WarStanceSnapshot snapshot, PlayerInfo actor, PlayerInfo opponent, CrewAssignment actorCrew, CrewAssignment opponentCrew, WeaponConfig currentWeapon)
+	{
+		AiWarStanceBreachDecision decision = BuildAiWarStanceBreachDecision(role, snapshot, actor, opponent, actorCrew, opponentCrew);
+		LogAiWarStanceBreachDecision(source, mode, role, snapshot, actor, opponent, actorCrew, opponentCrew, currentWeapon, decision);
+	}
+
+	private static bool TrySelectAiWarStanceBreachWeapon(string source, string mode, string role, WarStanceSnapshot snapshot, PlayerInfo actor, PlayerInfo opponent, CrewAssignment actorCrew, CrewAssignment opponentCrew, WeaponConfig currentWeapon, out WeaponConfig breachWeapon)
+	{
+		breachWeapon = null;
+		if (snapshot == null || actor == null || opponent == null)
+		{
+			return false;
+		}
+		AiWarStanceBreachDecision decision = BuildAiWarStanceBreachDecision(role, snapshot, actor, opponent, actorCrew, opponentCrew);
+		LogAiWarStanceBreachDecision(source, mode, role, snapshot, actor, opponent, actorCrew, opponentCrew, currentWeapon, decision);
+		if (!AreAiWarStanceBreachesEnabled() || decision == null || !decision.WouldBreach || decision.BreachWeapon == null)
+		{
+			return false;
+		}
+		breachWeapon = decision.BreachWeapon;
+		VerificationLog(
+			"WarStance",
+                    $"[WarStance][AIBreachUsed] source={source} mode={mode} role={role} actorPid={actor.PID.id} opponentPid={opponent.PID.id} currentStance={FormatWarWeaponStance(snapshot.Stance)} breachStance={FormatWarWeaponStance(decision.BreachStance)} effectiveHeat={snapshot.EffectiveHeat:0.0} heatPressure={decision.HeatPressure:0.0} heatPressureStance={FormatWarWeaponStance(decision.HeatPressureStance)} heatPressureAdjusted={decision.HeatPressureAdjusted} actorVehicle={actorCrew.VehicleID.id} weaponBefore={DescribeWarStanceWeapon(currentWeapon)} weaponBeforeCategory={ClassifyWarStanceWeapon(currentWeapon)} weaponUsed={DescribeWarStanceWeapon(decision.BreachWeapon)} weaponUsedCategory={ClassifyWarStanceWeapon(decision.BreachWeapon)} chance={decision.Chance} chanceCap={decision.ChanceCap} roll={decision.Roll} bossVehicle={decision.BossVehicle} bossVehicleEscalation={decision.BossVehicleEscalation} pressureTierEscalation={decision.PressureTierEscalation} gate=true heatPending=true");
+		return true;
+	}
+
+	private static AiWarStanceBreachDecision BuildAiWarStanceBreachDecision(string role, WarStanceSnapshot snapshot, PlayerInfo actor, PlayerInfo opponent, CrewAssignment actorCrew, CrewAssignment opponentCrew)
+	{
+		var decision = new AiWarStanceBreachDecision();
+		if (snapshot == null || actor == null || opponent == null)
+		{
+			return decision;
+		}
+		WarWeaponStance breachStance = GetOneTierHigherWarWeaponStance(snapshot.Stance);
+		WeaponConfig breachWeapon = FindBestWarStanceCompliantWeapon(actorCrew, breachStance);
+		WeaponConfig nextAvailableProhibitedWeapon = FindBestWarStanceProhibitedWeapon(actorCrew, snapshot.Stance, out WarWeaponStance nextAvailableProhibitedStance);
+		bool heatPressureAdjusted;
+		float heatPressure = GetAiWarStanceBreachPressureHeat(snapshot, out heatPressureAdjusted);
+		WarWeaponStance heatPressureStance = ResolveWarWeaponStance(heatPressure);
+		float nextAvailablePressureGap = nextAvailableProhibitedWeapon == null
+			? -1f
+			: Mathf.Max(0f, GetWarWeaponStanceMinimumHeat(nextAvailableProhibitedStance) - heatPressure);
+		bool bossVehicle = IsBossWarStanceCrew(actor, actorCrew);
+		bool bossVehicleEscalation = false;
+		WeaponConfig bossEscalationWeapon = null;
+		WarWeaponStance bossEscalationStance = breachStance;
+		if (bossVehicle && snapshot.Stance != WarWeaponStance.OpenArsenal)
+		{
+			bossEscalationWeapon = FindBestAiBossVehicleEscalationWeapon(actorCrew, snapshot.Stance, out bossEscalationStance);
+			if (bossEscalationWeapon != null
+				&& !WarStanceWeaponComplies(snapshot.Stance, bossEscalationWeapon)
+				&& WarStanceWeaponComplies(bossEscalationStance, bossEscalationWeapon)
+				&& (breachWeapon == null || GetWarStancePreferredWeaponRank(bossEscalationStance, bossEscalationWeapon) >= GetWarStancePreferredWeaponRank(breachStance, breachWeapon)))
+			{
+				breachWeapon = bossEscalationWeapon;
+				breachStance = bossEscalationStance;
+				bossVehicleEscalation = true;
+			}
+		}
+		bool pressureTierEscalation = false;
+		if (breachWeapon != null
+			&& WarStanceWeaponComplies(snapshot.Stance, breachWeapon))
+		{
+			breachWeapon = null;
+		}
+		if (breachWeapon == null
+			&& nextAvailableProhibitedWeapon != null
+			&& nextAvailableProhibitedStance > breachStance
+			&& (nextAvailableProhibitedStance <= heatPressureStance
+				|| IsAiWarStancePressureBridgeAllowed(snapshot.Stance, nextAvailableProhibitedStance, snapshot.EffectiveHeat, heatPressure, heatPressureAdjusted))
+			&& nextAvailableProhibitedStance != WarWeaponStance.OpenArsenal)
+		{
+			breachWeapon = nextAvailableProhibitedWeapon;
+			breachStance = nextAvailableProhibitedStance;
+			pressureTierEscalation = true;
+		}
+		bool alreadyMax = breachStance == snapshot.Stance;
+		bool storedHeatFloorSatisfied = IsAiWarStanceStoredBreachHeatAllowed(snapshot);
+		bool breachAvailable = !alreadyMax
+			&& breachWeapon != null
+			&& storedHeatFloorSatisfied
+			&& WarStanceWeaponComplies(breachStance, breachWeapon)
+			&& !WarStanceWeaponComplies(snapshot.Stance, breachWeapon);
+		string breachBlockReason = GetAiWarStanceBreachBlockReason(snapshot.Stance, breachStance, breachWeapon, breachAvailable, storedHeatFloorSatisfied);
+		bool directAggro = IsAggroWithoutTruceEitherWay(actor, opponent);
+		bool peaceful = IsAiPersonalityPeaceful(actor);
+		bool isolationist = IsAiPersonalityIsolationist(actor);
+		bool aggressivePersonality = IsAiPersonalityAggressive(actor);
+		bool expansionist = IsAiPersonalityExpansionist(actor);
+		bool aggressiveBoss = HasGangBossAnyTraitForRetaliation(actor, "trait-aggressive", "trait-confident", "trait-bold", "trait-cruel", "trait-vindictive");
+		bool cautiousBoss = HasGangBossAnyTraitForRetaliation(actor, "trait-cautious", "trait-nervous", "trait-upright", "trait-religious");
+		int actorPower = CalculateGangPower(actor);
+		int opponentPower = CalculateGangPower(opponent);
+		int heatPressureFloor = GetAiWarStanceBreachHeatFloor(snapshot.Stance);
+		float heatPressureScale = GetAiWarStanceBreachHeatScale(snapshot, heatPressure);
+		int chanceCap = GetAiWarStanceEffectiveBreachChanceCap(snapshot.Stance, breachStance, pressureTierEscalation);
+		int chance = CalculateAiWarStanceBreachChance(snapshot, breachAvailable, directAggro, peaceful, isolationist, aggressivePersonality, expansionist, aggressiveBoss, cautiousBoss, bossVehicleEscalation || pressureTierEscalation, actorPower, opponentPower, heatPressure, chanceCap);
+		int roll = CalculateAiWarStanceBreachRoll(actor.PID.id, opponent.PID.id, actorCrew.peepId.id, opponentCrew.peepId.id, G.GetNow().days, role);
+		decision.BreachWeapon = breachWeapon;
+		decision.BreachStance = breachStance;
+		decision.BossVehicle = bossVehicle;
+		decision.BossVehicleEscalation = bossVehicleEscalation;
+		decision.PressureTierEscalation = pressureTierEscalation;
+		decision.BreachAvailable = breachAvailable;
+		decision.BreachBlockReason = breachBlockReason;
+		decision.StoredHeatFloorSatisfied = storedHeatFloorSatisfied;
+		decision.ActorVehicleWeaponCoverage = FormatWarStanceVehicleWeaponCoverage(actorCrew);
+		decision.NextAvailableProhibitedWeapon = nextAvailableProhibitedWeapon;
+		decision.NextAvailableProhibitedStance = nextAvailableProhibitedStance;
+		decision.NextAvailablePressureGap = nextAvailablePressureGap;
+		decision.DirectAggro = directAggro;
+		decision.Peaceful = peaceful;
+		decision.Isolationist = isolationist;
+		decision.AggressivePersonality = aggressivePersonality;
+		decision.Expansionist = expansionist;
+		decision.AggressiveBoss = aggressiveBoss;
+		decision.CautiousBoss = cautiousBoss;
+		decision.ActorPower = actorPower;
+		decision.OpponentPower = opponentPower;
+		decision.HeatPressureFloor = heatPressureFloor;
+		decision.HeatPressure = heatPressure;
+		decision.HeatPressureAdjusted = heatPressureAdjusted;
+		decision.HeatPressureStance = heatPressureStance;
+		decision.HeatPressureScale = heatPressureScale;
+		decision.Chance = chance;
+		decision.ChanceCap = chanceCap;
+		decision.Roll = roll;
+		decision.WouldBreach = breachAvailable && roll <= chance;
+		return decision;
+	}
+
+	private static bool IsAiWarStanceStoredBreachHeatAllowed(WarStanceSnapshot snapshot)
+	{
+		if (snapshot == null)
+		{
+			return false;
+		}
+		if (snapshot.Stance != WarWeaponStance.HandsOnly)
+		{
+			return true;
+		}
+		return snapshot.EffectiveHeat >= GetAiWarStanceBreachHeatFloor(WarWeaponStance.HandsOnly);
+	}
+
+	private static bool IsAiWarStancePressureBridgeAllowed(WarWeaponStance currentStance, WarWeaponStance prohibitedStance, float effectiveHeat, float heatPressure, bool heatPressureAdjusted)
+	{
+		if (!heatPressureAdjusted
+			|| currentStance != WarWeaponStance.HandsOnly
+			|| prohibitedStance != WarWeaponStance.Sidearms)
+		{
+			return false;
+		}
+		if (effectiveHeat < GetAiWarStanceBreachHeatFloor(WarWeaponStance.HandsOnly))
+		{
+			return false;
+		}
+		int sidearmThreshold = GetWarWeaponStanceMinimumHeat(WarWeaponStance.Sidearms);
+		return heatPressure >= sidearmThreshold - 10f;
+	}
+
+	private static void LogAiWarStanceBreachDecision(string source, string mode, string role, WarStanceSnapshot snapshot, PlayerInfo actor, PlayerInfo opponent, CrewAssignment actorCrew, CrewAssignment opponentCrew, WeaponConfig currentWeapon, AiWarStanceBreachDecision decision)
+	{
+		if (snapshot == null || actor == null || opponent == null || decision == null)
+		{
+			return;
+		}
+		VerificationLog(
+			"WarStance",
+			$"[WarStance][AIBreachDiag] source={source} mode={mode} role={role} actorPid={actor.PID.id} opponentPid={opponent.PID.id} currentStance={FormatWarWeaponStance(snapshot.Stance)} breachStance={FormatWarWeaponStance(decision.BreachStance)} effectiveHeat={snapshot.EffectiveHeat:0.0} heatPressure={decision.HeatPressure:0.0} heatPressureStance={FormatWarWeaponStance(decision.HeatPressureStance)} heatPressureAdjusted={decision.HeatPressureAdjusted} heatPressureFloor={decision.HeatPressureFloor} storedHeatFloorSatisfied={decision.StoredHeatFloorSatisfied} heatPressureScale={decision.HeatPressureScale:0.00} actorVehicle={actorCrew.VehicleID.id} opponentVehicle={opponentCrew.VehicleID.id} actorVehicleWeapons={decision.ActorVehicleWeaponCoverage} currentWeapon={DescribeWarStanceWeapon(currentWeapon)} currentCategory={ClassifyWarStanceWeapon(currentWeapon)} breachWeapon={DescribeWarStanceWeapon(decision.BreachWeapon)} breachCategory={ClassifyWarStanceWeapon(decision.BreachWeapon)} breachAvailable={decision.BreachAvailable} breachBlockReason={decision.BreachBlockReason} nextAvailableProhibitedWeapon={DescribeWarStanceWeapon(decision.NextAvailableProhibitedWeapon)} nextAvailableProhibitedCategory={ClassifyWarStanceWeapon(decision.NextAvailableProhibitedWeapon)} nextAvailableProhibitedStance={FormatWarWeaponStance(decision.NextAvailableProhibitedStance)} nextAvailablePressureGap={decision.NextAvailablePressureGap:0.0} pressureTierEscalation={decision.PressureTierEscalation} chance={decision.Chance} chanceCap={decision.ChanceCap} roll={decision.Roll} wouldBreach={decision.WouldBreach} gate={AreAiWarStanceBreachesEnabled()} bossVehicle={decision.BossVehicle} bossVehicleEscalation={decision.BossVehicleEscalation} directAggro={decision.DirectAggro} peaceful={decision.Peaceful} isolationist={decision.Isolationist} aggressivePersonality={decision.AggressivePersonality} expansionist={decision.Expansionist} aggressiveBoss={decision.AggressiveBoss} cautiousBoss={decision.CautiousBoss} power={decision.ActorPower}/{decision.OpponentPower}");
+	}
+
+	private static string GetAiWarStanceBreachBlockReason(WarWeaponStance currentStance, WarWeaponStance breachStance, WeaponConfig breachWeapon, bool breachAvailable, bool storedHeatFloorSatisfied)
+	{
+		if (breachAvailable)
+		{
+			return "available";
+		}
+		if (breachStance == currentStance)
+		{
+			return "already-open-arsenal";
+		}
+		if (breachWeapon == null)
+		{
+			return "no-breach-tier-weapon";
+		}
+		if (!storedHeatFloorSatisfied)
+		{
+			return "stored-heat-below-breach-floor";
+		}
+		if (!WarStanceWeaponComplies(breachStance, breachWeapon))
+		{
+			return "candidate-not-in-breach-tier";
+		}
+		if (WarStanceWeaponComplies(currentStance, breachWeapon))
+		{
+			return "no-weapon-above-current-stance";
+		}
+		return "blocked";
+	}
+
+	private static string FormatWarStanceVehicleWeaponCoverage(CrewAssignment crew)
+	{
+		int unarmed = 0;
+		int melee = 0;
+		int sidearm = 0;
+		int longGun = 0;
+		int automatic = 0;
+		int unknown = 0;
+		try
+		{
+			CombatManager combat = global::Game.Game.ctx?.simman?.combat;
+			Entity vehicle = crew.IsValid ? crew.GetVehicle() : null;
+			if (combat != null && vehicle != null)
+			{
+				using (ListPool<WeaponConfig>.PooledBlockList weapons = ListPool<WeaponConfig>.Allocate())
+				{
+					combat.FindAllWeaponsSorted(vehicle, weapons);
+					foreach (WeaponConfig weapon in weapons)
+					{
+						switch (ClassifyWarStanceWeapon(weapon))
+						{
+							case WarStanceWeaponCategory.Unarmed:
+								unarmed++;
+								break;
+							case WarStanceWeaponCategory.Melee:
+								melee++;
+								break;
+							case WarStanceWeaponCategory.Sidearm:
+								sidearm++;
+								break;
+							case WarStanceWeaponCategory.LongGun:
+								longGun++;
+								break;
+							case WarStanceWeaponCategory.Automatic:
+								automatic++;
+								break;
+							default:
+								unknown++;
+								break;
+						}
+					}
+				}
+			}
+		}
+		catch
+		{
+			unknown++;
+		}
+		return $"unarmed:{unarmed},melee:{melee},sidearm:{sidearm},longGun:{longGun},automatic:{automatic},unknown:{unknown}";
+	}
+
+	private static int CalculateAiWarStanceBreachChance(WarStanceSnapshot snapshot, bool breachAvailable, bool directAggro, bool peaceful, bool isolationist, bool aggressivePersonality, bool expansionist, bool aggressiveBoss, bool cautiousBoss, bool bossVehicleEscalation, int actorPower, int opponentPower, float heatPressure, int chanceCap)
+	{
+		if (!breachAvailable || snapshot == null || snapshot.Stance == WarWeaponStance.OpenArsenal)
+		{
+			return 0;
+		}
+		if (heatPressure < GetAiWarStanceBreachHeatFloor(snapshot.Stance))
+		{
+			return 0;
+		}
+		GetWarWeaponStanceThresholds(out int streetThreshold, out int sidearmThreshold, out int openArsenalThreshold);
+		int nextThreshold = snapshot.Stance == WarWeaponStance.HandsOnly ? streetThreshold : (snapshot.Stance == WarWeaponStance.StreetWeapons ? sidearmThreshold : openArsenalThreshold);
+		float heatNearNextTier = Mathf.Clamp01((heatPressure - (nextThreshold - 12f)) / 12f);
+		int chance = 8;
+		chance += aggressivePersonality ? 18 : 0;
+		chance += aggressiveBoss ? 16 : 0;
+		chance += expansionist ? 10 : 0;
+		chance += directAggro ? 10 : 0;
+		chance += bossVehicleEscalation ? 18 : 0;
+		chance += Mathf.RoundToInt(heatNearNextTier * 12f);
+		chance += actorPower >= opponentPower + 40 ? 8 : 0;
+		chance -= peaceful ? 18 : 0;
+		chance -= isolationist ? 14 : 0;
+		chance -= cautiousBoss ? 10 : 0;
+		chance -= actorPower + 40 < opponentPower ? 8 : 0;
+		chance = Mathf.RoundToInt(chance * GetAiWarStanceBreachHeatScale(snapshot, heatPressure));
+		return Mathf.Clamp(chance, 0, chanceCap);
+	}
+
+	private static int GetAiWarStanceEffectiveBreachChanceCap(WarWeaponStance currentStance, WarWeaponStance breachStance, bool pressureTierEscalation)
+	{
+		int currentCap = GetAiWarStanceBreachChanceCap(currentStance);
+		if (!pressureTierEscalation || breachStance <= currentStance)
+		{
+			return currentCap;
+		}
+		int breachCap = GetAiWarStanceBreachChanceCap(breachStance);
+		return Mathf.Clamp(breachCap, currentCap, 55);
+	}
+
+	private static float GetAiWarStanceBreachHeatScale(WarStanceSnapshot snapshot, float heatPressure)
+	{
+		if (snapshot == null || snapshot.Stance == WarWeaponStance.OpenArsenal)
+		{
+			return 0f;
+		}
+		int floor = GetAiWarStanceBreachHeatFloor(snapshot.Stance);
+		if (heatPressure < floor)
+		{
+			return 0f;
+		}
+		GetWarWeaponStanceThresholds(out int streetThreshold, out int sidearmThreshold, out int openArsenalThreshold);
+		int nextThreshold = snapshot.Stance == WarWeaponStance.HandsOnly ? streetThreshold : (snapshot.Stance == WarWeaponStance.StreetWeapons ? sidearmThreshold : openArsenalThreshold);
+		float range = Mathf.Max(1f, nextThreshold - floor);
+		float progress = Mathf.Clamp01((heatPressure - floor) / range);
+		return Mathf.Lerp(0.35f, 1f, progress);
+	}
+
+	private static float GetAiWarStanceBreachPressureHeat(WarStanceSnapshot snapshot, out bool adjusted)
+	{
+		adjusted = false;
+		if (snapshot == null)
+		{
+			return 0f;
+		}
+		float pressureHeat = snapshot.EffectiveHeat;
+		WarStanceGangOpsHeatComparison comparison = BuildWarStanceGangOpsHeatComparison(snapshot);
+		if (comparison != null && comparison.EffectiveAdjustedHeat > pressureHeat + 0.1f)
+		{
+			pressureHeat = comparison.EffectiveAdjustedHeat;
+			adjusted = true;
+		}
+		return Mathf.Clamp(pressureHeat, 0f, 100f);
+	}
+
+	private static int GetAiWarStanceBreachChanceCap(WarWeaponStance stance)
+	{
+		switch (stance)
+		{
+			case WarWeaponStance.HandsOnly:
+				return 30;
+			case WarWeaponStance.StreetWeapons:
+				return 55;
+			case WarWeaponStance.Sidearms:
+				return 65;
+			default:
+				return 75;
+		}
+	}
+
+	private static int GetAiWarStanceBreachHeatFloor(WarWeaponStance stance)
+	{
+		GetWarWeaponStanceThresholds(out int streetThreshold, out int sidearmThreshold, out int openArsenalThreshold);
+		switch (stance)
+		{
+			case WarWeaponStance.HandsOnly:
+				return Mathf.CeilToInt(streetThreshold * 0.7f);
+			case WarWeaponStance.StreetWeapons:
+				return Mathf.CeilToInt(streetThreshold + ((sidearmThreshold - streetThreshold) * 0.5f));
+			case WarWeaponStance.Sidearms:
+				return Mathf.CeilToInt(sidearmThreshold + ((openArsenalThreshold - sidearmThreshold) * 0.5f));
+			default:
+				return 101;
+		}
+	}
+
+	private static int CalculateAiWarStanceBreachRoll(int actorPid, int opponentPid, ulong actorPeepId, ulong opponentPeepId, int day, string role)
+	{
+		unchecked
+		{
+			uint hash = 2166136261u;
+			hash = MixAiWarStanceBreachHash(hash, actorPid);
+			hash = MixAiWarStanceBreachHash(hash, opponentPid);
+			hash = MixAiWarStanceBreachHash(hash, (int)(actorPeepId & 0xffffffffUL));
+			hash = MixAiWarStanceBreachHash(hash, (int)(actorPeepId >> 32));
+			hash = MixAiWarStanceBreachHash(hash, (int)(opponentPeepId & 0xffffffffUL));
+			hash = MixAiWarStanceBreachHash(hash, (int)(opponentPeepId >> 32));
+			hash = MixAiWarStanceBreachHash(hash, day);
+			if (!string.IsNullOrEmpty(role))
+			{
+				for (int i = 0; i < role.Length; i++)
+				{
+					hash ^= role[i];
+					hash *= 16777619u;
+				}
+			}
+			return (int)(hash % 100u) + 1;
+		}
+	}
+
+	private static uint MixAiWarStanceBreachHash(uint hash, int value)
+	{
+		unchecked
+		{
+			hash ^= (uint)value;
+			return hash * 16777619u;
+		}
+	}
+
+	private static int GetWarStancePreferredWeaponRank(WarWeaponStance stance, WeaponConfig weapon)
+	{
+		WarStanceWeaponCategory category = ClassifyWarStanceWeapon(weapon);
+		switch (stance)
+		{
+			case WarWeaponStance.HandsOnly:
+				return category == WarStanceWeaponCategory.Unarmed ? 100 : 0;
+			case WarWeaponStance.StreetWeapons:
+				return category == WarStanceWeaponCategory.Melee ? 200 : 100;
+			case WarWeaponStance.Sidearms:
+				if (category == WarStanceWeaponCategory.Sidearm)
+				{
+					return 300;
+				}
+				return category == WarStanceWeaponCategory.Melee ? 200 : 100;
+			default:
+				return 100;
+		}
+	}
+
+	private static WarStanceWeaponCategory ClassifyWarStanceWeapon(WeaponConfig weapon)
+	{
+		if (weapon == null)
+		{
+			return WarStanceWeaponCategory.Unknown;
+		}
+		string weaponId = GetWarStanceWeaponId(weapon);
+		if (IsWarStanceUnarmedWeapon(weaponId))
+		{
+			return WarStanceWeaponCategory.Unarmed;
+		}
+		if (WarStanceMeleeWeaponIds.Contains(weaponId))
+		{
+			return WarStanceWeaponCategory.Melee;
+		}
+		if (WarStanceSidearmWeaponIds.Contains(weaponId))
+		{
+			return WarStanceWeaponCategory.Sidearm;
+		}
+		if (WarStanceLongGunWeaponIds.Contains(weaponId))
+		{
+			return WarStanceWeaponCategory.LongGun;
+		}
+		if (WarStanceAutomaticWeaponIds.Contains(weaponId))
+		{
+			return WarStanceWeaponCategory.Automatic;
+		}
+		if (weapon.firearm)
+		{
+			if (ContainsAnyWarStanceToken(weaponId, "pistol", "revolver", "derringer", "colt", "beretta", "broomhandle", "bearcat"))
+			{
+				return WarStanceWeaponCategory.Sidearm;
+			}
+			if (ContainsAnyWarStanceToken(weaponId, "thompson", "tommy", "machine", "automatic", "mp18", "mp-18", "mp28", "mp-28", "emp", "browning"))
+			{
+				return WarStanceWeaponCategory.Automatic;
+			}
+			if (ContainsAnyWarStanceToken(weaponId, "shotgun", "rifle", "winchester", "remington", "enfield"))
+			{
+				return WarStanceWeaponCategory.LongGun;
+			}
+			return LogUnknownWarStanceWeapon(weaponId, "firearm");
+		}
+		if (weapon.tool || ContainsAnyWarStanceToken(weaponId, "knife", "shiv", "blade", "dagger", "machete", "club", "bat", "pipe", "brass", "wrench", "crowbar", "tool"))
+		{
+			return WarStanceWeaponCategory.Melee;
+		}
+		return LogUnknownWarStanceWeapon(weaponId, "non-firearm");
+	}
+
+	private static WarStanceWeaponCategory LogUnknownWarStanceWeapon(string weaponId, string reason)
+	{
+		string id = string.IsNullOrWhiteSpace(weaponId) ? "unknown" : weaponId;
+		if (WarStanceLoggedUnknownWeaponIds.Add(id))
+		{
+			VerificationLog("WarStance", $"[WarStance][UnknownWeapon] weapon={id} reason={reason}");
+		}
+		return WarStanceWeaponCategory.Unknown;
+	}
+
+	private static bool IsWarStanceUnarmedWeapon(string weaponId)
+	{
+		if (string.IsNullOrWhiteSpace(weaponId))
+		{
+			return false;
+		}
+		if (WarStanceUnarmedWeaponIds.Contains(weaponId) || ContainsAnyWarStanceToken(weaponId, "fist", "unarmed", "barehand", "bare-hand"))
+		{
+			return true;
+		}
+		try
+		{
+			return string.Equals(weaponId, EntityConstants.DEFAULT_WEAPON.String, StringComparison.OrdinalIgnoreCase);
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static bool ContainsAnyWarStanceToken(string text, params string[] tokens)
+	{
+		if (string.IsNullOrEmpty(text) || tokens == null)
+		{
+			return false;
+		}
+		foreach (string token in tokens)
+		{
+			if (!string.IsNullOrEmpty(token) && text.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static string GetWarStanceWeaponId(WeaponConfig weapon)
+	{
+		if (weapon == null)
+		{
+			return string.Empty;
+		}
+		try
+		{
+			return weapon.resid.String ?? string.Empty;
+		}
+		catch
+		{
+			return string.Empty;
+		}
+	}
+
+	private static string DescribeWarStanceWeapon(WeaponConfig weapon)
+	{
+		string weaponId = GetWarStanceWeaponId(weapon);
+		if (string.IsNullOrEmpty(weaponId))
+		{
+			return "unknown";
+		}
+		return weaponId;
+	}
+
+	private static WarStanceArsenalSummary BuildWarStanceArsenalSummary(int pid)
+	{
+		var summary = new WarStanceArsenalSummary();
+		try
+		{
+			PlayerInfo player = G.FindPlayerById(pid);
+			PlayerCrew crew = player?.crew;
+			CombatManager combat = global::Game.Game.ctx?.simman?.combat;
+			if (crew == null || combat == null)
+			{
+				return summary;
+			}
+
+			List<CrewAssignment> living = crew.GetLiving()
+				.Where(item => item.IsValid && item.IsNotDead && item.peepId.IsValid && item.GetPeep() != null)
+				.ToList();
+			summary.CrewCount = living.Count;
+			foreach (IGrouping<ulong, CrewAssignment> vehicleGroup in living
+				.Where(item => item.IsInVehicle && item.VehicleID.IsValid)
+				.GroupBy(item => item.VehicleID.id))
+			{
+				CrewAssignment representative = vehicleGroup.FirstOrDefault();
+				Entity vehicle = representative.GetVehicle();
+				if (vehicle == null)
+				{
+					continue;
+				}
+
+				summary.ActiveVehicleCount++;
+				bool hasMelee = false;
+				bool hasSidearm = false;
+				bool hasLongGun = false;
+				bool hasAutomatic = false;
+				using (ListPool<WeaponConfig>.PooledBlockList weapons = ListPool<WeaponConfig>.Allocate())
+				{
+					combat.FindAllWeaponsSorted(vehicle, weapons);
+					foreach (WeaponConfig weapon in weapons)
+					{
+						switch (ClassifyWarStanceWeapon(weapon))
+						{
+							case WarStanceWeaponCategory.Melee:
+								hasMelee = true;
+								break;
+							case WarStanceWeaponCategory.Sidearm:
+								hasSidearm = true;
+								break;
+							case WarStanceWeaponCategory.LongGun:
+								hasLongGun = true;
+								break;
+							case WarStanceWeaponCategory.Automatic:
+								hasAutomatic = true;
+								break;
+						}
+					}
+				}
+				if (hasMelee)
+				{
+					summary.MeleeVehicleCount++;
+				}
+				if (hasSidearm)
+				{
+					summary.SidearmVehicleCount++;
+				}
+				if (hasLongGun)
+				{
+					summary.LongGunVehicleCount++;
+				}
+				if (hasAutomatic)
+				{
+					summary.AutomaticVehicleCount++;
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[GameplayTweaks] WarStance arsenal diagnostics failed: " + ex.Message);
+		}
+		return summary;
+	}
+
+	private static CrewAssignment TryFindWarStanceCrewForPeep(Entity peep)
+	{
+		try
+		{
+			if (peep == null)
+			{
+				return CrewAssignment.EMPTY;
+			}
+			PlayerInfo player = peep.data?.agent?.pid.FindPlayer();
+			PlayerCrew crew = player?.crew;
+			if (crew == null)
+			{
+				return CrewAssignment.EMPTY;
+			}
+			CrewAssignment assignment = crew.GetCrewForPeep(peep.Id);
+			if (!assignment.IsValid)
+			{
+				assignment = crew.GetCrewForTarget(peep.Id);
+			}
+			if (!assignment.IsValid)
+			{
+				assignment = crew.GetLiving()
+					.FirstOrDefault(item => item.IsValid && item.peepId.IsValid && item.peepId == peep.Id);
+			}
+			if (!assignment.IsValid)
+			{
+				assignment = crew.GetLiving()
+					.FirstOrDefault(item => item.IsValid && item.GetPeep()?.Id == peep.Id);
+			}
+			if (!assignment.IsValid && player.IsCopOrFed)
+			{
+				CrewAssignment founder = crew.GetCrewForPlayerPeep();
+				if (founder.IsValid)
+				{
+					assignment = founder;
+				}
+				if (!assignment.IsValid)
+				{
+					assignment = crew.GetLiving().FirstOrDefault(item => item.IsValid);
+				}
+			}
+			return assignment;
+		}
+		catch
+		{
+			return CrewAssignment.EMPTY;
+		}
+	}
+
+	private static string FormatWarStanceAggro(int sourcePid, int targetPid)
+	{
+		try
+		{
+			PlayerInfo sourcePlayer = G.FindPlayerById(sourcePid);
+			object combat = sourcePlayer?.ai?.combat;
+			if (combat == null)
+			{
+				return "unknown";
+			}
+			MethodInfo method = combat.GetType().GetMethod("IsAggroAnyType", BindingFlags.Instance | BindingFlags.Public)
+				?? combat.GetType().GetMethod("IsAggroWithoutTruce", BindingFlags.Instance | BindingFlags.Public);
+			if (method == null)
+			{
+				return "unknown";
+			}
+			object value = method.Invoke(combat, new object[]
+			{
+				new PlayerID
+				{
+					id = (short)targetPid
+				}
+			});
+			return value is bool flag ? flag.ToString().ToLowerInvariant() : "unknown";
+		}
+		catch
+		{
+			return "unknown";
+		}
+	}
+
 	private static class StatTrackingPatch
 	{
 		private static FieldInfo _entityField;
@@ -387,6 +3419,10 @@ public partial class GameplayTweaksPlugin
 
 		private const string PopupTargetVehicleInfoLabelName = "GT_Combat_TargetVehicleInfoLabel";
 
+		private const string PopupWarStanceAnchorName = "GT_Combat_WarStanceAnchor";
+
+		private const string PopupWarStanceLabelName = "GT_Combat_WarStanceLabel";
+
 		private static readonly HashSet<string> PopupCommitTokens = new HashSet<string>(StringComparer.Ordinal);
 
 		private static readonly Dictionary<int, string> PopupCommitTokenById = new Dictionary<int, string>();
@@ -397,11 +3433,21 @@ public partial class GameplayTweaksPlugin
 
 		private static readonly Dictionary<int, OnFootWeaponFilter> PopupOnFootFilterById = new Dictionary<int, OnFootWeaponFilter>();
 
+		private static readonly HashSet<int> PopupExplicitCombatModeById = new HashSet<int>();
+
+		private static readonly HashSet<int> PopupExplicitOnFootFilterById = new HashSet<int>();
+
 		private static readonly Dictionary<int, DriveByTargetMode> PopupDriveByTargetModeById = new Dictionary<int, DriveByTargetMode>();
 
 		private static readonly Dictionary<int, Dictionary<ulong, ulong>> PopupSelectedTargetPeepIdsById = new Dictionary<int, Dictionary<ulong, ulong>>();
 
 		private static readonly Dictionary<int, Dictionary<ulong, string>> PopupSelectedWeaponIdsById = new Dictionary<int, Dictionary<ulong, string>>();
+
+		private static readonly Dictionary<int, string> PopupWarStanceSummaryLogById = new Dictionary<int, string>();
+
+		private static readonly Dictionary<int, string> PopupWarStanceReadyLogById = new Dictionary<int, string>();
+
+		private static readonly Dictionary<int, string> PopupWarStanceConfirmationById = new Dictionary<int, string>();
 
 		private static readonly HashSet<string> PopupVehicleCrewInfoLogKeys = new HashSet<string>(StringComparer.Ordinal);
 
@@ -473,6 +3519,13 @@ public partial class GameplayTweaksPlugin
 					VerificationLog("VehicleGroupCombat", "hooked CombatPopupPlanning.OnArrow");
 				}
 
+				MethodInfo onMethodRowSelection = typeof(CombatPopupPlanning).GetMethod("OnMethodRowSelection", BindingFlags.Instance | BindingFlags.NonPublic, null, new[] { typeof(GameObject), typeof(CombatCardContext) }, null);
+				if (onMethodRowSelection != null)
+				{
+					harmony.Patch(onMethodRowSelection, postfix: new HarmonyMethod(typeof(VehicleGroupCombatPatch), nameof(CombatPopupMethodSelectionPostfix)));
+					VerificationLog("WarStance", "hooked CombatPopupPlanning.OnMethodRowSelection");
+				}
+
 				MethodInfo unassignCrewFromVehicle = typeof(PlayerCrew).GetMethod("UnassignCrewFromVehicle", BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(EntityID) }, null);
 				if (unassignCrewFromVehicle != null)
 				{
@@ -511,8 +3564,10 @@ public partial class GameplayTweaksPlugin
 				EnsureCombatPopupVehicleInfoLabel(__instance);
 				EnsureCombatPopupTargetVehicleInfoLabel(__instance);
 				RestorePopupTargetSelections(__instance);
+				ApplyStancePreferredInitialPopupMode(__instance);
 				RefreshGroupedPopupWeaponRows(__instance);
 				RefreshPopupVehicleLabels(__instance);
+				RefreshCombatPopupWarStance(__instance);
 			}
 			catch (Exception ex)
 			{
@@ -524,7 +3579,10 @@ public partial class GameplayTweaksPlugin
 		{
 			try
 			{
+				ApplyStancePreferredInitialPopupMode(__instance);
+				RefreshGroupedPopupWeaponRows(__instance);
 				RefreshPopupVehicleLabels(__instance);
+				RefreshCombatPopupWarStance(__instance);
 			}
 			catch (Exception ex)
 			{
@@ -537,10 +3595,24 @@ public partial class GameplayTweaksPlugin
 			try
 			{
 				RefreshPopupVehicleLabels(__instance);
+				RefreshCombatPopupWarStance(__instance);
 			}
 			catch (Exception ex)
 			{
 				Debug.LogWarning("[GameplayTweaks] VehicleGroupCombatPatch.CombatPopupArrowPostfix: " + ex.Message);
+			}
+		}
+
+		private static void CombatPopupMethodSelectionPostfix(CombatPopupPlanning __instance, GameObject card, CombatCardContext ctx)
+		{
+			try
+			{
+				StorePopupWeaponSelection(__instance, card, ctx);
+				RefreshCombatPopupWarStance(__instance);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] VehicleGroupCombatPatch.CombatPopupMethodSelectionPostfix: " + ex.Message);
 			}
 		}
 
@@ -572,7 +3644,10 @@ public partial class GameplayTweaksPlugin
 				return;
 			}
 			var targetSelections = new Dictionary<ulong, ulong>();
-			var weaponSelections = new Dictionary<ulong, string>();
+			PopupSelectedWeaponIdsById.TryGetValue(popupId, out Dictionary<ulong, string> existingWeaponSelections);
+			var weaponSelections = existingWeaponSelections == null
+				? new Dictionary<ulong, string>()
+				: new Dictionary<ulong, string>(existingWeaponSelections);
 			foreach (Transform child in humanContents.transform)
 			{
 				CombatCardContext ctx = child.gameObject.GetComponent<CombatCardContext>();
@@ -588,7 +3663,7 @@ public partial class GameplayTweaksPlugin
 				}
 				TMP_Dropdown methodDropdown = child.gameObject.GetDropdown(PopupMethodDropdownPath);
 				WeaponConfig selectedWeapon = methodDropdown?.GetCurrentOptionsItem()?.data as WeaponConfig;
-				if (selectedWeapon != null)
+				if (selectedWeapon != null && existingWeaponSelections != null && existingWeaponSelections.ContainsKey(ctx.peep.Id.id))
 				{
 					weaponSelections[ctx.peep.Id.id] = GetWeaponId(selectedWeapon);
 				}
@@ -601,6 +3676,28 @@ public partial class GameplayTweaksPlugin
 			{
 				PopupSelectedWeaponIdsById[popupId] = weaponSelections;
 			}
+		}
+
+		private static void StorePopupWeaponSelection(CombatPopupPlanning popup, GameObject card, CombatCardContext ctx)
+		{
+			int popupId = GetPopupId(popup);
+			if (popupId == 0 || card == null || ctx?.peep == null || !ctx.peep.Id.IsValid)
+			{
+				return;
+			}
+			TMP_Dropdown methodDropdown = card.GetDropdown(PopupMethodDropdownPath);
+			WeaponConfig selectedWeapon = methodDropdown?.GetCurrentOptionsItem()?.data as WeaponConfig;
+			string weaponId = GetWeaponId(selectedWeapon);
+			if (string.IsNullOrEmpty(weaponId))
+			{
+				return;
+			}
+			if (!PopupSelectedWeaponIdsById.TryGetValue(popupId, out Dictionary<ulong, string> weaponSelections) || weaponSelections == null)
+			{
+				weaponSelections = new Dictionary<ulong, string>();
+				PopupSelectedWeaponIdsById[popupId] = weaponSelections;
+			}
+			weaponSelections[ctx.peep.Id.id] = weaponId;
 		}
 
 		private static void RestorePopupTargetSelections(CombatPopupPlanning popup)
@@ -706,9 +3803,14 @@ public partial class GameplayTweaksPlugin
 			PopupCombatModeById.Remove(popupId);
 			PopupOnFootCountById.Remove(popupId);
 			PopupOnFootFilterById.Remove(popupId);
+			PopupExplicitCombatModeById.Remove(popupId);
+			PopupExplicitOnFootFilterById.Remove(popupId);
 			PopupDriveByTargetModeById.Remove(popupId);
 			PopupSelectedTargetPeepIdsById.Remove(popupId);
 			PopupSelectedWeaponIdsById.Remove(popupId);
+			PopupWarStanceSummaryLogById.Remove(popupId);
+			PopupWarStanceReadyLogById.Remove(popupId);
+			PopupWarStanceConfirmationById.Remove(popupId);
 		}
 
 		private static GroupedCombatMode GetPopupCombatMode(CombatPopupPlanning popup)
@@ -829,6 +3931,89 @@ public partial class GameplayTweaksPlugin
 			}
 			int max = Math.Max(1, GetMaxOnFootPopupAttackers(popup));
 			SetPopupOnFootCount(popup, max > 0 ? GetPopupOnFootCount(popup) : 1);
+		}
+
+		private static void ApplyStancePreferredInitialPopupMode(CombatPopupPlanning popup)
+		{
+			if (!IsWarWeaponStanceEnabled())
+			{
+				return;
+			}
+			int popupId = GetPopupId(popup);
+			if (popupId == 0 || HasExplicitPopupWeaponSelection(popupId) || PopupExplicitCombatModeById.Contains(popupId) || PopupExplicitOnFootFilterById.Contains(popupId))
+			{
+				return;
+			}
+			if (!TryResolveMostRestrictivePopupTargetStance(popup, out WarStanceSnapshot snapshot))
+			{
+				return;
+			}
+			if (snapshot.Stance != WarWeaponStance.HandsOnly && snapshot.Stance != WarWeaponStance.StreetWeapons)
+			{
+				return;
+			}
+			GroupedCombatMode previousMode = GetPopupCombatMode(popup);
+			OnFootWeaponFilter previousFilter = GetPopupOnFootWeaponFilter(popup);
+			if (previousMode == GroupedCombatMode.OnFoot && previousFilter != OnFootWeaponFilter.Ranged)
+			{
+				return;
+			}
+			SetPopupCombatMode(popup, GroupedCombatMode.OnFoot);
+			SetPopupOnFootWeaponFilter(popup, OnFootWeaponFilter.Melee);
+			VerificationLog(
+				"WarStance",
+				$"[WarStance][PlayerPopupModeDefaultedToStance] token={GetPopupCommitToken(popup)} attackerPid={snapshot.AttackerPid} defenderPid={snapshot.DefenderPid} stance={FormatWarWeaponStance(snapshot.Stance)} effectiveHeat={snapshot.EffectiveHeat:F1} previousMode={FormatCombatMode(previousMode)} previousFilter={FormatOnFootWeaponFilter(previousFilter)} mode=onfoot filter=Melee");
+		}
+
+		private static bool HasExplicitPopupWeaponSelection(int popupId)
+		{
+			return popupId != 0
+				&& PopupSelectedWeaponIdsById.TryGetValue(popupId, out Dictionary<ulong, string> weaponSelections)
+				&& weaponSelections != null
+				&& weaponSelections.Count > 0;
+		}
+
+		private static bool TryResolveMostRestrictivePopupTargetStance(CombatPopupPlanning popup, out WarStanceSnapshot selectedSnapshot)
+		{
+			selectedSnapshot = null;
+			GameObject popupRoot = popup?.GameObject;
+			GameObject humanContents = popupRoot?.GetChild(PopupHumanContentsPath);
+			if (humanContents == null)
+			{
+				return false;
+			}
+			foreach (Transform child in humanContents.transform)
+			{
+				GameObject card = child.gameObject;
+				CombatCardContext ctx = card.GetComponent<CombatCardContext>();
+				if (ctx?.peep == null || !IsHumanPopupCombatPeep(ctx.peep) || ctx.peep.data?.agent?.pid == null)
+				{
+					continue;
+				}
+				TMP_Dropdown targetDropdown = card.GetDropdown(PopupTargetDropdownPath);
+				Entity target = targetDropdown?.GetCurrentOptionsItem()?.data as Entity;
+				if (target == null || target.data?.agent == null)
+				{
+					continue;
+				}
+				PlayerID targetPid = target.data.agent.pid;
+				if (targetPid.id < 0 || targetPid.IsHumanPlayer || targetPid.FindPlayer()?.IsCopOrFed == true)
+				{
+					continue;
+				}
+				int attackerPid = ctx.peep.data.agent.pid.id;
+				int defenderPid = targetPid.id;
+				if (attackerPid < 0 || defenderPid < 0 || attackerPid == defenderPid)
+				{
+					continue;
+				}
+				WarStanceSnapshot snapshot = ResolveWarStanceSnapshot(attackerPid, defenderPid);
+				if (selectedSnapshot == null || snapshot.Stance < selectedSnapshot.Stance)
+				{
+					selectedSnapshot = snapshot;
+				}
+			}
+			return selectedSnapshot != null;
 		}
 
 		private static int GetMaxOnFootPopupAttackers(CombatPopupPlanning popup)
@@ -1128,7 +4313,9 @@ public partial class GameplayTweaksPlugin
 			if (_groupedCombatTransactionDepth <= 0)
 			{
 				_groupedCombatTransactionDepth = 0;
+				FlushWarStanceProposedViolation(_groupedCombatTransactionSource);
 				_groupedCombatTransactionSource = string.Empty;
+				ClearGroupedWarStanceCommit();
 				ClearActiveGroupedCombatAttackerSnapshot();
 			}
 		}
@@ -1138,6 +4325,10 @@ public partial class GameplayTweaksPlugin
 			try
 			{
 				List<Entity> myCrew = PopupMyCrewField?.GetValue(__instance) as List<Entity>;
+				if (ShouldBlockCombatPopupForWarStanceConfirmation(__instance))
+				{
+					return false;
+				}
 				bool groupedVehiclePopup = myCrew != null && myCrew.Any(ShouldUseGroupedHumanVehicleCombat);
 				bool onFootSpreadPopup = GetPopupDriveByTargetMode(__instance) == DriveByTargetMode.SpreadAll && HasMultiplePopupSpreadTargets(__instance);
 				if (myCrew == null || myCrew.Count == 0 || (!groupedVehiclePopup && !onFootSpreadPopup))
@@ -1155,6 +4346,11 @@ public partial class GameplayTweaksPlugin
 				var results = new List<CombatResults>();
 				List<PopupCombatAction> actions = BuildPopupCombatActions(__instance, myCrew);
 				VerificationLog("VehicleGroupCombat", $"fight-commit token={popupToken} rawRows={myCrew.Count} dedupedActions={actions.Count} groupedActions={actions.Count(item => item.IsGrouped)}");
+				BeginPlayerWarStanceCommit(
+					popupToken,
+					actions.Select(action => Tuple.Create(
+						action.AttackerCrew.GetPeep()?.data?.agent?.pid.id ?? -1,
+						action.TargetCrew.GetPeep()?.data?.agent?.pid.id ?? -1)));
 				foreach (PopupCombatAction action in actions)
 				{
 					if (TryExecutePopupOnFootSpreadCombat(__instance, action, results))
@@ -1176,13 +4372,16 @@ public partial class GameplayTweaksPlugin
 					}
 				}
 
+				FlushWarStanceProposedViolation(BuildPlayerWarStanceCommitKey(popupToken));
 				global::Game.Game.serv.ui.RemovePopup(__instance);
 				global::Game.Game.ctx.selection.ClearActive();
 				ShowCombatResults(results, immediate: true, isAttackerAI: false);
+				ClearPlayerWarStanceCommit();
 				return false;
 			}
 			catch (Exception ex)
 			{
+				ClearPlayerWarStanceCommit();
 				CleanupPopupCommitState(__instance);
 				Debug.LogWarning("[GameplayTweaks] VehicleGroupCombatPatch.OnFight: " + ex.Message);
 				return true;
@@ -1282,6 +4481,14 @@ public partial class GameplayTweaksPlugin
 				bool defendingHumanVehicle = target.IsValid && targetIsHuman && target.IsInVehicle && targetEligibleDefenders > 1;
 				if (!humanGroupedAttack && !defendingHumanVehicle && !aiDriveByAttack && !aiGroupedOnFoot)
 				{
+					if (!humanInvolved && TryPerformAiOnlyWarStanceCombat(__instance, attacker, target, "single"))
+					{
+						return false;
+					}
+					if (attackerIsAi && targetIsHuman && TryPerformAiToHumanWarStanceDefenseCombat(__instance, attacker, target, "single"))
+					{
+						return false;
+					}
 					if (humanInvolved && attackerIsAi && attacker.IsInVehicle)
 					{
 						string reason = aiLivingGangCrewCount < minAiLivingCrewForVehicleCombat
@@ -1321,6 +4528,167 @@ public partial class GameplayTweaksPlugin
 			{
 				Debug.LogWarning("[GameplayTweaks] VehicleGroupCombatPatch.PerformAICombat: " + ex.Message);
 				return true;
+			}
+		}
+
+		private static bool TryPerformAiToHumanWarStanceDefenseCombat(CombatManager combatManager, CrewAssignment attacker, CrewAssignment target, string mode)
+		{
+			if (!IsWarWeaponStanceEnabled())
+			{
+				return false;
+			}
+			try
+			{
+				Entity attackerPeep = attacker.GetPeep();
+				Entity targetPeep = target.GetPeep();
+				if (combatManager == null || attackerPeep == null || targetPeep == null)
+				{
+					return false;
+				}
+				PlayerID attackerPid = attackerPeep.data.agent.pid;
+				PlayerID targetPid = targetPeep.data.agent.pid;
+				if (!attackerPid.IsAIPlayer || !targetPid.IsHumanPlayer || attackerPid.id == targetPid.id)
+				{
+					return false;
+				}
+				PlayerInfo attackerPlayer = attackerPid.FindPlayer();
+				if (attackerPlayer?.IsCopOrFed == true)
+				{
+					return false;
+				}
+
+				WarStanceSnapshot snapshot = ResolveWarStanceSnapshot(attackerPid.id, targetPid.id);
+				WeaponConfig attackerWeapon = FindBestWarStanceCompliantWeapon(attacker, snapshot.Stance);
+				WeaponConfig defenderWeapon = FindBestWarStanceCompliantWeapon(target, snapshot.Stance);
+				bool attackerFallback = false;
+				bool defenderFallback = false;
+				if (attackerWeapon == null)
+				{
+					attackerWeapon = combatManager.FindBestWeapon(attacker);
+					attackerFallback = true;
+				}
+				if (defenderWeapon == null)
+				{
+					defenderWeapon = combatManager.FindBestWeapon(target);
+					defenderFallback = true;
+				}
+				if (attackerWeapon == null || defenderWeapon == null)
+				{
+					return false;
+				}
+				VerificationLog(
+					"WarStance",
+					$"[WarStance][PlayerDefenseComply] source=PerformAICombat mode={mode} attackerPid={attackerPid.id} defenderPid={targetPid.id} stance={FormatWarWeaponStance(snapshot.Stance)} effectiveHeat={snapshot.EffectiveHeat:0.0} attackerVehicle={attacker.VehicleID.id} attackerWeapon={DescribeWarStanceWeapon(attackerWeapon)} attackerCategory={ClassifyWarStanceWeapon(attackerWeapon)} attackerComplies={WarStanceWeaponComplies(snapshot.Stance, attackerWeapon)} attackerFallback={attackerFallback} defenderVehicle={target.VehicleID.id} defenderWeapon={DescribeWarStanceWeapon(defenderWeapon)} defenderCategory={ClassifyWarStanceWeapon(defenderWeapon)} defenderComplies={WarStanceWeaponComplies(snapshot.Stance, defenderWeapon)} defenderFallback={defenderFallback}");
+				if (attackerFallback || defenderFallback)
+				{
+					VerificationLog(
+						"WarStance",
+						$"[WarStance][PlayerDefenseFallback] source=PerformAICombat mode={mode} attackerPid={attackerPid.id} defenderPid={targetPid.id} stance={FormatWarWeaponStance(snapshot.Stance)} attackerFallback={attackerFallback} defenderFallback={defenderFallback}");
+				}
+
+				CombatResults result;
+				BeginAiWarStanceCommit(snapshot, "PerformAICombat:player-defense");
+				try
+				{
+					result = combatManager.PerformCombat(attacker, target, attackerWeapon, defenderWeapon);
+				}
+				finally
+				{
+					ClearAiWarStanceCommit();
+				}
+				ShowCombatResults(new List<CombatResults> { result }, immediate: false, isAttackerAI: true);
+				return true;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] WarStance player defense compliance failed: " + ex.Message);
+				return false;
+			}
+		}
+
+		private static bool TryPerformAiOnlyWarStanceCombat(CombatManager combatManager, CrewAssignment attacker, CrewAssignment target, string mode)
+		{
+			if (!IsWarWeaponStanceEnabled())
+			{
+				return false;
+			}
+			try
+			{
+				Entity attackerPeep = attacker.GetPeep();
+				Entity targetPeep = target.GetPeep();
+				if (combatManager == null || attackerPeep == null || targetPeep == null)
+				{
+					return false;
+				}
+				PlayerID attackerPid = attackerPeep.data.agent.pid;
+				PlayerID targetPid = targetPeep.data.agent.pid;
+				if (!attackerPid.IsAIPlayer || !targetPid.IsAIPlayer || attackerPid.id == targetPid.id)
+				{
+					return false;
+				}
+
+				WarStanceSnapshot snapshot = ResolveWarStanceSnapshot(attackerPid.id, targetPid.id);
+				WeaponConfig attackerWeapon = FindBestWarStanceCompliantWeapon(attacker, snapshot.Stance);
+				WeaponConfig defenderWeapon = FindBestWarStanceCompliantWeapon(target, snapshot.Stance);
+				bool attackerFallback = false;
+				bool defenderFallback = false;
+				if (attackerWeapon == null)
+				{
+					attackerWeapon = combatManager.FindBestWeapon(attacker);
+					attackerFallback = true;
+				}
+				if (defenderWeapon == null)
+				{
+					defenderWeapon = combatManager.FindBestWeapon(target);
+					defenderFallback = true;
+				}
+				if (attackerWeapon == null || defenderWeapon == null)
+				{
+					return false;
+				}
+				PlayerInfo attackerPlayer = attackerPid.FindPlayer();
+				PlayerInfo defenderPlayer = targetPid.FindPlayer();
+				bool attackerBreach = false;
+				bool defenderBreach = false;
+				if (attackerPlayer != null
+					&& defenderPlayer != null
+					&& TrySelectAiWarStanceBreachWeapon("PerformAICombat", mode, "attacker", snapshot, attackerPlayer, defenderPlayer, attacker, target, attackerWeapon, out WeaponConfig attackerBreachWeapon))
+				{
+					attackerWeapon = attackerBreachWeapon;
+					attackerBreach = true;
+				}
+				if (attackerPlayer != null
+					&& defenderPlayer != null
+					&& TrySelectAiWarStanceBreachWeapon("PerformAICombat", mode, "defender", snapshot, defenderPlayer, attackerPlayer, target, attacker, defenderWeapon, out WeaponConfig defenderBreachWeapon))
+				{
+					defenderWeapon = defenderBreachWeapon;
+					defenderBreach = true;
+				}
+				VerificationLog(
+					"WarStance",
+					$"[WarStance][AIComply] source=PerformAICombat mode={mode} attackerPid={attackerPid.id} defenderPid={targetPid.id} stance={FormatWarWeaponStance(snapshot.Stance)} effectiveHeat={snapshot.EffectiveHeat:0.0} attackerVehicle={attacker.VehicleID.id} attackerWeapon={DescribeWarStanceWeapon(attackerWeapon)} attackerCategory={ClassifyWarStanceWeapon(attackerWeapon)} attackerComplies={WarStanceWeaponComplies(snapshot.Stance, attackerWeapon)} attackerFallback={attackerFallback} attackerBreach={attackerBreach} defenderVehicle={target.VehicleID.id} defenderWeapon={DescribeWarStanceWeapon(defenderWeapon)} defenderCategory={ClassifyWarStanceWeapon(defenderWeapon)} defenderComplies={WarStanceWeaponComplies(snapshot.Stance, defenderWeapon)} defenderFallback={defenderFallback} defenderBreach={defenderBreach}");
+				if (attackerFallback || defenderFallback)
+				{
+					VerificationLog(
+						"WarStance",
+						$"[WarStance][AIComplyFallback] source=PerformAICombat mode={mode} attackerPid={attackerPid.id} defenderPid={targetPid.id} stance={FormatWarWeaponStance(snapshot.Stance)} attackerFallback={attackerFallback} defenderFallback={defenderFallback}");
+				}
+
+				BeginAiWarStanceCommit(snapshot, "PerformAICombat:ai-only");
+				try
+				{
+					combatManager.PerformCombat(attacker, target, attackerWeapon, defenderWeapon);
+				}
+				finally
+				{
+					ClearAiWarStanceCommit();
+				}
+				return true;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] WarStance AI compliance failed: " + ex.Message);
+				return false;
 			}
 		}
 
@@ -1598,6 +4966,187 @@ public partial class GameplayTweaksPlugin
 			UpdateCombatPopupTargetVehicleInfoLabel(popup, label);
 		}
 
+		private static void RefreshCombatPopupWarStance(CombatPopupPlanning popup)
+		{
+			GameObject panel = GetCombatPopupPanel(popup);
+			if (panel == null)
+			{
+				return;
+			}
+			GameObject anchor = panel.transform.Find(PopupWarStanceAnchorName)?.gameObject;
+			if (!IsWarWeaponStanceEnabled())
+			{
+				if (anchor != null)
+				{
+					anchor.SetActive(false);
+				}
+				return;
+			}
+			if (!TryBuildCombatPopupWarStanceSummary(popup, out string summary, out int violationCount, out string diagnostic))
+			{
+				if (anchor != null)
+				{
+					anchor.SetActive(false);
+				}
+				return;
+			}
+			if (anchor == null)
+			{
+				anchor = CreateCombatPopupWarStanceAnchor(panel.transform);
+			}
+			ConfigureCombatPopupWarStanceAnchor(anchor);
+			Text label = GetOrCreateCombatPopupWarStanceLabel(anchor.transform);
+			if (label == null)
+			{
+				return;
+			}
+			anchor.SetActive(true);
+			anchor.transform.SetAsLastSibling();
+			int popupId = GetPopupId(popup);
+			if (PopupWarStanceConfirmationById.TryGetValue(popupId, out string pendingConfirmation)
+				&& !string.Equals(pendingConfirmation, diagnostic, StringComparison.Ordinal))
+			{
+				PopupWarStanceConfirmationById.Remove(popupId);
+				pendingConfirmation = null;
+			}
+			if (violationCount > 0 && string.Equals(pendingConfirmation, diagnostic, StringComparison.Ordinal))
+			{
+				summary = "Stance violation selected\nClick Fight again to proceed";
+			}
+			label.text = summary;
+			label.color = violationCount > 0 ? new Color(1f, 0.65f, 0.2f, 1f) : GetCombatPopupReferenceTextColor(panel.transform);
+
+			if (!PopupWarStanceSummaryLogById.TryGetValue(popupId, out string previous) || !string.Equals(previous, diagnostic, StringComparison.Ordinal))
+			{
+				PopupWarStanceSummaryLogById[popupId] = diagnostic;
+				VerificationLog("WarStance", $"[WarStance][PlayerPopup] token={GetPopupCommitToken(popup)} {diagnostic}");
+			}
+			LogCombatPopupWarStanceReady(popup, popupId, diagnostic, violationCount, pendingConfirmation);
+		}
+
+		private static void LogCombatPopupWarStanceReady(CombatPopupPlanning popup, int popupId, string diagnostic, int violationCount, string pendingConfirmation)
+		{
+			if (popup == null || popupId == 0 || string.IsNullOrWhiteSpace(diagnostic))
+			{
+				return;
+			}
+			bool confirmationPending = violationCount > 0 && string.Equals(pendingConfirmation, diagnostic, StringComparison.Ordinal);
+			string readyDiagnostic = $"{diagnostic} mode={FormatCombatMode(GetPopupCombatMode(popup))} filter={FormatOnFootWeaponFilter(GetPopupOnFootWeaponFilter(popup))} confirmationPending={confirmationPending}";
+			if (PopupWarStanceReadyLogById.TryGetValue(popupId, out string previous) && string.Equals(previous, readyDiagnostic, StringComparison.Ordinal))
+			{
+				return;
+			}
+			PopupWarStanceReadyLogById[popupId] = readyDiagnostic;
+			VerificationLog("WarStance", $"[WarStance][PlayerPopupReady] token={GetPopupCommitToken(popup)} {readyDiagnostic}");
+		}
+
+		private static bool TryBuildCombatPopupWarStanceSummary(CombatPopupPlanning popup, out string summary, out int violationCount, out string diagnostic)
+		{
+			summary = string.Empty;
+			diagnostic = string.Empty;
+			violationCount = 0;
+			if (!IsWarWeaponStanceEnabled())
+			{
+				return false;
+			}
+			List<Entity> myCrew = PopupMyCrewField?.GetValue(popup) as List<Entity>;
+			if (popup == null || myCrew == null || myCrew.Count == 0)
+			{
+				return false;
+			}
+
+			var stanceNames = new HashSet<string>(StringComparer.Ordinal);
+			var targetPids = new HashSet<int>();
+			var violatingWeapons = new List<string>();
+			float highestHeat = 0f;
+			int assessedSelections = 0;
+			foreach (Entity peep in myCrew)
+			{
+				if (peep?.data?.agent == null || !peep.data.agent.pid.IsHumanPlayer)
+				{
+					continue;
+				}
+				Entity target = PopupFindTargetForMethod?.Invoke(popup, new object[] { peep }) as Entity;
+				WeaponConfig weapon = PopupFindWeaponForMethod?.Invoke(popup, new object[] { peep }) as WeaponConfig;
+				if (target?.data?.agent == null || weapon == null)
+				{
+					continue;
+				}
+				PlayerID targetPid = target.data.agent.pid;
+				if (targetPid.IsHumanPlayer || targetPid.FindPlayer()?.IsCopOrFed == true)
+				{
+					continue;
+				}
+				WarStanceSnapshot snapshot = ResolveWarStanceSnapshot(peep.data.agent.pid.id, targetPid.id);
+				string stanceName = FormatWarWeaponStanceForUi(snapshot.Stance);
+				stanceNames.Add(stanceName);
+				targetPids.Add(targetPid.id);
+				highestHeat = Mathf.Max(highestHeat, snapshot.EffectiveHeat);
+				assessedSelections++;
+				if (!WarStanceWeaponComplies(snapshot.Stance, weapon))
+				{
+					violationCount++;
+					violatingWeapons.Add(DescribeWarStanceWeapon(weapon));
+				}
+			}
+			if (assessedSelections == 0)
+			{
+				return false;
+			}
+
+			string stanceDisplay = stanceNames.Count == 1 ? stanceNames.First() : "Mixed";
+			string selectionDisplay = violationCount > 0
+				? $"{violationCount} weapon{(violationCount == 1 ? string.Empty : "s")} over stance"
+				: "Weapons within stance";
+			summary = $"War stance: {stanceDisplay}\nHeat {highestHeat:0} | {selectionDisplay}";
+			diagnostic = $"targets={string.Join(",", targetPids.OrderBy(item => item))} stance={stanceDisplay.Replace(" ", string.Empty)} effectiveHeat={highestHeat:0.0} selections={assessedSelections} violations={violationCount} weapons={(violatingWeapons.Count == 0 ? "none" : string.Join(",", violatingWeapons))}";
+			return true;
+		}
+
+		private static bool ShouldBlockCombatPopupForWarStanceConfirmation(CombatPopupPlanning popup)
+		{
+			if (!TryBuildCombatPopupWarStanceSummary(popup, out _, out int violationCount, out string diagnostic))
+			{
+				return false;
+			}
+			int popupId = GetPopupId(popup);
+			if (violationCount <= 0)
+			{
+				PopupWarStanceConfirmationById.Remove(popupId);
+				VerificationLog("WarStance", $"[WarStance][PlayerWarning] token={GetPopupCommitToken(popup)} warning=false penaltiesApplied=false {diagnostic}");
+				return false;
+			}
+			if (PopupWarStanceConfirmationById.TryGetValue(popupId, out string pendingConfirmation)
+				&& string.Equals(pendingConfirmation, diagnostic, StringComparison.Ordinal))
+			{
+				PopupWarStanceConfirmationById.Remove(popupId);
+				VerificationLog("WarStance", $"[WarStance][PlayerWarning] token={GetPopupCommitToken(popup)} warning=true confirmationRequired=true confirmed=true blocked=false penaltiesApplied=false {diagnostic}");
+				return false;
+			}
+
+			PopupWarStanceConfirmationById[popupId] = diagnostic;
+			RefreshCombatPopupWarStance(popup);
+			VerificationLog("WarStance", $"[WarStance][PlayerWarning] token={GetPopupCommitToken(popup)} warning=true confirmationRequired=true confirmed=false blocked=true penaltiesApplied=false {diagnostic}");
+			return true;
+		}
+
+		private static string FormatWarWeaponStanceForUi(WarWeaponStance stance)
+		{
+			switch (stance)
+			{
+				case WarWeaponStance.HandsOnly:
+					return "Hands Only";
+				case WarWeaponStance.StreetWeapons:
+					return "Street Weapons";
+				case WarWeaponStance.Sidearms:
+					return "Sidearms";
+				case WarWeaponStance.OpenArsenal:
+					return "Open Arsenal";
+				default:
+					return stance.ToString();
+			}
+		}
+
 		private static GameObject GetCombatPopupPanel(CombatPopupPlanning popup)
 		{
 			GameObject popupRoot = popup?.GameObject;
@@ -1684,6 +5233,28 @@ public partial class GameplayTweaksPlugin
 			rect.anchoredPosition = new Vector2(12f, -60f);
 			rect.sizeDelta = new Vector2(300f, 18f);
 			return anchor;
+		}
+
+		private static GameObject CreateCombatPopupWarStanceAnchor(Transform panelTransform)
+		{
+			GameObject anchor = new GameObject(PopupWarStanceAnchorName, typeof(RectTransform));
+			anchor.transform.SetParent(panelTransform, false);
+			ConfigureCombatPopupWarStanceAnchor(anchor);
+			return anchor;
+		}
+
+		private static void ConfigureCombatPopupWarStanceAnchor(GameObject anchor)
+		{
+			RectTransform rect = anchor?.GetComponent<RectTransform>();
+			if (rect == null)
+			{
+				return;
+			}
+			rect.anchorMin = new Vector2(1f, 1f);
+			rect.anchorMax = new Vector2(1f, 1f);
+			rect.pivot = new Vector2(1f, 1f);
+			rect.anchoredPosition = new Vector2(-48f, -8f);
+			rect.sizeDelta = new Vector2(280f, 36f);
 		}
 
 		private static Button GetOrCreateCombatPopupRangedToggleButton(Transform parent)
@@ -1890,6 +5461,43 @@ public partial class GameplayTweaksPlugin
 			return label;
 		}
 
+		private static Text GetOrCreateCombatPopupWarStanceLabel(Transform parent)
+		{
+			Text label = parent.Find(PopupWarStanceLabelName)?.GetComponent<Text>();
+			if (label != null)
+			{
+				return label;
+			}
+			GameObject gameObject = new GameObject(PopupWarStanceLabelName, typeof(RectTransform), typeof(Text));
+			gameObject.transform.SetParent(parent, false);
+			RectTransform rect = gameObject.GetComponent<RectTransform>();
+			rect.anchorMin = Vector2.zero;
+			rect.anchorMax = Vector2.one;
+			rect.offsetMin = Vector2.zero;
+			rect.offsetMax = Vector2.zero;
+			label = gameObject.GetComponent<Text>();
+			Button referenceButton = parent.parent?.Find("Footer/Fight Button")?.GetComponent<Button>();
+			Text referenceText = referenceButton != null ? referenceButton.GetComponentInChildren<Text>(includeInactive: true) : null;
+			label.font = referenceText != null ? referenceText.font : Resources.GetBuiltinResource<Font>("Arial.ttf");
+			int maxSize = Mathf.RoundToInt(10f * UiTextScale);
+			label.fontSize = maxSize;
+			label.alignment = TextAnchor.MiddleRight;
+			label.horizontalOverflow = HorizontalWrapMode.Wrap;
+			label.verticalOverflow = VerticalWrapMode.Truncate;
+			label.resizeTextForBestFit = true;
+			label.resizeTextMinSize = Math.Max(7, Mathf.RoundToInt(8f * UiTextScale));
+			label.resizeTextMaxSize = maxSize;
+			label.color = referenceText != null ? referenceText.color : Color.white;
+			return label;
+		}
+
+		private static Color GetCombatPopupReferenceTextColor(Transform panelTransform)
+		{
+			Button referenceButton = panelTransform?.Find("Footer/Fight Button")?.GetComponent<Button>();
+			Text referenceText = referenceButton != null ? referenceButton.GetComponentInChildren<Text>(includeInactive: true) : null;
+			return referenceText != null ? referenceText.color : Color.white;
+		}
+
 		private static void UpdateCombatPopupRangedToggleVisual(CombatPopupPlanning popup, Button button)
 		{
 			if (button == null)
@@ -2013,6 +5621,11 @@ public partial class GameplayTweaksPlugin
 			{
 				return;
 			}
+			int popupId = GetPopupId(popup);
+			if (popupId != 0)
+			{
+				PopupExplicitCombatModeById.Add(popupId);
+			}
 			GroupedCombatMode nextMode = GetPopupCombatMode(popup) == GroupedCombatMode.DriveBy
 				? GroupedCombatMode.OnFoot
 				: GroupedCombatMode.DriveBy;
@@ -2038,6 +5651,11 @@ public partial class GameplayTweaksPlugin
 
 		private static void OnCombatPopupOnFootFilterClicked(CombatPopupPlanning popup)
 		{
+			int popupId = GetPopupId(popup);
+			if (popupId != 0)
+			{
+				PopupExplicitOnFootFilterById.Add(popupId);
+			}
 			OnFootWeaponFilter current = GetPopupOnFootWeaponFilter(popup);
 			OnFootWeaponFilter next = current == OnFootWeaponFilter.Any
 				? OnFootWeaponFilter.Melee
@@ -2360,8 +5978,9 @@ Target:
 			}
 			int selectedIndex = 0;
 			string storedWeaponId = TryGetStoredPopupWeaponId(popup, ctx.peep.Id);
+			bool hasExplicitStoredWeapon = !string.IsNullOrEmpty(storedWeaponId);
 			bool preferBestNonFists = currentWeapon == null && string.IsNullOrEmpty(storedWeaponId);
-			if (!string.IsNullOrEmpty(storedWeaponId))
+			if (hasExplicitStoredWeapon)
 			{
 				int storedIndex = filteredWeapons.FindIndex(weapon => string.Equals(GetWeaponId(weapon), storedWeaponId, StringComparison.OrdinalIgnoreCase));
 				if (storedIndex >= 0)
@@ -2386,10 +6005,65 @@ Target:
 					selectedIndex = preferredIndex;
 				}
 			}
+			if (!hasExplicitStoredWeapon)
+			{
+				int stancePreferredIndex = FindStancePreferredPopupWeaponIndex(popup, card, ctx, filteredWeapons, selectedIndex);
+				if (stancePreferredIndex >= 0 && stancePreferredIndex != selectedIndex)
+				{
+					string previousWeaponId = GetWeaponId(filteredWeapons[Mathf.Clamp(selectedIndex, 0, filteredWeapons.Count - 1)]);
+					selectedIndex = stancePreferredIndex;
+					VerificationLog(
+						"WarStance",
+						$"[WarStance][PlayerWeaponDefaultedToStance] peep={ctx.peep.Id.id} previous={previousWeaponId} selected={GetWeaponId(filteredWeapons[selectedIndex])} options={filteredWeapons.Count}");
+				}
+			}
 			dropdown.SetValueWithoutNotify(Mathf.Clamp(selectedIndex, 0, filteredWeapons.Count - 1));
 			dropdown.RefreshShownValue();
-			dropdown.interactable = wasInteractable && dropdown.options.Count > 1;
+			TMP_Dropdown targetDropdown = card.GetDropdown(PopupTargetDropdownPath);
+			bool hasValidTarget = targetDropdown?.GetCurrentOptionsItem()?.data is Entity;
+			bool shouldBeInteractable = hasValidTarget && dropdown.options.Count > 1;
+			dropdown.interactable = shouldBeInteractable;
+			if (!wasInteractable && shouldBeInteractable)
+			{
+				VerificationLog(
+					"WarStance",
+					$"[WarStance][PlayerWeaponDropdownRepaired] peep={ctx.peep.Id.id} mode={FormatCombatMode(GetEffectiveCombatModeForCrew(popup, TryFindCrewForPeep(ctx.peep), requireActionPoints: true))} filter={FormatOnFootWeaponFilter(GetPopupOnFootWeaponFilter(popup))} options={dropdown.options.Count} selected={GetWeaponId(filteredWeapons[Mathf.Clamp(selectedIndex, 0, filteredWeapons.Count - 1)])} fistsAvailable={filteredWeapons.Any(IsUnlimitedFallbackWeapon)}");
+			}
 			UpdateCombatCardWeaponDisplay(card, ctx, filteredWeapons[Mathf.Clamp(selectedIndex, 0, filteredWeapons.Count - 1)]);
+		}
+
+		private static int FindStancePreferredPopupWeaponIndex(CombatPopupPlanning popup, GameObject card, CombatCardContext ctx, List<WeaponConfig> filteredWeapons, int selectedIndex)
+		{
+			if (!IsWarWeaponStanceEnabled() || card == null || ctx?.peep == null || filteredWeapons == null || filteredWeapons.Count == 0)
+			{
+				return -1;
+			}
+			TMP_Dropdown targetDropdown = card.GetDropdown(PopupTargetDropdownPath);
+			Entity target = targetDropdown?.GetCurrentOptionsItem()?.data as Entity;
+			if (target == null || target.data.agent.pid.id < 0 || target.data.agent.pid.IsHumanPlayer || target.data.agent.pid.FindPlayer()?.IsCopOrFed == true)
+			{
+				return -1;
+			}
+			int attackerPid = ctx.peep.data.agent.pid.id;
+			int defenderPid = target.data.agent.pid.id;
+			if (attackerPid < 0 || defenderPid < 0 || attackerPid == defenderPid)
+			{
+				return -1;
+			}
+			WarStanceSnapshot snapshot = ResolveWarStanceSnapshot(attackerPid, defenderPid);
+			int clampedSelectedIndex = Mathf.Clamp(selectedIndex, 0, filteredWeapons.Count - 1);
+			if (WarStanceWeaponComplies(snapshot.Stance, filteredWeapons[clampedSelectedIndex]))
+			{
+				return -1;
+			}
+			for (int index = 0; index < filteredWeapons.Count; index++)
+			{
+				if (WarStanceWeaponComplies(snapshot.Stance, filteredWeapons[index]))
+				{
+					return index;
+				}
+			}
+			return -1;
 		}
 
 		private static List<WeaponConfig> GetFilteredGroupedPopupWeapons(CombatPopupPlanning popup, CombatCardContext ctx)
@@ -2816,7 +6490,7 @@ Target:
 				.ToList();
 		}
 
-		private static List<CrewAssignment> SelectDriveByAttackers(CombatManager combatManager, CrewAssignment rootAttacker, bool requireActionPoints, WeaponConfig selectedAttackWeapon, bool applyPlayerWeaponFilters, out Dictionary<ulong, WeaponConfig> assignedWeapons, out Dictionary<ulong, string> assignmentSources)
+		private static List<CrewAssignment> SelectDriveByAttackers(CombatManager combatManager, CrewAssignment rootAttacker, bool requireActionPoints, WeaponConfig selectedAttackWeapon, bool applyPlayerWeaponFilters, out Dictionary<ulong, WeaponConfig> assignedWeapons, out Dictionary<ulong, string> assignmentSources, WarWeaponStance? enforcedWarStance = null, bool allowSelectedWeaponViolation = false)
 		{
 			assignedWeapons = new Dictionary<ulong, WeaponConfig>();
 			assignmentSources = new Dictionary<ulong, string>();
@@ -2828,21 +6502,21 @@ Target:
 				return new List<CrewAssignment>();
 			}
 
-			List<WeaponPoolEntry> rangedPool = BuildWeaponPool(combatManager, rootAttacker.GetVehicle(), applyPlayerWeaponFilters)
+			List<WeaponPoolEntry> rawPool = BuildWeaponPool(combatManager, rootAttacker.GetVehicle(), applyPlayerWeaponFilters);
+			List<WeaponPoolEntry> rangedPool = rawPool
+				.Where(entry => !enforcedWarStance.HasValue || WarStanceWeaponComplies(enforcedWarStance.Value, entry.Weapon))
 				.Where(entry => entry.Remaining > 0 && IsAllowedWeaponForCombatMode(entry.Weapon, GroupedCombatMode.DriveBy))
 				.ToList();
-			if (rangedPool.Count == 0)
-			{
-				return new List<CrewAssignment>();
-			}
 
 			var attackers = new List<CrewAssignment>();
 			int maxShooters = Math.Min(3, candidates.Count);
 			int nextCandidateIndex = 0;
+			bool selectedWeaponComplies = !enforcedWarStance.HasValue || WarStanceWeaponComplies(enforcedWarStance.Value, selectedAttackWeapon);
 			if (selectedAttackWeapon != null
 				&& !IsUnlimitedFallbackWeapon(selectedAttackWeapon)
+				&& (selectedWeaponComplies || allowSelectedWeaponViolation)
 				&& IsAllowedWeaponForCombatMode(selectedAttackWeapon, GroupedCombatMode.DriveBy)
-				&& TryReserveSpecificWeapon(rangedPool, selectedAttackWeapon))
+				&& TryReserveSpecificWeapon(rawPool, selectedAttackWeapon))
 			{
 				CrewAssignment selectedShooter = candidates[nextCandidateIndex++];
 				attackers.Add(selectedShooter);
@@ -2882,11 +6556,68 @@ Target:
 				Dictionary<ulong, string> assignmentSources = new Dictionary<ulong, string>();
 				List<CrewAssignment> attackers = new List<CrewAssignment>();
 				bool isHumanAttacker = rootAttacker.GetPeep()?.data?.agent?.pid.IsHumanPlayer == true;
+				bool isHumanTarget = rootTarget.GetPeep()?.data?.agent?.pid.IsHumanPlayer == true;
+				WarWeaponStance? enforcedWarStance = null;
+				if (IsWarWeaponStanceEnabled() && !isHumanAttacker && !isHumanTarget)
+				{
+					PlayerID attackerPid = rootAttacker.GetPeep().data.agent.pid;
+					PlayerID targetPid = rootTarget.GetPeep().data.agent.pid;
+					if (attackerPid.IsAIPlayer && targetPid.IsAIPlayer && attackerPid.id != targetPid.id)
+					{
+						WarStanceSnapshot snapshot = BeginGroupedWarStanceCommit(attackerPid.id, targetPid.id, _groupedCombatTransactionSource);
+						enforcedWarStance = snapshot.Stance;
+						if (combatMode == GroupedCombatMode.DriveBy && !WarStanceAllowsDriveBy(snapshot.Stance))
+						{
+							combatMode = GroupedCombatMode.OnFoot;
+						}
+						VerificationLog(
+							"WarStance",
+							$"[WarStance][AIGroupComply] source={observerSource} attackerPid={attackerPid.id} defenderPid={targetPid.id} stance={FormatWarWeaponStance(snapshot.Stance)} effectiveHeat={snapshot.EffectiveHeat:0.0} mode={FormatCombatMode(combatMode)} attackerVehicle={rootAttacker.VehicleID.id} targetVehicle={rootTarget.VehicleID.id}");
+					}
+				}
+				else if (IsWarWeaponStanceEnabled() && !isHumanAttacker && isHumanTarget)
+				{
+					PlayerID attackerPid = rootAttacker.GetPeep().data.agent.pid;
+					PlayerID targetPid = rootTarget.GetPeep().data.agent.pid;
+					PlayerInfo attackerPlayer = attackerPid.FindPlayer();
+					if (attackerPid.IsAIPlayer
+						&& targetPid.IsHumanPlayer
+						&& attackerPid.id != targetPid.id
+						&& attackerPlayer?.IsCopOrFed != true)
+					{
+						WarStanceSnapshot snapshot = BeginGroupedWarStanceCommit(attackerPid.id, targetPid.id, _groupedCombatTransactionSource);
+						enforcedWarStance = snapshot.Stance;
+						if (combatMode == GroupedCombatMode.DriveBy && !WarStanceAllowsDriveBy(snapshot.Stance))
+						{
+							combatMode = GroupedCombatMode.OnFoot;
+						}
+						VerificationLog(
+							"WarStance",
+							$"[WarStance][PlayerGroupDefenseComply] source={observerSource} attackerPid={attackerPid.id} defenderPid={targetPid.id} stance={FormatWarWeaponStance(snapshot.Stance)} effectiveHeat={snapshot.EffectiveHeat:0.0} mode={FormatCombatMode(combatMode)} attackerVehicle={rootAttacker.VehicleID.id} targetVehicle={rootTarget.VehicleID.id}");
+					}
+				}
+				else if (IsWarWeaponStanceEnabled() && isHumanAttacker && !isHumanTarget)
+				{
+					PlayerID attackerPid = rootAttacker.GetPeep().data.agent.pid;
+					PlayerID targetPid = rootTarget.GetPeep().data.agent.pid;
+					PlayerInfo targetPlayer = targetPid.FindPlayer();
+					if (attackerPid.IsHumanPlayer
+						&& targetPid.IsAIPlayer
+						&& attackerPid.id != targetPid.id
+						&& targetPlayer?.IsCopOrFed != true)
+					{
+						WarStanceSnapshot snapshot = ResolveWarStanceSnapshotForCombat(attackerPid.id, targetPid.id);
+						enforcedWarStance = snapshot.Stance;
+						VerificationLog(
+							"WarStance",
+							$"[WarStance][PlayerGroupOffenseDefenderComply] source={observerSource} attackerPid={attackerPid.id} defenderPid={targetPid.id} stance={FormatWarWeaponStance(snapshot.Stance)} effectiveHeat={snapshot.EffectiveHeat:0.0} mode={FormatCombatMode(combatMode)} attackerVehicle={rootAttacker.VehicleID.id} targetVehicle={rootTarget.VehicleID.id}");
+					}
+				}
 				if (isHumanAttacker)
 				{
 					if (combatMode == GroupedCombatMode.DriveBy)
 					{
-						attackers = SelectDriveByAttackers(combatManager, rootAttacker, consumeHumanAttackCost, selectedAttackWeapon, applyPlayerWeaponFilters: true, out assignedWeapons, out assignmentSources);
+						attackers = SelectDriveByAttackers(combatManager, rootAttacker, consumeHumanAttackCost, selectedAttackWeapon, applyPlayerWeaponFilters: true, out assignedWeapons, out assignmentSources, enforcedWarStance, allowSelectedWeaponViolation: true);
 						driverExcluded = rootAttacker.IsInVehicle;
 						if (attackers.Count == 0)
 						{
@@ -2900,14 +6631,14 @@ Target:
 						{
 							attackers = attackers.Take(Mathf.Clamp(requestedOnFootCount.Value, 1, attackers.Count)).ToList();
 						}
-						assignedWeapons = BuildRoundWeaponAssignments(combatManager, rootAttacker, attackers, selectedAttackWeapon, combatMode, out assignmentSources);
+						assignedWeapons = BuildRoundWeaponAssignments(combatManager, rootAttacker, attackers, selectedAttackWeapon, combatMode, out assignmentSources, enforcedWarStance, allowSelectedWeaponViolation: true);
 					}
 				}
 				else
 				{
 					if (combatMode == GroupedCombatMode.DriveBy && HasEligibleDriveByAttackers(rootAttacker, requireActionPoints: false, applyPlayerWeaponFilters: false))
 					{
-						attackers = SelectDriveByAttackers(combatManager, rootAttacker, requireActionPoints: false, selectedAttackWeapon: null, applyPlayerWeaponFilters: false, out assignedWeapons, out assignmentSources);
+						attackers = SelectDriveByAttackers(combatManager, rootAttacker, requireActionPoints: false, selectedAttackWeapon: null, applyPlayerWeaponFilters: false, out assignedWeapons, out assignmentSources, enforcedWarStance);
 						driverExcluded = rootAttacker.IsInVehicle;
 						if (attackers.Count == 0)
 						{
@@ -2921,7 +6652,7 @@ Target:
 						{
 							attackers = new List<CrewAssignment> { rootAttacker };
 						}
-						assignedWeapons = BuildRoundWeaponAssignments(combatManager, rootAttacker, attackers, selectedAttackWeapon, combatMode, out assignmentSources);
+						assignedWeapons = BuildRoundWeaponAssignments(combatManager, rootAttacker, attackers, selectedAttackWeapon, combatMode, out assignmentSources, enforcedWarStance);
 					}
 				}
 				if (attackers.Count == 0)
@@ -2986,12 +6717,14 @@ Target:
 					{
 						targetAssignments[attacker.peepId.id] = currentTargetCrew.peepId.id;
 					}
-					WeaponConfig defenderWeapon = combatManager.FindBestWeapon(currentTargetCrew);
+					WeaponConfig defenderWeapon = enforcedWarStance.HasValue
+						? FindBestWarStanceCompliantWeapon(currentTargetCrew, enforcedWarStance.Value)
+						: combatManager.FindBestWeapon(currentTargetCrew);
 					if (defenderWeapon == null)
 						defenderWeapon = attackerWeapon;
 
 					CombatExchangeDebugInfo debugInfo = new CombatExchangeDebugInfo();
-					CombatResults result = ResolveVehicleGroupExchange(combatManager, attacker, currentTargetCrew, attackerWeapon, defenderWeapon, combatMode, debugInfo, observerSource, driveByTargetMode);
+					CombatResults result = ResolveVehicleGroupExchange(combatManager, attacker, currentTargetCrew, attackerWeapon, defenderWeapon, combatMode, debugInfo, observerSource, driveByTargetMode, enforcedWarStance);
 					if (result == null)
 						continue;
 					if (logCombatDetails)
@@ -3061,7 +6794,8 @@ Target:
 			try
 			{
 				Dictionary<ulong, string> assignmentSources;
-				Dictionary<ulong, WeaponConfig> assignedWeapons = BuildRoundWeaponAssignments(combatManager, rootAttacker, attackers, selectedAttackWeapon, GroupedCombatMode.OnFoot, out assignmentSources);
+				WarWeaponStance? attackerWarStance = ResolvePlayerOffenseDefenderWarStance(rootAttacker, spreadTargets[0]);
+				Dictionary<ulong, WeaponConfig> assignedWeapons = BuildRoundWeaponAssignments(combatManager, rootAttacker, attackers, selectedAttackWeapon, GroupedCombatMode.OnFoot, out assignmentSources, attackerWarStance, allowSelectedWeaponViolation: true);
 				bool logCombatDetails = ShouldLogVehicleCombatDetails(observerSource, rootAttacker, spreadTargets[0]);
 				if (logCombatDetails)
 				{
@@ -3101,7 +6835,14 @@ Target:
 						{
 							continue;
 						}
-						WeaponConfig defenderWeapon = combatManager.FindBestWeapon(target) ?? attackerWeapon;
+						WarWeaponStance? defenderWarStance = ResolvePlayerOffenseDefenderWarStance(attacker, target);
+						WeaponConfig defenderWeapon = defenderWarStance.HasValue
+							? FindBestWarStanceCompliantWeapon(target, defenderWarStance.Value)
+							: combatManager.FindBestWeapon(target);
+						if (defenderWeapon == null)
+						{
+							defenderWeapon = attackerWeapon;
+						}
 						CombatResults result = ResolveOnFootSpreadExchange(combatManager, attacker, target, attackerWeapon, defenderWeapon, damagePercent, observerSource);
 						if (result == null)
 						{
@@ -3145,6 +6886,35 @@ Target:
 				}
 			}
 			return null;
+		}
+
+		private static WarWeaponStance? ResolvePlayerOffenseDefenderWarStance(CrewAssignment attacker, CrewAssignment target)
+		{
+			if (!IsWarWeaponStanceEnabled())
+			{
+				return null;
+			}
+			Entity attackerPeep = attacker.GetPeep();
+			Entity targetPeep = target.GetPeep();
+			if (attackerPeep?.data?.agent == null || targetPeep?.data?.agent == null)
+			{
+				return null;
+			}
+			PlayerID attackerPid = attackerPeep.data.agent.pid;
+			PlayerID targetPid = targetPeep.data.agent.pid;
+			PlayerInfo targetPlayer = targetPid.FindPlayer();
+			if (!attackerPid.IsHumanPlayer
+				|| !targetPid.IsAIPlayer
+				|| attackerPid.id == targetPid.id
+				|| targetPlayer?.IsCopOrFed == true)
+			{
+				return null;
+			}
+			WarStanceSnapshot snapshot = ResolveWarStanceSnapshotForCombat(attackerPid.id, targetPid.id);
+			VerificationLog(
+				"WarStance",
+				$"[WarStance][PlayerSpreadOffenseDefenderComply] source=CombatPopup attackerPid={attackerPid.id} defenderPid={targetPid.id} stance={FormatWarWeaponStance(snapshot.Stance)} effectiveHeat={snapshot.EffectiveHeat:0.0} attackerPeep={attacker.peepId.id} defenderPeep={target.peepId.id}");
+			return snapshot.Stance;
 		}
 
 		private static int GetOnFootSpreadDamagePercent(int targetCount)
@@ -3365,7 +7135,7 @@ Target:
 			VerificationLog("VehicleGroupCombat", $"onfoot-distribution source={observerSource} mode=root-target attackerVehicle={rootAttacker.VehicleID.id} targetVehicle={rootTarget.VehicleID.id} assignments={assignments}");
 		}
 
-		private static Dictionary<ulong, WeaponConfig> BuildRoundWeaponAssignments(CombatManager combatManager, CrewAssignment rootAttacker, List<CrewAssignment> attackers, WeaponConfig selectedAttackWeapon, GroupedCombatMode combatMode, out Dictionary<ulong, string> assignmentSources)
+		private static Dictionary<ulong, WeaponConfig> BuildRoundWeaponAssignments(CombatManager combatManager, CrewAssignment rootAttacker, List<CrewAssignment> attackers, WeaponConfig selectedAttackWeapon, GroupedCombatMode combatMode, out Dictionary<ulong, string> assignmentSources, WarWeaponStance? enforcedWarStance = null, bool allowSelectedWeaponViolation = false)
 		{
 			assignmentSources = new Dictionary<ulong, string>();
 			var assignments = new Dictionary<ulong, WeaponConfig>();
@@ -3375,11 +7145,13 @@ Target:
 			}
 
 			bool applyPlayerWeaponFilters = rootAttacker.GetPeep()?.data?.agent?.pid.IsHumanPlayer == true;
-			List<WeaponPoolEntry> pool = BuildWeaponPool(combatManager, rootAttacker.GetVehicle(), applyPlayerWeaponFilters);
+			List<WeaponPoolEntry> pool = FilterWarStanceWeaponPool(
+				BuildWeaponPool(combatManager, rootAttacker.GetVehicle(), applyPlayerWeaponFilters),
+				enforcedWarStance);
 			WeaponConfig fallbackWeapon = combatManager.GetFistsWeapon();
 			if (combatMode == GroupedCombatMode.OnFoot && selectedAttackWeapon == null)
 			{
-				selectedAttackWeapon = FindPreferredOnFootSelectedWeapon(combatManager, rootAttacker, attackers, applyPlayerWeaponFilters) ?? selectedAttackWeapon;
+				selectedAttackWeapon = FindPreferredOnFootSelectedWeapon(combatManager, rootAttacker, attackers, applyPlayerWeaponFilters, enforcedWarStance) ?? selectedAttackWeapon;
 			}
 			EntityID selectedWeaponRecipientId = combatMode == GroupedCombatMode.DriveBy && attackers.Count > 0
 				? attackers[0].peepId
@@ -3392,7 +7164,10 @@ Target:
 				}
 				WeaponConfig assignedWeapon = null;
 				string source = "fallback-fists";
-				bool selectedWeaponAllowed = !applyPlayerWeaponFilters || IsAllowedGroupedPlayerWeapon(selectedAttackWeapon, combatMode);
+				bool selectedWeaponAllowed = (!applyPlayerWeaponFilters || IsAllowedGroupedPlayerWeapon(selectedAttackWeapon, combatMode))
+					&& (!enforcedWarStance.HasValue
+						|| WarStanceWeaponComplies(enforcedWarStance.Value, selectedAttackWeapon)
+						|| allowSelectedWeaponViolation);
 				bool explicitFistsSelection = combatMode == GroupedCombatMode.OnFoot && IsUnlimitedFallbackWeapon(selectedAttackWeapon);
 				if (attacker.peepId == selectedWeaponRecipientId && selectedAttackWeapon != null && selectedWeaponAllowed)
 				{
@@ -3410,7 +7185,10 @@ Target:
 				if (assignedWeapon == null && combatMode == GroupedCombatMode.OnFoot)
 				{
 					WeaponConfig bestPersonalWeapon = combatManager.FindBestWeapon(attacker);
-					if (bestPersonalWeapon != null && !IsUnlimitedFallbackWeapon(bestPersonalWeapon) && (!applyPlayerWeaponFilters || IsAllowedGroupedPlayerWeapon(bestPersonalWeapon, combatMode)))
+					if (bestPersonalWeapon != null
+						&& !IsUnlimitedFallbackWeapon(bestPersonalWeapon)
+						&& (!applyPlayerWeaponFilters || IsAllowedGroupedPlayerWeapon(bestPersonalWeapon, combatMode))
+						&& (!enforcedWarStance.HasValue || WarStanceWeaponComplies(enforcedWarStance.Value, bestPersonalWeapon)))
 					{
 						if (TryReserveSpecificWeapon(pool, bestPersonalWeapon))
 						{
@@ -3438,7 +7216,18 @@ Target:
 			return assignments;
 		}
 
-		private static WeaponConfig FindPreferredOnFootSelectedWeapon(CombatManager combatManager, CrewAssignment rootAttacker, List<CrewAssignment> attackers, bool applyPlayerWeaponFilters)
+		private static List<WeaponPoolEntry> FilterWarStanceWeaponPool(List<WeaponPoolEntry> pool, WarWeaponStance? enforcedWarStance)
+		{
+			if (!enforcedWarStance.HasValue || pool == null)
+			{
+				return pool ?? new List<WeaponPoolEntry>();
+			}
+			return pool
+				.Where(entry => entry != null && WarStanceWeaponComplies(enforcedWarStance.Value, entry.Weapon))
+				.ToList();
+		}
+
+		private static WeaponConfig FindPreferredOnFootSelectedWeapon(CombatManager combatManager, CrewAssignment rootAttacker, List<CrewAssignment> attackers, bool applyPlayerWeaponFilters, WarWeaponStance? enforcedWarStance = null)
 		{
 			if (combatManager == null)
 			{
@@ -3447,14 +7236,20 @@ Target:
 			foreach (CrewAssignment attacker in attackers ?? Enumerable.Empty<CrewAssignment>())
 			{
 				WeaponConfig bestPersonalWeapon = combatManager.FindBestWeapon(attacker);
-				if (bestPersonalWeapon != null && !IsUnlimitedFallbackWeapon(bestPersonalWeapon) && (!applyPlayerWeaponFilters || IsAllowedGroupedPlayerWeapon(bestPersonalWeapon, GroupedCombatMode.OnFoot)))
+				if (bestPersonalWeapon != null
+					&& !IsUnlimitedFallbackWeapon(bestPersonalWeapon)
+					&& (!applyPlayerWeaponFilters || IsAllowedGroupedPlayerWeapon(bestPersonalWeapon, GroupedCombatMode.OnFoot))
+					&& (!enforcedWarStance.HasValue || WarStanceWeaponComplies(enforcedWarStance.Value, bestPersonalWeapon)))
 				{
 					return bestPersonalWeapon;
 				}
 			}
-			return BuildWeaponPool(combatManager, rootAttacker.GetVehicle(), applyPlayerWeaponFilters)
+			return FilterWarStanceWeaponPool(BuildWeaponPool(combatManager, rootAttacker.GetVehicle(), applyPlayerWeaponFilters), enforcedWarStance)
 				.Select(entry => entry.Weapon)
-				.FirstOrDefault(weapon => weapon != null && !IsUnlimitedFallbackWeapon(weapon) && (!applyPlayerWeaponFilters || IsAllowedGroupedPlayerWeapon(weapon, GroupedCombatMode.OnFoot)));
+				.FirstOrDefault(weapon => weapon != null
+					&& !IsUnlimitedFallbackWeapon(weapon)
+					&& (!applyPlayerWeaponFilters || IsAllowedGroupedPlayerWeapon(weapon, GroupedCombatMode.OnFoot))
+					&& (!enforcedWarStance.HasValue || WarStanceWeaponComplies(enforcedWarStance.Value, weapon)));
 		}
 
 		private static List<WeaponPoolEntry> BuildWeaponPool(CombatManager combatManager, Entity vehicle, bool applyPlayerWeaponFilters)
@@ -3773,7 +7568,7 @@ Target:
 			return weapon?.resid.String ?? "weapon-fists";
 		}
 
-		private static CombatResults ResolveVehicleGroupExchange(CombatManager combatManager, CrewAssignment attacker, CrewAssignment target, WeaponConfig attackerWeapon, WeaponConfig defenderWeapon, GroupedCombatMode combatMode, CombatExchangeDebugInfo debugInfo = null, string observerSource = null, DriveByTargetMode driveByTargetMode = DriveByTargetMode.FocusOne)
+		private static CombatResults ResolveVehicleGroupExchange(CombatManager combatManager, CrewAssignment attacker, CrewAssignment target, WeaponConfig attackerWeapon, WeaponConfig defenderWeapon, GroupedCombatMode combatMode, CombatExchangeDebugInfo debugInfo = null, string observerSource = null, DriveByTargetMode driveByTargetMode = DriveByTargetMode.FocusOne, WarWeaponStance? defenderWarStance = null)
 		{
 			Entity attackerPeep = attacker.GetPeep();
 			Entity targetPeep = target.GetPeep();
@@ -3812,7 +7607,7 @@ Target:
 				counterResponders.Add(target);
 			}
 			Dictionary<ulong, string> counterWeaponSources;
-			Dictionary<ulong, WeaponConfig> counterWeapons = BuildRoundWeaponAssignments(combatManager, target, counterResponders, defenderWeapon, GroupedCombatMode.OnFoot, out counterWeaponSources);
+			Dictionary<ulong, WeaponConfig> counterWeapons = BuildRoundWeaponAssignments(combatManager, target, counterResponders, defenderWeapon, GroupedCombatMode.OnFoot, out counterWeaponSources, defenderWarStance);
 			WeaponConfig focusedDefenderWeapon = ResolveAssignedWeapon(counterWeapons, target.peepId, combatManager);
 			if (focusedDefenderWeapon != null)
 			{
@@ -4312,6 +8107,13 @@ Target:
 
 		private static void DispatchCombatObservers(CombatResults result, string observerSource)
 		{
+			bool groupedTransaction = IsGroupedCombatTransactionActive();
+			string stanceSource = groupedTransaction ? _groupedCombatTransactionSource : observerSource;
+			LogWarStanceCombatDiagnostic(result, stanceSource);
+			if (groupedTransaction)
+			{
+				FlushWarStanceProposedViolation(stanceSource);
+			}
 			ProcessHumanCopCombatConsequences(result, observerSource);
 			PactOpsCombatPatch.ProcessCombatResult(result, observerSource);
 			RealCombatGrapevinePatch.ProcessCombatResult(result);
@@ -4848,7 +8650,13 @@ Target:
 					Debug.LogWarning("[GameplayTweaks] RealCombatGrapevinePatch: PerformCombat signature not found.");
 					return;
 				}
-				harmony.Patch((MethodBase)performCombat, (HarmonyMethod)null, new HarmonyMethod(typeof(RealCombatGrapevinePatch), "PerformCombatPostfix", (Type[])null), (HarmonyMethod)null, (HarmonyMethod)null, (HarmonyMethod)null);
+				harmony.Patch(
+					(MethodBase)performCombat,
+					new HarmonyMethod(typeof(RealCombatGrapevinePatch), "PerformCombatPrefix", (Type[])null),
+					new HarmonyMethod(typeof(RealCombatGrapevinePatch), "PerformCombatPostfix", (Type[])null),
+					(HarmonyMethod)null,
+					(HarmonyMethod)null,
+					(HarmonyMethod)null);
 				VerificationLog("GrapevineCombat", "hooked PerformCombat(CrewAssignment,CrewAssignment,WeaponConfig,WeaponConfig)");
 			}
 			catch (Exception ex)
@@ -4857,15 +8665,97 @@ Target:
 			}
 		}
 
-		private static void PerformCombatPostfix(CrewAssignment crew1, CrewAssignment crew2, WeaponConfig weapon1, WeaponConfig weapon2, CombatResults __result)
+		private static void PerformCombatPrefix(CrewAssignment crew1, CrewAssignment crew2, ref WeaponConfig weapon1, ref WeaponConfig weapon2, ref bool __state)
+		{
+			__state = false;
+			try
+			{
+				if (!IsWarWeaponStanceEnabled()
+					|| !crew1.IsValid
+					|| !crew2.IsValid)
+				{
+					return;
+				}
+				Entity peep1 = crew1.GetPeep();
+				Entity peep2 = crew2.GetPeep();
+				if (peep1 == null || peep2 == null)
+				{
+					return;
+				}
+				PlayerID attackerPid = peep1.data.agent.pid;
+				PlayerID defenderPid = peep2.data.agent.pid;
+				if (!attackerPid.IsAIPlayer
+					|| !defenderPid.IsAIPlayer
+					|| attackerPid.id == defenderPid.id
+					|| HasActiveAiWarStanceCommit(attackerPid.id, defenderPid.id))
+				{
+					return;
+				}
+
+				WarStanceSnapshot snapshot = ResolveWarStanceSnapshotForCombat(attackerPid.id, defenderPid.id);
+				WeaponConfig adjustedAttackerWeapon = FindBestWarStanceCompliantWeapon(crew1, snapshot.Stance);
+				WeaponConfig adjustedDefenderWeapon = FindBestWarStanceCompliantWeapon(crew2, snapshot.Stance);
+				if (adjustedAttackerWeapon == null && adjustedDefenderWeapon == null)
+				{
+					return;
+				}
+				WeaponConfig originalAttackerWeapon = weapon1;
+				WeaponConfig originalDefenderWeapon = weapon2;
+				if (adjustedAttackerWeapon != null)
+				{
+					weapon1 = adjustedAttackerWeapon;
+				}
+				if (adjustedDefenderWeapon != null)
+				{
+					weapon2 = adjustedDefenderWeapon;
+				}
+				PlayerInfo attackerPlayer = attackerPid.FindPlayer();
+				PlayerInfo defenderPlayer = defenderPid.FindPlayer();
+				bool attackerBreach = false;
+				bool defenderBreach = false;
+				if (attackerPlayer != null
+					&& defenderPlayer != null
+					&& TrySelectAiWarStanceBreachWeapon("PerformCombatPrefix", "raw", "attacker", snapshot, attackerPlayer, defenderPlayer, crew1, crew2, weapon1, out WeaponConfig attackerBreachWeapon))
+				{
+					weapon1 = attackerBreachWeapon;
+					attackerBreach = true;
+				}
+				if (attackerPlayer != null
+					&& defenderPlayer != null
+					&& TrySelectAiWarStanceBreachWeapon("PerformCombatPrefix", "raw", "defender", snapshot, defenderPlayer, attackerPlayer, crew2, crew1, weapon2, out WeaponConfig defenderBreachWeapon))
+				{
+					weapon2 = defenderBreachWeapon;
+					defenderBreach = true;
+				}
+				BeginAiWarStanceCommit(snapshot, "PerformCombat:ai-ai-prefix");
+				__state = true;
+				VerificationLog(
+					"WarStance",
+					$"[WarStance][AICombatPrefix] attackerPid={attackerPid.id} defenderPid={defenderPid.id} stance={FormatWarWeaponStance(snapshot.Stance)} effectiveHeat={snapshot.EffectiveHeat:0.0} attackerVehicle={crew1.VehicleID.id} attackerOriginal={DescribeWarStanceWeapon(originalAttackerWeapon)} attackerOriginalCategory={ClassifyWarStanceWeapon(originalAttackerWeapon)} attackerWeapon={DescribeWarStanceWeapon(weapon1)} attackerCategory={ClassifyWarStanceWeapon(weapon1)} attackerBreach={attackerBreach} defenderVehicle={crew2.VehicleID.id} defenderOriginal={DescribeWarStanceWeapon(originalDefenderWeapon)} defenderOriginalCategory={ClassifyWarStanceWeapon(originalDefenderWeapon)} defenderWeapon={DescribeWarStanceWeapon(weapon2)} defenderCategory={ClassifyWarStanceWeapon(weapon2)} defenderBreach={defenderBreach}");
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] WarStance PerformCombat prefix failed: " + ex.Message);
+			}
+		}
+
+		private static void PerformCombatPostfix(CrewAssignment crew1, CrewAssignment crew2, WeaponConfig weapon1, WeaponConfig weapon2, CombatResults __result, bool __state)
 		{
 			try
 			{
+				LogWarStanceCombatDiagnostic(__result, "PerformCombat");
 				ProcessCombatResult(__result);
 			}
 			catch (Exception ex)
 			{
 				Debug.LogWarning("[GameplayTweaks] RealCombatGrapevinePatch parse failed: " + ex.Message);
+			}
+			finally
+			{
+				if (__state)
+				{
+					ClearAiWarStanceCommit();
+				}
 			}
 		}
 

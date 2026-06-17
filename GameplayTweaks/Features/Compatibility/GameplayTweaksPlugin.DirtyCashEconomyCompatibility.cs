@@ -41,6 +41,25 @@ public partial class GameplayTweaksPlugin
 			"-new-york"
 		};
 
+		private static readonly string[] PlayerVehicleBackroomModuleIds = new string[]
+		{
+			"player-garage-module-small",
+			"player-garage-module-medium",
+			"player-truck-garage-small",
+			"player-truck-garage-improved"
+		};
+
+		private static readonly string[] VehicleBackroomDisplayModuleIds = new string[]
+		{
+			"garage-small-car-repair",
+			"player-garage-module-small",
+			"player-garage-module-medium",
+			"player-truck-garage-small",
+			"player-truck-garage-improved",
+			"car-dealer-garage-module",
+			"truck-garage"
+		};
+
 		private const string ExternalDirtyCashHarmonyId = "com.cogmod.dirtycasheconomy";
 		private const int MaxHumanBackgroundTerritoryReconcilePasses = 8;
 		private const int IllegalBackroomVisualAuditRetryBudget = 4;
@@ -62,6 +81,12 @@ public partial class GameplayTweaksPlugin
 		private static readonly HashSet<string> LoggedIllegalBackroomDeferredVisualRefreshes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		private static readonly HashSet<string> LoggedOwnedBizModulePopupLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		private static readonly HashSet<string> LoggedLegalFrontUpgradeLists = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		private static readonly HashSet<string> LoggedPlayerVehicleBackroomModuleAudits = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		private static readonly HashSet<string> LoggedVehicleBackroomDisplayRepairs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		private static readonly HashSet<string> LoggedPlayerTruckGarageChoiceFallbacks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		private static readonly HashSet<string> LoggedTerritoryOwnershipReconcileSwitches = new HashSet<string>(StringComparer.Ordinal);
+		private static readonly HashSet<string> LoggedBlockedHumanFrontAnchorClaims = new HashSet<string>(StringComparer.Ordinal);
+		private static readonly HashSet<string> LoggedSafehouseLifecycleDiagnostics = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		private static readonly Dictionary<int, int> LastGangCollapseTerritoryAuditDayByPid = new Dictionary<int, int>();
 		private static readonly Dictionary<int, int> LastGangCollapseTerritoryDeferredDayByPid = new Dictionary<int, int>();
 		private static readonly Dictionary<int, int> LastObservedOutpostCountByPid = new Dictionary<int, int>();
@@ -73,6 +98,7 @@ public partial class GameplayTweaksPlugin
 		private static MethodInfo _externalDirtyCashAddIncomeMethod;
 		private static object _externalDirtyCashBackroomReason;
 		private static int LateForcedDirtyCashRespectSnapshotDay = int.MinValue;
+		private static int LateForcedDirtyCashBackroomFullRebuildDay = int.MinValue;
 		private static bool _pendingDeferredHumanTerritoryRefresh;
 		private static int _pendingDeferredHumanTerritoryRefreshEarliestFrame = -1;
 		private static int _pendingDeferredHumanTerritoryRefreshRemainingPasses;
@@ -174,6 +200,24 @@ public partial class GameplayTweaksPlugin
 			public bool AppliedLateRespectSync;
 		}
 
+		private sealed class SafehouseLifecycleSnapshot
+		{
+			public string Source = string.Empty;
+			public PlayerInfo Player;
+			public PlayerID Pid = PlayerID.INVALID;
+			public EntityID SafehouseId = EntityID.INVALID;
+			public NodeID NodeId = NodeID.INVALID;
+			public bool SafehouseExists;
+			public bool SafehouseFlag;
+			public PlayerID SafehouseOwner = PlayerID.INVALID;
+			public bool SafehouseVanquished;
+			public bool CrewDefeated;
+			public int Outposts;
+			public int ControlledBuildings;
+			public int OwnedNodes;
+			public Fixnum NodeSafehouseRespect;
+		}
+
 		public static void ApplyPatch(Harmony harmony)
 		{
 			try
@@ -201,6 +245,47 @@ public partial class GameplayTweaksPlugin
 				if (addModulePopupInitializeMethod != null)
 				{
 					harmony.Patch(addModulePopupInitializeMethod, postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(OwnedBizAddModulePopupInitializeOnPushPostfix))
+					{
+						priority = Priority.Last
+					});
+				}
+
+				MethodInfo addModulePopupInitializeCardMethod = AccessTools.Method(typeof(OwnedBizAddModulePopup), "InitializeCard", new Type[]
+				{
+					typeof(int),
+					typeof(GameObject),
+					typeof(AddModuleDef)
+				});
+				if (addModulePopupInitializeCardMethod != null)
+				{
+					harmony.Patch(addModulePopupInitializeCardMethod, postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(OwnedBizAddModulePopupInitializeCardPostfix))
+					{
+						priority = Priority.Last
+					});
+				}
+
+				MethodInfo addModulePopupRefreshDetailsMethod = AccessTools.Method(typeof(OwnedBizAddModulePopup), "RefreshDetails");
+				if (addModulePopupRefreshDetailsMethod != null)
+				{
+					harmony.Patch(addModulePopupRefreshDetailsMethod, prefix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(OwnedBizAddModulePopupRefreshDetailsPrefix))
+					{
+						priority = Priority.Last
+					});
+				}
+
+				MethodInfo findBackroomModuleMethod = AccessTools.Method(typeof(ModulesComponent), "FindBackroomModule");
+				if (findBackroomModuleMethod != null)
+				{
+					harmony.Patch(findBackroomModuleMethod, postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(FindBackroomModulePostfix))
+					{
+						priority = Priority.Last
+					});
+				}
+
+				MethodInfo hasBackroomModulesMethod = AccessTools.Method(typeof(ModulesComponent), "HasBackroomModules");
+				if (hasBackroomModulesMethod != null)
+				{
+					harmony.Patch(hasBackroomModulesMethod, postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(HasBackroomModulesPostfix))
 					{
 						priority = Priority.Last
 					});
@@ -333,6 +418,57 @@ public partial class GameplayTweaksPlugin
 					harmony.Patch(playerTurnStartedMethod, postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(PlayerInfoOnPlayerTurnStartedPostfix)));
 				}
 
+				MethodInfo clearSafehouseAndTerritoryMethod = AccessTools.Method(typeof(SafehouseUtils), "ClearSafehouseAndTerritory", new[]
+				{
+					typeof(PlayerInfo),
+					typeof(EntityID)
+				});
+				if (clearSafehouseAndTerritoryMethod != null)
+				{
+					harmony.Patch(
+						clearSafehouseAndTerritoryMethod,
+						prefix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(ClearSafehouseAndTerritoryPrefix)),
+						postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(ClearSafehouseAndTerritoryPostfix)));
+				}
+
+				MethodInfo removeGoonSafehouseMethod = AccessTools.Method(typeof(PlayerTerritory), "RemoveGoonSafehouse");
+				if (removeGoonSafehouseMethod != null)
+				{
+					harmony.Patch(
+						removeGoonSafehouseMethod,
+						prefix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(RemoveGoonSafehousePrefix)),
+						postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(RemoveGoonSafehousePostfix)));
+				}
+
+				MethodInfo maybeClearRaidedSafehouseMethod = AccessTools.Method(typeof(PlayerTerritory), "MaybeClearRaidedSafehouse");
+				if (maybeClearRaidedSafehouseMethod != null)
+				{
+					harmony.Patch(
+						maybeClearRaidedSafehouseMethod,
+						prefix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(MaybeClearRaidedSafehousePrefix)),
+						postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(MaybeClearRaidedSafehousePostfix)));
+				}
+
+				MethodInfo removeBuildingsAndTerritoryOnDefeatMethod = AccessTools.Method(typeof(PlayerTerritory), "RemoveBuildingsAndTerritoryOnDefeat");
+				if (removeBuildingsAndTerritoryOnDefeatMethod != null)
+				{
+					harmony.Patch(
+						removeBuildingsAndTerritoryOnDefeatMethod,
+						prefix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(RemoveBuildingsAndTerritoryOnDefeatPrefix)),
+						postfix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(RemoveBuildingsAndTerritoryOnDefeatPostfix)));
+				}
+
+				MethodInfo enqueueSessionEventMethod = AccessTools.Method(typeof(global::Game.Session.SessionEventBus), "EnqueueOnce", new[]
+				{
+					typeof(global::Game.Session.SessionEvent)
+				});
+				if (enqueueSessionEventMethod != null)
+				{
+					harmony.Patch(
+						enqueueSessionEventMethod,
+						prefix: new HarmonyMethod(typeof(DirtyCashEconomyCompatibilityPatch), nameof(SessionEventBusEnqueueOncePrefix)));
+				}
+
 				MethodInfo globalTurnSetAdvancedMethod = AccessTools.Method(typeof(PlayerFinances), "OnGlobalTurnSetAdvanced");
 				if (globalTurnSetAdvancedMethod != null)
 				{
@@ -359,6 +495,163 @@ public partial class GameplayTweaksPlugin
 			{
 				Debug.LogWarning("[GameplayTweaks] Dirty cash compatibility patch setup failed: " + ex.Message);
 			}
+		}
+
+		private static void ClearSafehouseAndTerritoryPrefix(PlayerInfo player, EntityID safehouseId, out SafehouseLifecycleSnapshot __state)
+		{
+			__state = CaptureSafehouseLifecycleSnapshot(player, safehouseId, "vanilla-clear-safehouse");
+			LogSafehouseLifecycleSnapshot(__state, "before");
+		}
+
+		private static void ClearSafehouseAndTerritoryPostfix(PlayerInfo player, EntityID safehouseId, SafehouseLifecycleSnapshot __state)
+		{
+			LogSafehouseLifecycleSnapshot(
+				CaptureSafehouseLifecycleSnapshot(player ?? __state?.Player, safehouseId, "vanilla-clear-safehouse"),
+				"after");
+		}
+
+		private static void RemoveGoonSafehousePrefix(PlayerTerritory __instance, out SafehouseLifecycleSnapshot __state)
+		{
+			__state = CaptureSafehouseLifecycleSnapshot(__instance?.PlayerInfo, __instance?.Safehouse ?? EntityID.INVALID, "remove-goon-safehouse");
+			LogSafehouseLifecycleSnapshot(__state, "before");
+		}
+
+		private static void RemoveGoonSafehousePostfix(PlayerTerritory __instance, SafehouseLifecycleSnapshot __state)
+		{
+			LogSafehouseLifecycleSnapshot(
+				CaptureSafehouseLifecycleSnapshot(__instance?.PlayerInfo ?? __state?.Player, __state?.SafehouseId ?? EntityID.INVALID, "remove-goon-safehouse"),
+				"after");
+		}
+
+		private static void MaybeClearRaidedSafehousePrefix(PlayerTerritory __instance, out SafehouseLifecycleSnapshot __state)
+		{
+			__state = CaptureSafehouseLifecycleSnapshot(__instance?.PlayerInfo, __instance?.Safehouse ?? EntityID.INVALID, "maybe-clear-raided-safehouse");
+			LogSafehouseLifecycleSnapshot(__state, "before");
+		}
+
+		private static void MaybeClearRaidedSafehousePostfix(PlayerTerritory __instance, SafehouseLifecycleSnapshot __state)
+		{
+			LogSafehouseLifecycleSnapshot(
+				CaptureSafehouseLifecycleSnapshot(__instance?.PlayerInfo ?? __state?.Player, __state?.SafehouseId ?? EntityID.INVALID, "maybe-clear-raided-safehouse"),
+				"after");
+		}
+
+		private static void RemoveBuildingsAndTerritoryOnDefeatPrefix(PlayerTerritory __instance, out SafehouseLifecycleSnapshot __state)
+		{
+			__state = CaptureSafehouseLifecycleSnapshot(__instance?.PlayerInfo, __instance?.Safehouse ?? EntityID.INVALID, "remove-defeated-territory");
+			LogSafehouseLifecycleSnapshot(__state, "before");
+		}
+
+		private static void RemoveBuildingsAndTerritoryOnDefeatPostfix(PlayerTerritory __instance, SafehouseLifecycleSnapshot __state)
+		{
+			LogSafehouseLifecycleSnapshot(
+				CaptureSafehouseLifecycleSnapshot(__instance?.PlayerInfo ?? __state?.Player, __state?.SafehouseId ?? EntityID.INVALID, "remove-defeated-territory"),
+				"after");
+		}
+
+		private static void SessionEventBusEnqueueOncePrefix(global::Game.Session.SessionEvent ev)
+		{
+			if (ev.type != global::Game.Session.SessionEventType.SafehouseRemoved)
+			{
+				return;
+			}
+
+			PlayerInfo player = ev.pid.IsValid ? ev.pid.FindPlayer() : null;
+			LogSafehouseLifecycleSnapshot(
+				CaptureSafehouseLifecycleSnapshot(player, ev.eid, "safehouse-removed-event"),
+				"enqueue");
+		}
+
+		private static SafehouseLifecycleSnapshot CaptureSafehouseLifecycleSnapshot(PlayerInfo player, EntityID safehouseId, string source)
+		{
+			SafehouseLifecycleSnapshot snapshot = new SafehouseLifecycleSnapshot
+			{
+				Source = source ?? string.Empty,
+				Player = player,
+				Pid = player?.PID ?? PlayerID.INVALID,
+				SafehouseId = safehouseId,
+				SafehouseVanquished = player?.territory?.IsSafehouseVanquished ?? true,
+				CrewDefeated = player?.crew?.IsCrewDefeated ?? false,
+				Outposts = player?.outposts?.GetOutpostEntriesUnsafe()?.Count ?? 0,
+				OwnedNodes = player?.territory?.OwnedNodeCount ?? 0
+			};
+
+			if (!snapshot.SafehouseId.IsValid)
+			{
+				snapshot.SafehouseId = player?.territory?.Safehouse ?? EntityID.INVALID;
+			}
+
+			try
+			{
+				snapshot.ControlledBuildings = player?.territory?.CountControlledBuildings() ?? 0;
+			}
+			catch
+			{
+				snapshot.ControlledBuildings = -1;
+			}
+
+			Entity safehouse = snapshot.SafehouseId.IsValid ? snapshot.SafehouseId.FindEntity() : null;
+			snapshot.SafehouseExists = safehouse != null;
+			snapshot.SafehouseFlag = safehouse?.components?.building?.IsSafehouse ?? false;
+			snapshot.SafehouseOwner = safehouse?.components?.building?.SafehouseOwner ?? PlayerID.INVALID;
+			Node node = safehouse?.data?.board?.bead.nodeId.FindNode();
+			snapshot.NodeId = node?.id ?? NodeID.INVALID;
+			Respect respect = snapshot.Pid.IsValid ? node?.respect?.GetOrNull(snapshot.Pid) : null;
+			snapshot.NodeSafehouseRespect = respect?.fromSafehouse ?? Fixnum.ZERO;
+			return snapshot;
+		}
+
+		private static void LogSafehouseLifecycleSnapshot(SafehouseLifecycleSnapshot snapshot, string stage)
+		{
+			if (snapshot == null)
+			{
+				return;
+			}
+
+			int day = global::Game.Game.ctx?.clock?.Now.days ?? int.MinValue;
+			string key = snapshot.Source +
+				"|" + stage +
+				"|" + day +
+				"|" + snapshot.Pid +
+				"|" + snapshot.SafehouseId +
+				"|" + snapshot.SafehouseFlag +
+				"|" + snapshot.SafehouseOwner +
+				"|" + snapshot.Outposts +
+				"|" + snapshot.ControlledBuildings +
+				"|" + snapshot.OwnedNodes +
+				"|" + snapshot.NodeSafehouseRespect;
+			if (!LoggedSafehouseLifecycleDiagnostics.Add(key))
+			{
+				return;
+			}
+
+			string playerType = snapshot.Player == null
+				? "missing"
+				: snapshot.Player.IsJustGoon
+					? "troublemaker"
+					: snapshot.Player.IsJustGang
+						? "gang"
+						: snapshot.Player.PlayerType.ToString();
+
+			VerificationLog(
+				"Territory",
+				"safehouse-lifecycle" +
+				" source=" + snapshot.Source +
+				" stage=" + stage +
+				" pid=" + snapshot.Pid.id +
+				" playerType=" + playerType +
+				" safehouse=" + snapshot.SafehouseId +
+				" node=" + snapshot.NodeId +
+				" exists=" + snapshot.SafehouseExists +
+				" flag=" + snapshot.SafehouseFlag +
+				" owner=" + snapshot.SafehouseOwner +
+				" vanquished=" + snapshot.SafehouseVanquished +
+				" crewDefeated=" + snapshot.CrewDefeated +
+				" outposts=" + snapshot.Outposts +
+				" controlledBuildings=" + snapshot.ControlledBuildings +
+				" ownedNodes=" + snapshot.OwnedNodes +
+				" nodeSafehouseRespect=" + snapshot.NodeSafehouseRespect +
+				" day=" + day);
 		}
 
 		private static bool FindInstalledModuleIndexPrefix(ModulesComponent __instance, Label id, ref int __result)
@@ -549,10 +842,17 @@ public partial class GameplayTweaksPlugin
 			LoggedIllegalBackroomDeferredVisualRefreshes.Clear();
 			LoggedOwnedBizModulePopupLabels.Clear();
 			LoggedLegalFrontUpgradeLists.Clear();
+			LoggedPlayerVehicleBackroomModuleAudits.Clear();
+			LoggedVehicleBackroomDisplayRepairs.Clear();
+			LoggedPlayerTruckGarageChoiceFallbacks.Clear();
+			LoggedTerritoryOwnershipReconcileSwitches.Clear();
+			LoggedBlockedHumanFrontAnchorClaims.Clear();
+			LoggedSafehouseLifecycleDiagnostics.Clear();
 			RecordedDirtyCashAOEContributionsByBuilding.Clear();
 			PendingIllegalBackroomVisualRefreshes.Clear();
 			LateForcedDirtyCashRespectCurrentSnapshot.Clear();
 			LateForcedDirtyCashRespectSnapshotDay = int.MinValue;
+			LateForcedDirtyCashBackroomFullRebuildDay = int.MinValue;
 			_pendingDeferredHumanTerritoryRefresh = false;
 			_pendingDeferredHumanTerritoryRefreshEarliestFrame = -1;
 			_pendingDeferredHumanTerritoryRefreshRemainingPasses = 0;
@@ -1359,14 +1659,33 @@ public partial class GameplayTweaksPlugin
 
 		private static void RefreshHeatAndRespectForLateForcedDirtyCashBackroom(Entity building, bool initial, string source)
 		{
+			int currentDay = global::Game.Game.ctx?.clock?.Now.days ?? int.MinValue;
+			if (LateForcedDirtyCashBackroomFullRebuildDay == currentDay)
+			{
+				RefreshLateForcedDirtyCashAffectedNodes(building);
+				string coalescedLogKey = "resync-coalesced|" + source + "|" + building.Id + "|day=" + currentDay;
+				if (LoggedIllegalBackroomBusinessTickFallbacks.Add(coalescedLogKey))
+				{
+					Debug.Log("[GameplayTweaks] Illegal backroom late respect sync coalesced source=" +
+						source +
+						" building=" +
+						building.Id +
+						" day=" +
+						currentDay +
+						" mode=localized-affected-nodes");
+				}
+				return;
+			}
+
 			int ownershipSwitchCount;
 			int nodeCount = RebuildLateForcedDirtyCashRespectState(initial, out ownershipSwitchCount);
 			if (nodeCount <= 0)
 			{
 				return;
 			}
+			LateForcedDirtyCashBackroomFullRebuildDay = currentDay;
 
-			string buildingLogKey = "resync|" + source + "|" + building.Id + "|day=" + (global::Game.Game.ctx?.clock?.Now.days ?? -1);
+			string buildingLogKey = "resync|" + source + "|" + building.Id + "|day=" + currentDay;
 			if (LoggedIllegalBackroomBusinessTickFallbacks.Add(buildingLogKey))
 			{
 				Debug.Log("[GameplayTweaks] Illegal backroom late respect sync applied source=" +
@@ -1619,6 +1938,7 @@ public partial class GameplayTweaksPlugin
 			}
 
 			HashSet<int> refreshedNodeIds = new HashSet<int>();
+			List<Node> refreshedNodes = new List<Node>();
 			int refreshedCount = 0;
 			for (int outpostIndex = 0; outpostIndex < outposts.Count; outpostIndex++)
 			{
@@ -1638,13 +1958,77 @@ public partial class GameplayTweaksPlugin
 					}
 
 					territory.RecomputeRespect(node, forceCurrent: true);
+					refreshedNodes.Add(node);
 					refreshedCount++;
 				}
 			}
 
+			int ownershipSwitches = 0;
+			if (refreshedNodes.Count > 0)
+			{
+				ownershipSwitches = ReconcileHumanTerritoryOwnershipUntilStable(
+					refreshedNodes,
+					source + "-outpost-targets",
+					useDirtyCashPreviousCurrent: false,
+					refreshHumanTerritoryStateWhenNoChanges: false);
+				LogBlockedHumanFrontTargetClaims(refreshedNodes, source);
+			}
+
 			if (refreshedCount > 0)
 			{
-				Debug.Log("[GameplayTweaks] Human outpost target respect refreshed source=" + source + " nodes=" + refreshedCount);
+				Debug.Log("[GameplayTweaks] Human outpost target respect refreshed source=" + source + " nodes=" + refreshedCount + " ownershipSwitches=" + ownershipSwitches);
+			}
+		}
+
+		private static void LogBlockedHumanFrontTargetClaims(IEnumerable<Node> nodes, string source)
+		{
+			PlayerInfo humanPlayer = global::Game.Game.ctx?.players?.Human;
+			PlayerID humanPid = humanPlayer?.PID ?? PlayerID.INVALID;
+			global::Game.Services.RespectSettings settings = global::Game.Game.serv?.globals?.settings?.people?.social?.respect;
+			if (nodes == null || humanPlayer?.outposts == null || humanPid.IsNotValid || settings == null)
+			{
+				return;
+			}
+
+			int day = global::Game.Game.ctx?.clock?.Now.days ?? int.MinValue;
+			foreach (Node node in nodes)
+			{
+				PlayerID currentOwner = node?.owner?.Get() ?? PlayerID.INVALID;
+				if (node == null ||
+					currentOwner == humanPid)
+				{
+					continue;
+				}
+
+				Respect humanRespect = node.respect?.GetOrNull(humanPid);
+				Fixnum humanCurrent = humanRespect?.current ?? Fixnum.ZERO;
+				Fixnum gainThreshold = settings.gainThreshold.Evaluate(new ModQuery(humanPid, node));
+				Fixnum highestCompeting = GetHighestCompetingCurrentRespect(node, humanPid);
+				bool belowGainThreshold = humanCurrent < gainThreshold;
+				bool belowCompetingRespect = humanCurrent < highestCompeting;
+				if (!belowGainThreshold && !belowCompetingRespect)
+				{
+					continue;
+				}
+
+				Respect ownerRespect = currentOwner.IsValid ? node.respect?.GetOrNull(currentOwner) : null;
+				string reason = belowGainThreshold
+					? (belowCompetingRespect ? "below-gain-and-rival" : "below-gain")
+					: "below-rival";
+				string logKey = node.id +
+					"|" + currentOwner.id +
+					"|" + humanCurrent +
+					"|" + gainThreshold +
+					"|" + highestCompeting +
+					"|" + reason;
+				if (!LoggedBlockedHumanFrontAnchorClaims.Add(logKey))
+				{
+					continue;
+				}
+
+				VerificationLog(
+					"Territory",
+					$"front-target-claim-blocked node={node.id} owner={currentOwner.id} ownerState={(currentOwner.IsValid ? "claimed" : "neutral")} humanCurrent={humanCurrent} gainThreshold={gainThreshold} ownerCurrent={ownerRespect?.current ?? Fixnum.ZERO} highestCompeting={highestCompeting} humanExactAnchor={humanPlayer.outposts.GetOutpostAtNode(node).IsValid} ownerExactAnchor={IsProtectedTerritorySupportNodeForOwner(node, currentOwner)} reason={reason} source={source} day={day}");
 			}
 		}
 
@@ -2216,7 +2600,10 @@ public partial class GameplayTweaksPlugin
 				Fixnum claimStrength = GetHumanTerritoryClaimStrength(humanRespect);
 				Fixnum previousCurrent = useDirtyCashPreviousCurrent ? FindLateForcedDirtyCashPreviousCurrent(node.id, humanPid) : humanRespect.current;
 				Fixnum lossThreshold = settings.lossThreshold.Evaluate(humanPid);
-				if (previousCurrent > lossThreshold && claimStrength <= lossThreshold && nodeOwner == humanPid)
+				if (previousCurrent > lossThreshold &&
+					claimStrength <= lossThreshold &&
+					nodeOwner == humanPid &&
+					!IsProtectedTerritorySupportNodeForOwner(node, humanPid))
 				{
 					PlayerTerritory.ClearNodeOwner(node, humanPid, PlayerID.INVALID);
 					affectedPlayers.Add(humanPid);
@@ -2353,6 +2740,7 @@ public partial class GameplayTweaksPlugin
 					continue;
 				}
 
+				LogTerritoryOwnershipReconcileSwitch(node, currentOwner, desiredOwner, settings, allowRelaxedUnownedClaim);
 				if (currentOwner.IsValid)
 				{
 					PlayerTerritory.ClearNodeOwner(node, currentOwner, desiredOwner);
@@ -2369,6 +2757,44 @@ public partial class GameplayTweaksPlugin
 			}
 
 			return switchCount;
+		}
+
+		private static void LogTerritoryOwnershipReconcileSwitch(
+			Node node,
+			PlayerID currentOwner,
+			PlayerID desiredOwner,
+			global::Game.Services.RespectSettings settings,
+			bool allowRelaxedUnownedClaim)
+		{
+			if (node == null || settings == null)
+			{
+				return;
+			}
+
+			int day = global::Game.Game.ctx?.clock?.Now.days ?? int.MinValue;
+			string logKey = day + "|" + node.id + "|" + currentOwner.id + "|" + desiredOwner.id;
+			if (!LoggedTerritoryOwnershipReconcileSwitches.Add(logKey))
+			{
+				return;
+			}
+
+			Respect ownerRespect = currentOwner.IsValid ? node.respect?.GetOrNull(currentOwner) : null;
+			Respect desiredRespect = desiredOwner.IsValid ? node.respect?.GetOrNull(desiredOwner) : null;
+			Fixnum ownerCurrent = ownerRespect?.current ?? Fixnum.ZERO;
+			Fixnum desiredCurrent = desiredRespect?.current ?? Fixnum.ZERO;
+			Fixnum ownerLossThreshold = currentOwner.IsValid
+				? settings.lossThreshold.Evaluate(currentOwner)
+				: Fixnum.ZERO;
+			Fixnum desiredGainThreshold = desiredOwner.IsValid
+				? settings.gainThreshold.Evaluate(new ModQuery(desiredOwner, node))
+				: Fixnum.ZERO;
+			bool ownerExactAnchor = currentOwner.IsValid && IsProtectedTerritorySupportNodeForOwner(node, currentOwner);
+			bool desiredExactAnchor = desiredOwner.IsValid && IsProtectedTerritorySupportNodeForOwner(node, desiredOwner);
+			bool desiredNearbyOutpost = desiredOwner.IsValid && desiredOwner.FindPlayer()?.outposts?.HasOutpostNear(node) == true;
+
+			VerificationLog(
+				"Territory",
+				$"ownership-reconcile-switch node={node.id} from={currentOwner.id} to={desiredOwner.id} ownerCurrent={ownerCurrent} ownerLossThreshold={ownerLossThreshold} desiredCurrent={desiredCurrent} desiredGainThreshold={desiredGainThreshold} ownerExactAnchor={ownerExactAnchor} desiredExactAnchor={desiredExactAnchor} desiredNearbyOutpost={desiredNearbyOutpost} relaxedUnowned={allowRelaxedUnownedClaim} day={day}");
 		}
 
 		private static int ClaimNeutralNodesFromCurrentRespect(
@@ -2446,11 +2872,6 @@ public partial class GameplayTweaksPlugin
 			{
 				return PlayerID.INVALID;
 			}
-			if (TryDetermineProtectedTerritorySupportOwner(node, out PlayerID supportedOwner))
-			{
-				return supportedOwner;
-			}
-
 			Fixnum highestGainThreshold = settings.gainThreshold.Evaluate(new ModQuery(highestPid, node));
 			bool highestCanOwn = highestCurrent >= highestGainThreshold;
 			if (!currentOwner.IsValid)
@@ -2469,7 +2890,8 @@ public partial class GameplayTweaksPlugin
 			}
 
 			Fixnum ownerLossThreshold = settings.lossThreshold.Evaluate(currentOwner);
-			bool ownerStillQualifies = ownerCurrent > ownerLossThreshold;
+			bool ownerStillQualifies = ownerCurrent > ownerLossThreshold ||
+				IsProtectedTerritorySupportNodeForOwner(node, currentOwner);
 			PlayerInfo currentOwnerPlayer = currentOwner.FindPlayer();
 			if (ownerStillQualifies && currentOwnerPlayer != null && currentOwnerPlayer.IsJustGang)
 			{
@@ -5720,6 +6142,8 @@ public partial class GameplayTweaksPlugin
 				}
 
 				EnsureStandaloneDirtyCashBackroomChoices(__instance, slotdef, installedModule, __result);
+				EnsurePlayerTruckGarageBackroomChoices(__instance, slotdef, installedModule, __result);
+				NormalizeVehicleBackroomDisplayChoices(__result, "find-modules");
 				RemoveDisallowedBackroomChoices(__result);
 
 				if (FindConflictingIllegalBackroom(FindCurrentBuilding(__instance)?.components?.modules, installedModule) != null)
@@ -5790,6 +6214,69 @@ public partial class GameplayTweaksPlugin
 			}
 		}
 
+		private static void EnsurePlayerTruckGarageBackroomChoices(object controllerInstance, object slotdef, IModule installedModule, List<AddModuleDef> defs)
+		{
+			if (installedModule != null || defs == null)
+			{
+				return;
+			}
+
+			try
+			{
+				VisitState visit = Traverse.Create(controllerInstance).Property("Model").Field("visit").GetValue<VisitState>();
+				if (visit == null)
+				{
+					return;
+				}
+
+				Entity biz = visit.biz;
+				int added = 0;
+				int skipped = 0;
+				AddPlayerTruckGarageBackroomChoice("player-truck-garage-small", visit, slotdef, biz, defs, ref added, ref skipped);
+				AddPlayerTruckGarageBackroomChoice("player-truck-garage-improved", visit, slotdef, biz, defs, ref added, ref skipped);
+
+				if (added > 0)
+				{
+					defs.StableSort((AddModuleDef a, AddModuleDef b) => (!a.passesReqs || b.passesReqs) ? ((!a.passesReqs && b.passesReqs) ? 1 : 0) : (-1));
+				}
+
+				if (added > 0 || skipped > 0)
+				{
+					string key = $"added={added}|skipped={skipped}|total={defs.Count}";
+					if (LoggedPlayerTruckGarageChoiceFallbacks.Add(key))
+					{
+						VerificationLog("OwnedBizUI", $"player-truck-garage-choice-fallback {key}");
+					}
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Failed to add player truck garage backroom choices: " + ex.Message);
+			}
+		}
+
+		private static void AddPlayerTruckGarageBackroomChoice(string moduleId, VisitState visit, object slotdef, Entity biz, List<AddModuleDef> defs, ref int added, ref int skipped)
+		{
+			IModuleConfig config = ModulesUtil.FindModuleDef((Label)moduleId);
+			if (config == null || HasAddModuleChoice(defs, config.Id))
+			{
+				skipped++;
+				return;
+			}
+
+			NormalizeVehicleBackroomDisplay(config, "truck-garage-choice-fallback");
+			if (!CanInstallStandaloneDirtyCashBackroomChoice(config, slotdef, biz))
+			{
+				skipped++;
+				return;
+			}
+
+			AddModuleDef def = ModulesUtil.MakeAddModuleDef(config, visit);
+			def.passesVisreqs = true;
+			defs.Add(def);
+			added++;
+		}
+
 		private static bool CanInstallStandaloneDirtyCashBackroomChoice(IModuleConfig config, object slotdef, Entity biz)
 		{
 			ModuleSlot moduleSlot = slotdef as ModuleSlot;
@@ -5847,6 +6334,19 @@ public partial class GameplayTweaksPlugin
 			return false;
 		}
 
+		private static void NormalizeVehicleBackroomDisplayChoices(List<AddModuleDef> defs, string source)
+		{
+			if (defs == null || defs.Count == 0)
+			{
+				return;
+			}
+
+			for (int i = 0; i < defs.Count; i++)
+			{
+				NormalizeVehicleBackroomDisplay(defs[i].config, source);
+			}
+		}
+
 		private static void FindUpgradesOrNullPostfix(IModule module, ref List<AddModuleDef> __result)
 		{
 			try
@@ -5856,6 +6356,7 @@ public partial class GameplayTweaksPlugin
 					return;
 				}
 
+				NormalizeVehicleBackroomDisplayChoices(__result, "find-upgrades");
 				IModuleConfig moduleConfig = module?.ModuleConfig;
 				if (IsPlayerLegalDirtyCashBusinessModule(moduleConfig))
 				{
@@ -5909,7 +6410,7 @@ public partial class GameplayTweaksPlugin
 					return;
 				}
 
-				if (IsBackroomSlot(slotdef) || IsDirtyCashBackroomModule(installedConfig))
+				if (IsOwnedBizBackroomUiModule(installedConfig) || IsBackroomSlot(slotdef))
 				{
 					go.SetText("Panel/Title", "Backroom operation");
 					go.SetText("Panel/Header", isUpgrade ? "Upgrade your backroom operation" : "Choose a backroom operation to build here.");
@@ -5920,6 +6421,141 @@ public partial class GameplayTweaksPlugin
 			{
 				Debug.LogWarning("[GameplayTweaks] Failed to label owned-biz module popup: " + ex.Message);
 			}
+		}
+
+		private static void OwnedBizAddModulePopupInitializeCardPostfix(GameObject card, AddModuleDef def)
+		{
+			try
+			{
+				if (card == null || !TryGetVehicleBackroomPopupText(def.config, out string moduleId, out string name, out _, out _))
+				{
+					return;
+				}
+
+				card.SetText("Description", name);
+				LogVehicleBackroomPopupRepair("card", moduleId, name);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Failed to repair vehicle backroom card display: " + ex.Message);
+			}
+		}
+
+		private static bool OwnedBizAddModulePopupRefreshDetailsPrefix(OwnedBizAddModulePopup __instance, object __0, bool __1)
+		{
+			try
+			{
+				if (__1 || __0 == null)
+				{
+					return true;
+				}
+
+				AddModuleDef def = Traverse.Create(__0).Field("addmoduledef").GetValue<AddModuleDef>();
+				if (!TryGetVehicleBackroomPopupText(def.config, out string moduleId, out string name, out string details, out VehicleModuleConfig vehicleConfig))
+				{
+					return true;
+				}
+
+				ModuleDescPanelBuilder builder = Traverse.Create(__instance).Field("_descBuilder").GetValue<ModuleDescPanelBuilder>();
+				if (builder == null)
+				{
+					return true;
+				}
+
+				Traverse.Create(__instance).Field("_selected").SetValue(__0);
+				builder.ClearContainer();
+				builder.AddTextEntry(Loc.Get("module.desc.locname", "name", name));
+				builder.AddTextEntry(details);
+				builder.AddTextEntry(Loc.Get("module.desc.op-details"));
+				builder.AddVehicleRepairRow(null);
+				builder.AddTextEntry(BuildVehicleBackroomCapacityText(vehicleConfig, builder.q.MakeManagerModQuery()));
+				builder.AddRequirementsRow(def.config);
+				builder.AddPurchaseRows(def.config.Common.purchase);
+				builder.parent.transform.parent.parent.gameObject.ResetScrollView();
+				LogVehicleBackroomPopupRepair("details", moduleId, name);
+				return false;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Failed to repair vehicle backroom details display: " + ex.Message);
+				return true;
+			}
+		}
+
+		private static void FindBackroomModulePostfix(ModulesComponent __instance, ref IModule __result)
+		{
+			try
+			{
+				if (__result != null)
+				{
+					return;
+				}
+
+				IModule playerVehicleBackroom = FindInstalledPlayerVehicleBackroomModule(__instance);
+				if (playerVehicleBackroom == null)
+				{
+					return;
+				}
+
+				__result = playerVehicleBackroom;
+				LogPlayerVehicleBackroomFallback(__instance, playerVehicleBackroom, "FindBackroomModule");
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Player garage backroom fallback failed: " + ex.Message);
+			}
+		}
+
+		private static void HasBackroomModulesPostfix(ModulesComponent __instance, ref bool __result)
+		{
+			try
+			{
+				if (__result || FindInstalledPlayerVehicleBackroomModule(__instance) == null)
+				{
+					return;
+				}
+
+				__result = true;
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning("[GameplayTweaks] Player garage backroom presence fallback failed: " + ex.Message);
+			}
+		}
+
+		private static IModule FindInstalledPlayerVehicleBackroomModule(ModulesComponent modules)
+		{
+			List<IModule> slots = modules?.GetAllSlotsUnsafe();
+			if (slots == null || slots.Count == 0)
+			{
+				return null;
+			}
+
+			for (int i = 0; i < slots.Count; i++)
+			{
+				IModule module = slots[i];
+				if (IsPlayerVehicleBackroomModule(module?.ModuleConfig))
+				{
+					return module;
+				}
+			}
+
+			return null;
+		}
+
+		private static void LogPlayerVehicleBackroomFallback(ModulesComponent modules, IModule module, string source)
+		{
+			string moduleId = module?.ModuleConfig?.Id.String ?? "null";
+			EntityID buildingId = modules?.entity?.Id ?? EntityID.INVALID;
+			string key = source + "|" + buildingId + "|" + moduleId;
+			if (!LoggedPlayerVehicleBackroomModuleAudits.Add(key))
+			{
+				return;
+			}
+
+			VerificationLog(
+				"OwnedBizUI",
+				$"player-vehicle-backroom-fallback source={source} building={buildingId} module={moduleId} result=shown-as-backroom");
 		}
 
 		private static void CanInstallPostfix(OwnedBizController __instance, AddModuleDef moduledef, ref bool __result)
@@ -6413,13 +7049,358 @@ public partial class GameplayTweaksPlugin
 
 			if (config is VehicleModuleConfig)
 			{
-				return id.StartsWith("player-garage", StringComparison.OrdinalIgnoreCase) ||
-					id.StartsWith("player-truck-garage", StringComparison.OrdinalIgnoreCase) ||
-					id.StartsWith("garage-", StringComparison.OrdinalIgnoreCase) ||
+				if (string.Equals(id, "player-garage-base", StringComparison.OrdinalIgnoreCase))
+				{
+					return true;
+				}
+
+				return id.StartsWith("garage-", StringComparison.OrdinalIgnoreCase) ||
 					id.StartsWith("truck-garage", StringComparison.OrdinalIgnoreCase);
 			}
 
 			return false;
+		}
+
+		private static bool IsOwnedBizBackroomUiModule(IModuleConfig config)
+		{
+			NormalizeVehicleBackroomDisplay(config, "ownedbiz-backroom-ui");
+			return IsDirtyCashBackroomModule(config) || IsPlayerVehicleBackroomModule(config);
+		}
+
+		private static bool TryGetVehicleBackroomPopupText(
+			IModuleConfig config,
+			out string moduleId,
+			out string name,
+			out string details,
+			out VehicleModuleConfig vehicleConfig)
+		{
+			moduleId = config?.Id.String ?? "null";
+			name = string.Empty;
+			details = string.Empty;
+			vehicleConfig = config as VehicleModuleConfig;
+			if (!IsVehicleBackroomPopupCandidate(vehicleConfig))
+			{
+				return false;
+			}
+
+			NormalizeVehicleBackroomDisplay(config, "ownedbiz-popup-direct");
+			string locBase = "module." + moduleId;
+			name = ResolveVehicleBackroomText(locBase + ".name", GetVehicleBackroomFallbackName(moduleId, vehicleConfig));
+			string detailKey = HasVehicleBackroomDetailsLoc(moduleId) ? locBase + ".details" : locBase + ".desc";
+			details = ResolveVehicleBackroomText(detailKey, GetVehicleBackroomFallbackDetails(moduleId, vehicleConfig));
+			return !string.IsNullOrWhiteSpace(name);
+		}
+
+		private static bool IsVehicleBackroomPopupCandidate(VehicleModuleConfig config)
+		{
+			if (config == null)
+			{
+				return false;
+			}
+
+			string id = config.Id.String;
+			if (IsKnownVehicleBackroomDisplayModule(id))
+			{
+				return true;
+			}
+
+			if (!string.IsNullOrEmpty(id) &&
+				(id.IndexOf("garage", StringComparison.OrdinalIgnoreCase) >= 0 ||
+				id.IndexOf("repair", StringComparison.OrdinalIgnoreCase) >= 0 ||
+				id.IndexOf("bay", StringComparison.OrdinalIgnoreCase) >= 0))
+			{
+				return true;
+			}
+
+			return config.repairInfo != null;
+		}
+
+		private static string ResolveVehicleBackroomText(string locKey, string fallback)
+		{
+			string text = string.Empty;
+			try
+			{
+				text = string.IsNullOrWhiteSpace(locKey) ? string.Empty : Loc.Get(locKey);
+			}
+			catch
+			{
+				text = string.Empty;
+			}
+
+			return IsResolvedVehicleBackroomText(text) ? text : fallback;
+		}
+
+		private static bool IsResolvedVehicleBackroomText(string text)
+		{
+			if (string.IsNullOrWhiteSpace(text))
+			{
+				return false;
+			}
+
+			string trimmed = text.Trim();
+			return !string.Equals(trimmed, "?", StringComparison.Ordinal) &&
+				!trimmed.StartsWith("?", StringComparison.Ordinal) &&
+				trimmed.IndexOf("missing", StringComparison.OrdinalIgnoreCase) < 0;
+		}
+
+		private static string GetVehicleBackroomFallbackName(string moduleId, VehicleModuleConfig config)
+		{
+			if (string.Equals(moduleId, "garage-small-car-repair", StringComparison.OrdinalIgnoreCase))
+			{
+				return "Corner Service Station";
+			}
+			if (string.Equals(moduleId, "player-garage-module-small", StringComparison.OrdinalIgnoreCase))
+			{
+				return "Small Garage";
+			}
+			if (string.Equals(moduleId, "player-garage-module-medium", StringComparison.OrdinalIgnoreCase))
+			{
+				return "Medium Garage";
+			}
+			if (string.Equals(moduleId, "player-truck-garage-small", StringComparison.OrdinalIgnoreCase))
+			{
+				return "Small Truck Repair Bay";
+			}
+			if (string.Equals(moduleId, "player-truck-garage-improved", StringComparison.OrdinalIgnoreCase))
+			{
+				return "Upgraded Truck Repair Bay";
+			}
+			if (string.Equals(moduleId, "car-dealer-garage-module", StringComparison.OrdinalIgnoreCase))
+			{
+				return "Car dealer's garage";
+			}
+			if (string.Equals(moduleId, "truck-garage", StringComparison.OrdinalIgnoreCase))
+			{
+				return "Loading Bay";
+			}
+			if (!string.IsNullOrEmpty(moduleId) && moduleId.IndexOf("truck", StringComparison.OrdinalIgnoreCase) >= 0)
+			{
+				return "Truck Repair Bay";
+			}
+			if (!string.IsNullOrEmpty(moduleId) && moduleId.IndexOf("garage", StringComparison.OrdinalIgnoreCase) >= 0)
+			{
+				return "Garage";
+			}
+			return config?.repairInfo != null ? "Repair Bay" : "Vehicle Bay";
+		}
+
+		private static string GetVehicleBackroomFallbackDetails(string moduleId, VehicleModuleConfig config)
+		{
+			if (string.Equals(moduleId, "garage-small-car-repair", StringComparison.OrdinalIgnoreCase))
+			{
+				return "This local service station can service your cars.";
+			}
+			if (string.Equals(moduleId, "player-garage-module-small", StringComparison.OrdinalIgnoreCase))
+			{
+				return "Open up the back of the building to have a few parking spots and a repair bay. This increases the number of vehicles you can handle, and makes it possible to repair them. Allows you to buy delivery trucks if available.";
+			}
+			if (string.Equals(moduleId, "player-garage-module-medium", StringComparison.OrdinalIgnoreCase))
+			{
+				return "Expand the garage you've got in the back of this building and further increase the number of vehicles you can handle. Allows you to buy delivery trucks if available.";
+			}
+			if (string.Equals(moduleId, "player-truck-garage-small", StringComparison.OrdinalIgnoreCase))
+			{
+				return "Install the specialized equipment needed to maintain the more complicated workings of delivery trucks. Allows you to buy delivery trucks if available.";
+			}
+			if (string.Equals(moduleId, "player-truck-garage-improved", StringComparison.OrdinalIgnoreCase))
+			{
+				return "Upgrading your truck repair bay allows for a larger fleet of trucks and allows you to consider acquiring larger trucks. Allows you to buy delivery trucks if available.";
+			}
+			if (string.Equals(moduleId, "car-dealer-garage-module", StringComparison.OrdinalIgnoreCase))
+			{
+				return "A few repair bays in the back of the building.";
+			}
+			if (string.Equals(moduleId, "truck-garage", StringComparison.OrdinalIgnoreCase))
+			{
+				return "A loading bay where delivery trucks are loaded and unloaded.";
+			}
+			return "Contains repair bays. You will be able to repair your vehicles here.";
+		}
+
+		private static string BuildVehicleBackroomCapacityText(VehicleModuleConfig config, ModQuery q)
+		{
+			if (config?.playerInfo == null)
+			{
+				return string.Empty;
+			}
+
+			string carText = BuildVehicleBackroomCapacityLine(config.playerInfo.carCapDelta, "module.desc.vehicle.increase-car", q);
+			string truckText = BuildVehicleBackroomCapacityLine(config.playerInfo.truckCapDelta, "module.desc.vehicle.increase-truck", q);
+			return "\n" + carText + "\n" + truckText;
+		}
+
+		private static string BuildVehicleBackroomCapacityLine(ModValue value, string headerLocKey, ModQuery q)
+		{
+			string header = ResolveVehicleBackroomText(headerLocKey, headerLocKey);
+			if (value == null)
+			{
+				return header + " " + Loc.FormatNumber(0);
+			}
+
+			Fixnum evaluated = value.Evaluate(q);
+			string text = header + " " + Loc.FormatNumber(evaluated);
+			if (evaluated.IsNotZero)
+			{
+				string explanation = value.Explain(q, addHeader: false);
+				if (!string.IsNullOrWhiteSpace(explanation))
+				{
+					text = text + "\n" + explanation;
+				}
+			}
+
+			return text;
+		}
+
+		private static void LogVehicleBackroomPopupRepair(string source, string moduleId, string name)
+		{
+			string key = "popup|" + source + "|" + moduleId + "|" + name;
+			if (!LoggedVehicleBackroomDisplayRepairs.Add(key))
+			{
+				return;
+			}
+
+			VerificationLog("OwnedBizUI", $"vehicle-backroom-popup-repaired source={source} id={moduleId} name=\"{name}\"");
+		}
+
+		private static bool IsPlayerVehicleBackroomModule(IModuleConfig config)
+		{
+			NormalizeVehicleBackroomDisplay(config, "player-vehicle-backroom");
+			if (config == null || !(config is VehicleModuleConfig))
+			{
+				return false;
+			}
+
+			string id = config.Id.String;
+			if (string.IsNullOrEmpty(id))
+			{
+				return false;
+			}
+
+			bool knownPlayerGarage = PlayerVehicleBackroomModuleIds.Any(
+				knownId => string.Equals(id, knownId, StringComparison.OrdinalIgnoreCase));
+			if (!knownPlayerGarage)
+			{
+				return false;
+			}
+
+			bool taggedAsBackroom = config.Common?.tags != null && config.Common.tags.Contains(TagConstants.TAG_SAFEHOUSE_BACKROOMS);
+			LogPlayerVehicleBackroomModuleAudit(config, taggedAsBackroom);
+			return true;
+		}
+
+		private static bool NormalizeVehicleBackroomDisplay(IModuleConfig config, string source)
+		{
+			if (config == null || !(config is VehicleModuleConfig vehicleConfig))
+			{
+				return false;
+			}
+
+			string id = config.Id.String;
+			if (string.IsNullOrEmpty(id) || !IsKnownVehicleBackroomDisplayModule(id))
+			{
+				return false;
+			}
+
+			ModuleCommon common = config.Common;
+			ModuleCommon.Display display = common?.display;
+			if (display == null)
+			{
+				return false;
+			}
+
+			string locBase = "module." + id;
+			string locName = locBase + ".name";
+			string locDesc = locBase + ".desc";
+			string locDetails = HasVehicleBackroomDetailsLoc(id) ? locBase + ".details" : locDesc;
+
+			string beforeName = display.locname ?? "null";
+			string beforeDesc = display.locdesc ?? "null";
+			string beforeDetail = display.locInstallDetail ?? "null";
+			string beforeFlavor = vehicleConfig.vehicleModuleLoc?.locFlavorDesc ?? "null";
+			bool changed = false;
+
+			if (!string.Equals(display.locname, locName, StringComparison.Ordinal))
+			{
+				display.locname = locName;
+				changed = true;
+			}
+
+			if (!string.Equals(display.locdesc, locDesc, StringComparison.Ordinal))
+			{
+				display.locdesc = locDesc;
+				changed = true;
+			}
+
+			if (!string.Equals(display.locInstallDetail, locDetails, StringComparison.Ordinal))
+			{
+				display.locInstallDetail = locDetails;
+				changed = true;
+			}
+
+			if (vehicleConfig.vehicleModuleLoc != null && !string.Equals(vehicleConfig.vehicleModuleLoc.locFlavorDesc, locDetails, StringComparison.Ordinal))
+			{
+				vehicleConfig.vehicleModuleLoc.locFlavorDesc = locDetails;
+				changed = true;
+			}
+
+			if (changed)
+			{
+				LogVehicleBackroomDisplayRepair(source, id, beforeName, beforeDesc, beforeDetail, beforeFlavor, locName, locDesc, locDetails);
+			}
+
+			return true;
+		}
+
+		private static bool IsKnownVehicleBackroomDisplayModule(string id)
+		{
+			if (string.IsNullOrEmpty(id))
+			{
+				return false;
+			}
+
+			return VehicleBackroomDisplayModuleIds.Any(knownId => string.Equals(id, knownId, StringComparison.OrdinalIgnoreCase));
+		}
+
+		private static bool HasVehicleBackroomDetailsLoc(string id)
+		{
+			return !string.Equals(id, "garage-small-car-repair", StringComparison.OrdinalIgnoreCase) &&
+				!string.Equals(id, "car-dealer-garage-module", StringComparison.OrdinalIgnoreCase) &&
+				!string.Equals(id, "truck-garage", StringComparison.OrdinalIgnoreCase);
+		}
+
+		private static void LogVehicleBackroomDisplayRepair(
+			string source,
+			string id,
+			string beforeName,
+			string beforeDesc,
+			string beforeDetail,
+			string beforeFlavor,
+			string locName,
+			string locDesc,
+			string locDetails)
+		{
+			string key = (source ?? "unknown") + "|" + id + "|" + locName + "|" + locDetails;
+			if (!LoggedVehicleBackroomDisplayRepairs.Add(key))
+			{
+				return;
+			}
+
+			VerificationLog(
+				"OwnedBizUI",
+				$"vehicle-backroom-display-normalized source={source ?? "unknown"} id={id} name={beforeName}->{locName} desc={beforeDesc}->{locDesc} detail={beforeDetail}->{locDetails} flavor={beforeFlavor}->{locDetails}");
+		}
+
+		private static void LogPlayerVehicleBackroomModuleAudit(IModuleConfig config, bool taggedAsBackroom)
+		{
+			string id = config?.Id.String ?? "null";
+			if (!LoggedPlayerVehicleBackroomModuleAudits.Add(id + "|tagged=" + taggedAsBackroom))
+			{
+				return;
+			}
+
+			VerificationLog(
+				"OwnedBizUI",
+				$"player-vehicle-backroom-module id={id} taggedBackroom={taggedAsBackroom} type={config?.GetType().Name ?? "null"} result={(taggedAsBackroom ? "recognized" : "missing-backroom-tag")}");
 		}
 
 		private static bool IsDirtyCashBackroomModule(IModuleConfig config)

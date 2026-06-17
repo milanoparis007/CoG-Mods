@@ -574,6 +574,7 @@ public partial class GameplayTweaksPlugin
 		TurnPerformanceDiagnosticsPatch.ApplyPatch(harmony);
 		CheckForConflictingMods();
 		DirtyCashEconomyCompatibilityPatch.ApplyPatch(harmony);
+		GamblerDebtDiagnosticsPatch.ApplyPatch(harmony);
 		ApplyCoreCheatCompatibilityGuards();
 		GangWarsAdapterPatch.ApplyPatch(harmony);
 	}
